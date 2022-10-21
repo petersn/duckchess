@@ -1,23 +1,46 @@
 import React from 'react';
 import './App.css';
 import init, { new_engine, Engine } from 'engine';
+import * as tf from '@tensorflow/tfjs';
 
-function AppWithEngine(props: { engine: Engine }) {
+function createConvModel(): tf.LayersModel {
+  const model = tf.sequential();
+  model.add(tf.layers.conv2d({
+    inputShape: [28, 28, 1],
+    kernelSize: 3,
+    filters: 16,
+    activation: 'relu'
+  }));
+  model.add(tf.layers.maxPooling2d({poolSize: 2, strides: 2}));
+  model.add(tf.layers.conv2d({kernelSize: 3, filters: 32, activation: 'relu'}));
+  model.add(tf.layers.maxPooling2d({poolSize: 2, strides: 2}));
+  model.add(tf.layers.conv2d({kernelSize: 3, filters: 32, activation: 'relu'}));
+  model.add(tf.layers.flatten({}));
+  model.add(tf.layers.dense({units: 64, activation: 'relu'}));
+  model.add(tf.layers.dense({units: 10, activation: 'softmax'}));
+  model.loadWeights('http://localhost:3000/weights/model.json');
+  return model;
+}
+
+function AppWithComputation(props: { computation: Computation }) {
   const [selectedSquare, setSelectedSquare] = React.useState<[number, number] | null>(null);
   const [forceUpdateCounter, setForceUpdateCounter] = React.useState(0);
   const [pair, setPair] = React.useState<any>(null);
 
-  const state = props.engine.get_state();
-  const moves: any[] = props.engine.get_moves();
+  const { engine, tfjsModel } = props.computation;
+  const state = engine.get_state();
+  const moves: any[] = engine.get_moves();
   React.useEffect(() => {
-    let pair = props.engine.run(4);
+    const tfjsResult = tfjsModel.predict(tf.zeros([1, 28, 28, 1]));
+    (tfjsResult as any).print();
+    let pair = engine.run(4);
     setPair(pair);
     setTimeout(() => {
       if (pair && pair[1][0]) {
-        props.engine.apply_move(pair[1][0]);
+        engine.apply_move(pair[1][0]);
         setForceUpdateCounter(forceUpdateCounter + 1);
       }
-    }, 10);
+    }, 1000);
   }, [forceUpdateCounter]);
 
   console.log('Pair:', pair);
@@ -27,7 +50,7 @@ function AppWithEngine(props: { engine: Engine }) {
       // Check if this is the initial duck placement.
       const m = moves.find(m => m.from === 64 && m.to === x + (7 - y) * 8);
       if (m) {
-        props.engine.apply_move(m);
+        engine.apply_move(m);
         setSelectedSquare(null);
         setForceUpdateCounter(forceUpdateCounter + 1);
       } else {
@@ -42,7 +65,7 @@ function AppWithEngine(props: { engine: Engine }) {
       // Find the first move that matches the selected square and the clicked square.
       const m = moves.find((m: any) => m.from === encodedFrom && m.to === encodedTo);
       if (m) {
-        props.engine.apply_move(m);
+        engine.apply_move(m);
         setForceUpdateCounter(forceUpdateCounter + 1);
       }
       setSelectedSquare(null);
@@ -190,16 +213,24 @@ function AppWithEngine(props: { engine: Engine }) {
   );
 }
 
+interface Computation {
+  engine: Engine;
+  tfjsModel: tf.LayersModel;
+}
+
 function App() {
-  const [engine, setEngine] = React.useState<Engine | null>(null);
+  const [computation, setComputation] = React.useState<Computation | null>(null);
   React.useEffect(() => {
     console.log('Initializing wasm...');
     const seed = Math.floor(Math.random() * 1e9);
     init()
-      .then(() => setEngine(new_engine(seed)))
+      .then(() => setComputation({
+        engine: new_engine(BigInt(seed)),
+        tfjsModel: createConvModel(),
+      }))
       .catch(console.error);
   }, []);
-  return engine ? <AppWithEngine engine={engine} /> : <div>Loading WASM...</div>;
+  return computation ? <AppWithComputation computation={computation} /> : <div>Loading WASM...</div>;
 }
 
 export default App;
