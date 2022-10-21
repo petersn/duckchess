@@ -5,9 +5,15 @@ import init, { new_engine, Engine } from 'engine';
 function AppWithEngine(props: { engine: Engine }) {
   const [selectedSquare, setSelectedSquare] = React.useState<[number, number] | null>(null);
   const [forceUpdateCounter, setForceUpdateCounter] = React.useState(0);
+  const [pair, setPair] = React.useState<any>(null);
 
   const state = props.engine.get_state();
   const moves: any[] = props.engine.get_moves();
+  React.useEffect(() => {
+    setPair(props.engine.run(4));
+  }, [forceUpdateCounter]);
+
+  console.log('Pair:', pair);
 
   function clickOn(x: number, y: number) {
     if (selectedSquare === null) {
@@ -30,6 +36,7 @@ function AppWithEngine(props: { engine: Engine }) {
       const m = moves.find((m: any) => m.from === encodedFrom && m.to === encodedTo);
       if (m) {
         props.engine.apply_move(m);
+        setForceUpdateCounter(forceUpdateCounter + 1);
       }
       setSelectedSquare(null);
     }
@@ -86,20 +93,40 @@ function AppWithEngine(props: { engine: Engine }) {
     }
   }
 
+  let showMoves: any[] = (pair && pair[1][0]) ? pair[1] : [];
+  if (state.isDuckMove && showMoves) {
+    showMoves = showMoves.slice(0, 1);
+  }
+
   const arrows = [];
   let k = 0;
-  for (const move of moves) {
+  for (const move of showMoves) {
+    if (!move)
+      continue;
     const fromX = move.from % 8;
     const fromY = 7 - Math.floor(move.from / 8);
     const toX = move.to % 8;
     const toY = 7 - Math.floor(move.to / 8);
     let dx = toX - fromX;
     let dy = toY - fromY;
-    const length = Math.sqrt(dx * dx + dy * dy);
+    const length = 1e-6 + Math.sqrt(dx * dx + dy * dy);
     dx /= length;
     dy /= length;
     const endX = toX * 50 + 25 - 10 * dx;
     const endY = toY * 50 + 25 - 10 * dy;
+    if (move.from === 64) {
+      const arrow = <circle
+        key={k++}
+        cx={toX * 50 + 25}
+        cy={toY * 50 + 25}
+        r={10}
+        stroke="red"
+        strokeWidth="5"
+        fill="red"
+      />;
+      arrows.push(arrow);
+      continue;
+    }
     let d = `M ${fromX * 50 + 25} ${fromY * 50 + 25} L ${endX} ${endY}`;
     d += ` L ${endX + 5 * dy} ${endY - 5 * dx} L ${endX + 10 * dx} ${endY + 10 * dy} L ${endX - 5 * dy} ${endY + 5 * dx} L ${endX} ${endY} Z`;
     const arrow = <path
@@ -118,7 +145,7 @@ function AppWithEngine(props: { engine: Engine }) {
         viewBox="0 0 400 400"
         style={{ width: 400, height: 400, position: 'absolute', zIndex: 1, pointerEvents: 'none' }}
       >
-        {/*arrows*/}
+        {arrows}
       </svg>
 
       <table style={{ position: 'absolute', borderCollapse: 'collapse', border: '1px solid black' }}>
@@ -152,8 +179,6 @@ function AppWithEngine(props: { engine: Engine }) {
           ))}
         </tbody>
       </table>
-
-      {JSON.stringify(moves)}
     </div>
   );
 }

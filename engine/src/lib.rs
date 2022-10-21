@@ -1,3 +1,9 @@
+use std::{
+  cmp::Ordering,
+  collections::{hash_map::DefaultHasher, HashMap},
+  hash::{Hash, Hasher},
+};
+
 use serde::{ser::SerializeSeq, Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -9,14 +15,14 @@ extern "C" {
   fn log(s: &str);
 }
 
-#[derive(Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CastlingRights {
   king_side:  bool,
   queen_side: bool,
 }
 
-#[derive(Hash)]
+#[derive(Clone, Hash)]
 struct BitBoard(u64);
 
 impl Serialize for BitBoard {
@@ -47,7 +53,7 @@ impl<'de> Deserialize<'de> for BitBoard {
   }
 }
 
-#[derive(Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct State {
   pawns:           [BitBoard; 2],
@@ -163,7 +169,15 @@ impl State {
     }
   }
 
-  fn move_gen_for_color<const is_white: bool>(&self, moves: &mut Vec<Move>) {
+  // Warning: This doesn't include stalemate.
+  fn is_game_over(&self) -> bool {
+    self.kings[0].0 == 0 || self.kings[1].0 == 0
+  }
+
+  fn move_gen_for_color<const quiescence: bool, const is_white: bool>(
+    &self,
+    moves: &mut Vec<Move>,
+  ) {
     macro_rules! shift_backward {
       ($board:expr) => {
         if is_white {
@@ -387,10 +401,14 @@ impl State {
     }
   }
 
-  fn move_gen(&self, moves: &mut Vec<Move>) {
+  fn move_gen<const quiescence: bool>(&self, moves: &mut Vec<Move>) {
+    // For now no movegen is done in quiescence search.
+    if quiescence {
+      return;
+    }
     match self.white_turn {
-      true => self.move_gen_for_color::<true>(moves),
-      false => self.move_gen_for_color::<false>(moves),
+      true => self.move_gen_for_color::<quiescence, true>(moves),
+      false => self.move_gen_for_color::<quiescence, false>(moves),
     }
   }
 
@@ -514,13 +532,13 @@ impl State {
     self.rooks[self.white_turn as usize].0 |= new_rooks;
     self.queens[self.white_turn as usize].0 |= new_queens;
 
-    //self.white_turn = !self.white_turn;
-    self.is_duck_move = true;
+    self.white_turn = !self.white_turn;
+    //self.is_duck_move = true;
     true
   }
 }
 
-#[derive(Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 enum PromotablePiece {
   // Ordered here based on likelihood of promotion.
@@ -533,7 +551,7 @@ enum PromotablePiece {
 type Square = u8;
 type SquareDelta = u8;
 
-#[derive(Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 struct Move {
   from:      Square,
   to:        Square,
@@ -542,33 +560,116 @@ struct Move {
 
 type Evaluation = i32;
 
-fn evaluate_state(state: &State) -> (bool, Evaluation) {
+const VERY_NEGATIVE_EVAL: Evaluation = -1_000_000_000;
+const VERY_POSITIVE_EVAL: Evaluation = 1_000_000_000;
+
+const PAWN_PST: [Evaluation; 64] = [
+  0, 0, 0, 0, 0, 0, 0, 0, 50, 50, 50, 50, 50, 50, 50, 50, 10, 10, 20, 30, 30, 20, 10, 10, 5, 5, 10,
+  25, 25, 10, 5, 5, 0, 0, 0, 20, 20, 0, 0, 0, 5, -5, -10, 0, 0, -10, -5, 5, 5, 10, 10, -20, -20,
+  10, 10, 5, 0, 0, 0, 0, 0, 0, 0, 0,
+];
+
+const KNIGHT_PST: [Evaluation; 64] = [
+  -50, -40, -30, -30, -30, -30, -40, -50, -40, -20, 0, 0, 0, 0, -20, -40, -30, 0, 10, 15, 15, 10,
+  0, -30, -30, 5, 15, 20, 20, 15, 5, -30, -30, 0, 15, 20, 20, 15, 0, -30, -30, 5, 10, 15, 15, 10,
+  5, -30, -40, -20, 0, 5, 5, 0, -20, -40, -50, -40, -30, -30, -30, -30, -40, -50,
+];
+
+const BISHOP_PST: [Evaluation; 64] = [
+  -20, -10, -10, -10, -10, -10, -10, -20, -10, 0, 0, 0, 0, 0, 0, -10, -10, 0, 5, 10, 10, 5, 0, -10,
+  -10, 5, 5, 10, 10, 5, 5, -10, -10, 0, 10, 10, 10, 10, 0, -10, -10, 10, 10, 10, 10, 10, 10, -10,
+  -10, 5, 0, 0, 0, 0, 5, -10, -20, -10, -10, -10, -10, -10, -10, -20,
+];
+
+const ROOK_PST: [Evaluation; 64] = [
+  0, 0, 0, 0, 0, 0, 0, 0, 5, 10, 10, 10, 10, 10, 10, 5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0,
+  0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, 0, 0, 0,
+  5, 5, 0, 0, 0,
+];
+
+const QUEEN_PST: [Evaluation; 64] = [
+  -20, -10, -10, -5, -5, -10, -10, -20, -10, 0, 0, 0, 0, 0, 0, -10, -10, 0, 5, 5, 5, 5, 0, -10, -5,
+  0, 5, 5, 5, 5, 0, -5, 0, 0, 5, 5, 5, 5, 0, -5, -10, 5, 5, 5, 5, 5, 0, -10, -10, 0, 5, 0, 0, 0, 0,
+  -10, -20, -10, -10, -5, -5, -10, -10, -20,
+];
+
+const KING_MIDDLEGAME_PST: [Evaluation; 64] = [
+  -30, -40, -40, -50, -50, -40, -40, -30, -30, -40, -40, -50, -50, -40, -40, -30, -30, -40, -40,
+  -50, -50, -40, -40, -30, -30, -40, -40, -50, -50, -40, -40, -30, -20, -30, -30, -40, -40, -30,
+  -30, -20, -10, -20, -20, -20, -20, -20, -20, -10, 20, 20, 0, 0, 0, 0, 20, 20, 20, 30, 10, 0, 0,
+  10, 30, 20,
+];
+
+const KING_ENDGAME_PST: [Evaluation; 64] = [
+  -50, -40, -30, -20, -20, -30, -40, -50, -30, -20, -10, 0, 0, -10, -20, -30, -30, -10, 20, 30, 30,
+  20, -10, -30, -30, -10, 30, 40, 40, 30, -10, -30, -30, -10, 30, 40, 40, 30, -10, -30, -30, -10,
+  20, 30, 30, 20, -10, -30, -30, -30, 0, 0, 0, 0, -30, -30, -50, -30, -30, -30, -30, -30, -30, -50,
+];
+
+fn evaluate_state(state: &State) -> Evaluation {
   let mut score = 0;
-  for (piece_value, piece_array) in [
-    (1, &state.pawns),
-    (4, &state.knights),
-    (3, &state.bishops),
-    (5, &state.rooks),
-    (9, &state.queens),
-    (10000, &state.kings),
+  let is_endgame = state.queens[0].0 == 0 && state.queens[1].0 == 0;
+  let king_pst = if is_endgame {
+    KING_ENDGAME_PST
+  } else {
+    KING_MIDDLEGAME_PST
+  };
+  for (piece_value, pst, piece_array) in [
+    (100, PAWN_PST, &state.pawns),
+    (400, KNIGHT_PST, &state.knights),
+    (300, BISHOP_PST, &state.bishops),
+    (500, ROOK_PST, &state.rooks),
+    (900, QUEEN_PST, &state.queens),
+    (1_000_000, king_pst, &state.kings),
   ] {
-    let (us, them) = match state.white_turn {
-      true => (&piece_array[1], &piece_array[0]),
-      false => (&piece_array[0], &piece_array[1]),
+    let (mut us, mut them, pst_xor) = match state.white_turn {
+      //let (mut us, mut them, pst_xor) = match true {
+      true => (piece_array[1].0, piece_array[0].0, 0),
+      false => (piece_array[0].0, piece_array[1].0, 56),
     };
-    score += piece_value * us.0.count_ones() as Evaluation;
-    score -= piece_value * them.0.count_ones() as Evaluation;
+    score += us.count_ones() as Evaluation * piece_value;
+    score -= them.count_ones() as Evaluation * piece_value;
+    while let Some(pos) = iter_bits(&mut us) {
+      score += pst[(pos ^ pst_xor ^ 56) as usize];
+    }
+    while let Some(pos) = iter_bits(&mut them) {
+      score -= pst[(pos ^ pst_xor) as usize];
+    }
   }
-  let game_over = state.kings[0].0 == 0 || state.kings[1].0 == 0;
-  (game_over, score)
+  score
 }
 
 #[wasm_bindgen]
 pub struct Engine {
-  state: State,
+  state:            State,
+  move_order_table: HashMap<u64, Move>,
 }
 
 const QUIESCENCE_DEPTH: u16 = 10;
+
+fn make_terminal_scores_slightly_less_extreme<T>(p: (Evaluation, T)) -> (Evaluation, T) {
+  let (score, m) = p;
+  let score = if score < -1000 {
+    score + 1
+  } else if score > 1000 {
+    score - 1
+  } else {
+    score
+  };
+  (score, m)
+}
+
+fn make_terminal_scores_much_less_extreme<T>(p: (Evaluation, T)) -> (Evaluation, T) {
+  let (score, m) = p;
+  let score = if score < -1000 {
+    score + 100
+  } else if score > 1000 {
+    score - 100
+  } else {
+    score
+  };
+  (score, m)
+}
 
 #[wasm_bindgen]
 impl Engine {
@@ -588,7 +689,7 @@ impl Engine {
 
   pub fn get_moves(&self) -> JsValue {
     let mut moves = Vec::new();
-    self.state.move_gen(&mut moves);
+    self.state.move_gen::<false>(&mut moves);
     serde_wasm_bindgen::to_value(&moves).unwrap_or_else(|e| {
       log(&format!("Failed to serialize moves: {}", e));
       JsValue::NULL
@@ -603,45 +704,137 @@ impl Engine {
     self.state.apply_move(&m)
   }
 
+  pub fn run(&mut self, depth: u16) -> JsValue {
+    let start_state = self.state.clone();
+    // Apply iterative deepening.
+    let mut p = (-1, (None, None));
+    for d in [depth] {//1..=depth {
+      p = self.pvs::<false>(d, &start_state, VERY_NEGATIVE_EVAL, VERY_POSITIVE_EVAL);
+      log(&format!("Depth {}: {}", d, p.0));
+    }
+    serde_wasm_bindgen::to_value(&p).unwrap_or_else(|e| {
+      log(&format!("Failed to serialize score: {}", e));
+      JsValue::NULL
+    })
+  }
+
   fn pvs<const quiescence: bool>(
     &mut self,
     depth: u16,
     state: &State,
-    alpha: Evaluation,
-    beta: Evaluation,
-  ) -> Evaluation {
-    let (game_over, score) = evaluate_state(state);
+    mut alpha: Evaluation,
+    mut beta: Evaluation,
+  ) -> (Evaluation, (Option<Move>, Option<Move>)) {
+    assert!(!quiescence);
+    let game_over = state.is_game_over();
     match (game_over, depth, quiescence) {
-      (true, _, _) => return score,
-      (_, 0, true) => return score,
-      (_, 0, false) => {
-        return make_terminal_scores_much_less_extreme(self.pvs::<true>(
-          QUIESCENCE_DEPTH,
-          state,
-          alpha,
-          beta,
-        ))
-      }
+      (true, _, _) => return (evaluate_state(state), (None, None)),
+      (_, 0, _) => return (evaluate_state(state), (None, None)),
+      // (_, 0, false) => {
+      //   return make_terminal_scores_much_less_extreme(self.pvs::<true>(
+      //     QUIESCENCE_DEPTH,
+      //     state,
+      //     alpha,
+      //     beta,
+      //   ))
+      // }
       _ => {}
     }
+
     let mut moves = Vec::new();
-    state.move_gen(&mut moves);
-    let mut best_score = Evaluation::MIN;
+    state.move_gen::<quiescence>(&mut moves);
+
+    // If we're in a quiescence search and have quiesced, then return.
+    if quiescence && moves.is_empty() {
+      return (evaluate_state(state), (None, None));
+    }
+    assert!(!moves.is_empty());
+
+    // Reorder based on our move order table.
+    let mut s = DefaultHasher::new();
+    state.hash(&mut s);
+    let state_hash: u64 = s.finish();
+    if let Some(mot_move) = self.move_order_table.get(&state_hash) {
+      //log(&format!("Found move in move order table: {:?}", mot_move));
+      moves.sort_by(|a, b| {
+        if a == mot_move {
+          Ordering::Less
+        } else if b == mot_move {
+          Ordering::Greater
+        } else {
+          Ordering::Equal
+        }
+      });
+    }
+
+    //log(&format!("pvs({}, {}, {}) moves={}", depth, alpha, beta, moves.len()));
+    let mut best_score = VERY_NEGATIVE_EVAL;
+    let mut best_pair = (None, None);
+
+    // If we're in a quiescence search then we're allowed to pass.
+    if quiescence {
+      alpha = alpha.max(evaluate_state(state));
+      if alpha >= beta {
+        moves.clear();
+      }
+    }
+
+    let mut first = true;
     for m in moves {
       let mut new_state = state.clone();
       new_state.apply_move(&m);
-      let score = -self.pvs::<false>(&new_state);
+
+      let mut score;
+      let mut next_pair;
+
+      // Two cases:
+      // If new_state is a duck move state, we *don't* invert the score, as we take the next move.
+
+      if new_state.is_duck_move {
+        if first {
+          (score, next_pair) = self.pvs::<quiescence>(depth - 1, &new_state, alpha, beta);
+        } else {
+          (score, next_pair) = self.pvs::<quiescence>(depth - 1, &new_state, alpha, alpha + 1);
+          if alpha < score && score < beta {
+            (score, next_pair) = self.pvs::<quiescence>(depth - 1, &new_state, score, beta);
+          }
+        }
+      } else {
+        if first {
+          (score, next_pair) = self.pvs::<quiescence>(depth - 1, &new_state, -beta, -alpha);
+          score *= -1;
+        } else {
+          (score, next_pair) = self.pvs::<quiescence>(depth - 1, &new_state, -alpha - 1, -alpha);
+          score *= -1;
+          if alpha < score && score < beta {
+            (score, next_pair) = self.pvs::<quiescence>(depth - 1, &new_state, -beta, -score);
+            score *= -1;
+          }
+        }
+      }
+
       if score > best_score {
         best_score = score;
+        best_pair = (Some(m), next_pair.0);
       }
+      if score > alpha && !quiescence {
+        self.move_order_table.insert(state_hash, m);
+      }
+      alpha = alpha.max(score);
+      if alpha >= beta {
+        break;
+      }
+      first = false;
     }
-    best_score
+
+    make_terminal_scores_slightly_less_extreme((alpha, best_pair))
   }
 }
 
 #[wasm_bindgen]
 pub fn new_engine() -> Engine {
   Engine {
-    state: State::starting_state(),
+    state:            State::starting_state(),
+    move_order_table: HashMap::new(),
   }
 }
