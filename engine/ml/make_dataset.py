@@ -1,7 +1,6 @@
 import json
 import glob
 import numpy as np
-import torch
 from tqdm import tqdm
 
 # Load up our duck chess engine
