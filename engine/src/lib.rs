@@ -66,7 +66,6 @@ struct State {
 
 const ALL_BUT_A_FILE: u64 = 0xfefefefefefefefe;
 const ALL_BUT_H_FILE: u64 = 0x7f7f7f7f7f7f7f7f;
-const ALL_BUT_END_RANKS: u64 = 0x00ffffffffffff00;
 
 fn get_square(bitboard: u64) -> Square {
     bitboard.trailing_zeros() as Square
@@ -125,6 +124,17 @@ fn queen_attacks(occupancy: u64, pos: Square) -> u64 {
     ray_attack!(occupancy, pos, [0, 1, 2, 3, 4, 5, 6, 7])
 }
 
+fn log_bitboard(bits: u64) {
+    for rank in (0..8).rev() {
+        let mut line = String::new();
+        for file in 0..8 {
+            let bit = 1 << (rank * 8 + file);
+            line.push(if bits & bit != 0 { '1' } else { '0' });
+        }
+        log(&format!("{}: {}", rank, line));
+    }
+}
+
 impl State {
     fn starting_state() -> State {
         State {
@@ -134,7 +144,7 @@ impl State {
             rooks:           [BitBoard(0x8100000000000000), BitBoard(0x0000000000000081)],
             queens:          [BitBoard(0x0800000000000000), BitBoard(0x0000000000000008)],
             kings:           [BitBoard(0x1000000000000000), BitBoard(0x0000000000000010)],
-            ducks:           BitBoard(0x0000000000010000),
+            ducks:           BitBoard(0x0000800000000000),
             en_passant:      BitBoard(0),
             highlight:       BitBoard(0),
             castling_rights: [
@@ -193,70 +203,102 @@ impl State {
         }
 
         // Find all moves for pawns.
-        let (first_rank, seventh_rank) = if is_white {
+        let (second_rank, seventh_rank) = if is_white {
             (0x000000000000ff00, 0x00ff000000000000)
         } else {
             (0x00ff000000000000, 0x000000000000ff00)
         };
-        let mut single_pawn_pushes = ALL_BUT_END_RANKS & our_pawns & !shift_backward!(occupied);
+        let mut single_pawn_pushes = our_pawns & !shift_backward!(occupied);
         let mut double_pawn_pushes =
-            (single_pawn_pushes & first_rank) & !shift_backward!(shift_backward!(occupied));
+            (single_pawn_pushes & second_rank) & !shift_backward!(shift_backward!(occupied));
 
-        let pawn_capturable = their_pieces | self.en_passant.0;
+        let pawn_capturable = their_pieces | (self.en_passant.0 & !self.ducks.0);
         let mut pawn_capture_left =
             (our_pawns & ALL_BUT_A_FILE) & (shift_backward!(pawn_capturable & ALL_BUT_A_FILE) << 1);
         let mut pawn_capture_right =
             (our_pawns & ALL_BUT_H_FILE) & (shift_backward!(pawn_capturable & ALL_BUT_H_FILE) >> 1);
-        let mut pawn_promotions =
-            (single_pawn_pushes & seventh_rank) | pawn_capture_left | pawn_capture_right;
-        while let Some(pos) = iter_bits(&mut single_pawn_pushes) {
-            moves.push(Move {
-                from:      pos,
-                to:        pos + forward_one_row,
-                promotion: None,
-            });
+
+        let mut promote_single_pawn_pushes = single_pawn_pushes & seventh_rank;
+        let mut promote_double_pawn_pushes = double_pawn_pushes & seventh_rank;
+        let mut promote_pawn_capture_left = pawn_capture_left & seventh_rank;
+        let mut promote_pawn_capture_right = pawn_capture_right & seventh_rank;
+        single_pawn_pushes &= !seventh_rank;
+        double_pawn_pushes &= !seventh_rank;
+        pawn_capture_left &= !seventh_rank;
+        pawn_capture_right &= !seventh_rank;
+
+        //log("our pawns:");
+        //log_bitboard(our_pawns);
+        //log("occupied:");
+        //log_bitboard(occupied);
+        //log("!shift_backward!(occupied):");
+        //log_bitboard(!shift_backward!(occupied));
+        //log("single_pawn_pushes:");
+        //log_bitboard(single_pawn_pushes);
+
+        macro_rules! add_pawn_moves {
+            ("plain", $bits:ident, $moves:ident, $delta:expr) => {
+                while let Some(pos) = iter_bits(&mut $bits) {
+                    $moves.push(Move {
+                        from:      pos,
+                        to:        pos + $delta,
+                        promotion: None,
+                    });
+                }
+            };
+            ("promotion", $bits:ident, $moves:ident, $delta:expr) => {
+                while let Some(pos) = iter_bits(&mut $bits) {
+                    for promotable_piece in [
+                        PromotablePiece::Queen,
+                        PromotablePiece::Knight,
+                        PromotablePiece::Rook,
+                        PromotablePiece::Bishop,
+                    ] {
+                        $moves.push(Move {
+                            from:      pos,
+                            to:        pos + $delta,
+                            promotion: Some(promotable_piece),
+                        });
+                    }
+                }
+            };
         }
-        while let Some(pos) = iter_bits(&mut double_pawn_pushes) {
-            moves.push(Move {
-                from:      pos,
-                to:        pos + forward_one_row + forward_one_row,
-                promotion: None,
-            });
-        }
-        while let Some(pos) = iter_bits(&mut pawn_capture_left) {
-            moves.push(Move {
-                from:      pos,
-                to:        pos + forward_one_row - 1,
-                promotion: None,
-            });
-        }
-        while let Some(pos) = iter_bits(&mut pawn_capture_right) {
-            moves.push(Move {
-                from:      pos,
-                to:        pos + forward_one_row + 1,
-                promotion: None,
-            });
-        }
-        while let Some(pos) = iter_bits(&mut pawn_promotions) {
-            for promotable_piece in [
-                PromotablePiece::Queen,
-                PromotablePiece::Knight,
-                PromotablePiece::Rook,
-                PromotablePiece::Bishop,
-            ] {
-                moves.push(Move {
-                    from:      pos,
-                    to:        pos + forward_one_row,
-                    promotion: Some(promotable_piece),
-                });
-            }
-        }
+        add_pawn_moves!("plain", single_pawn_pushes, moves, forward_one_row);
+        add_pawn_moves!("plain", double_pawn_pushes, moves, forward_one_row * 2);
+        add_pawn_moves!("plain", pawn_capture_left, moves, forward_one_row - 1);
+        add_pawn_moves!("plain", pawn_capture_right, moves, forward_one_row + 1);
+        add_pawn_moves!(
+            "promotion",
+            promote_single_pawn_pushes,
+            moves,
+            forward_one_row
+        );
+        add_pawn_moves!(
+            "promotion",
+            promote_double_pawn_pushes,
+            moves,
+            forward_one_row * 2
+        );
+        add_pawn_moves!(
+            "promotion",
+            promote_pawn_capture_left,
+            moves,
+            forward_one_row - 1
+        );
+        add_pawn_moves!(
+            "promotion",
+            promote_pawn_capture_right,
+            moves,
+            forward_one_row + 1
+        );
+
+        let moveable_mask = !(our_pieces | self.ducks.0);
 
         // Find all moves for knights.
         let mut knights = our_knights;
         while let Some(pos) = iter_bits(&mut knights) {
             let mut knight_moves = KNIGHT_MOVES[pos as usize];
-            knight_moves &= !our_pieces;
+            knight_moves &= moveable_mask;
             while let Some(knight_move) = iter_bits(&mut knight_moves) {
                 moves.push(Move {
                     from:      pos,
@@ -270,7 +312,7 @@ impl State {
         let mut kings = our_king;
         while let Some(pos) = iter_bits(&mut kings) {
             let mut king_moves = KING_MOVES[pos as usize];
-            king_moves &= !our_pieces;
+            king_moves &= moveable_mask;
             while let Some(king_move) = iter_bits(&mut king_moves) {
                 moves.push(Move {
                     from:      pos,
@@ -284,7 +326,7 @@ impl State {
         let mut rooks = our_rooks;
         while let Some(pos) = iter_bits(&mut rooks) {
             let attacked = rook_attacks(occupied, pos);
-            let mut rook_moves = attacked & !our_pieces;
+            let mut rook_moves = attacked & moveable_mask;
             while let Some(rook_move) = iter_bits(&mut rook_moves) {
                 moves.push(Move {
                     from:      pos,
@@ -298,7 +340,7 @@ impl State {
         let mut bishops = our_bishops;
         while let Some(pos) = iter_bits(&mut bishops) {
             let attacked = bishop_attacks(occupied, pos);
-            let mut bishop_moves = attacked & !our_pieces;
+            let mut bishop_moves = attacked & moveable_mask;
             while let Some(bishop_move) = iter_bits(&mut bishop_moves) {
                 moves.push(Move {
                     from:      pos,
@@ -312,7 +354,7 @@ impl State {
         let mut queens = our_queens;
         while let Some(pos) = iter_bits(&mut queens) {
             let attacked = queen_attacks(occupied, pos);
-            let mut queen_moves = attacked & !our_pieces;
+            let mut queen_moves = attacked & moveable_mask;
             while let Some(queen_move) = iter_bits(&mut queen_moves) {
                 moves.push(Move {
                     from:      pos,
@@ -328,6 +370,43 @@ impl State {
             true => self.move_gen_for_color::<true>(moves),
             false => self.move_gen_for_color::<false>(moves),
         }
+    }
+
+    fn apply_move(&mut self, m: &Move) -> bool {
+        let from_mask = 1 << m.from;
+        let to_mask = 1 << m.to;
+        log("apply_move:");
+        log_bitboard(from_mask);
+        log_bitboard(to_mask);
+        // Figure out the piece and player we're picking up.
+        let mut picked_up = None;
+        'outer: for is_white in [false, true] {
+            for (id, piece_array) in [
+                (0, &mut self.pawns),
+                (1, &mut self.knights),
+                (2, &mut self.bishops),
+                (3, &mut self.rooks),
+                (4, &mut self.queens),
+                (5, &mut self.kings),
+            ] {
+                if piece_array[is_white as usize].0 & from_mask != 0 {
+                    piece_array[is_white as usize].0 ^= from_mask;
+                    picked_up = Some((is_white, id));
+                    break 'outer;
+                }
+            }
+        }
+        match picked_up {
+            None => return false,
+            Some((is_white, 0)) => self.pawns[is_white as usize].0 ^= to_mask,
+            Some((is_white, 1)) => self.knights[is_white as usize].0 ^= to_mask,
+            Some((is_white, 2)) => self.bishops[is_white as usize].0 ^= to_mask,
+            Some((is_white, 3)) => self.rooks[is_white as usize].0 ^= to_mask,
+            Some((is_white, 4)) => self.queens[is_white as usize].0 ^= to_mask,
+            Some((is_white, 5)) => self.kings[is_white as usize].0 ^= to_mask,
+            _ => unreachable!(),
+        }
+        true
     }
 }
 
@@ -384,7 +463,10 @@ impl Engine {
     }
 
     pub fn set_state(&mut self, state: JsValue) {
-        self.state = serde_wasm_bindgen::from_value(state).expect("serialization");
+        self.state = serde_wasm_bindgen::from_value(state).unwrap_or_else(|e| {
+            log(&format!("Failed to deserialize state: {}", e));
+            panic!("Failed to deserialize state: {}", e);
+        });
     }
 
     pub fn get_moves(&self) -> JsValue {
@@ -394,6 +476,14 @@ impl Engine {
             log(&format!("Failed to serialize moves: {}", e));
             JsValue::NULL
         })
+    }
+
+    pub fn apply_move(&mut self, m: JsValue) -> bool {
+        let m: Move = serde_wasm_bindgen::from_value(m).unwrap_or_else(|e| {
+            log(&format!("Failed to deserialize move: {}", e));
+            panic!("Failed to deserialize move: {}", e);
+        });
+        self.state.apply_move(&m)
     }
 }
 

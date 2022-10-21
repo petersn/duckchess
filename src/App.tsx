@@ -2,16 +2,30 @@ import React from 'react';
 import './App.css';
 import init, { new_engine, Engine } from 'engine';
 
-function AppWithWasm() {
-  const [engine, setEngine] = React.useState<Engine | null>(null);
-  React.useEffect(() => {
-    setEngine(new_engine());
-  }, []);
-  if (engine === null)
-    return <div>Initializing engine...</div>;
+function AppWithEngine(props: { engine: Engine }) {
+  const [selectedSquare, setSelectedSquare] = React.useState<[number, number] | null>(null);
 
-  const state = engine.get_state();
-  const moves = engine.get_moves();
+  const state = props.engine.get_state();
+  const moves: any[] = props.engine.get_moves();
+
+  function clickOn(x: number, y: number) {
+    if (selectedSquare === null) {
+      setSelectedSquare([x, y]);
+    } else {
+      let [fromX, fromY] = selectedSquare;
+      fromY = 7 - fromY;
+      y = 7 - y;
+      const encodedFrom = 8 * fromY + fromX;
+      const encodedTo = 8 * y + x;
+      // Find the first move that matches the selected square and the clicked square.
+      const m = moves.find((m: any) => m.from === encodedFrom && m.to === encodedTo);
+      if (m) {
+        console.log('Move', m);
+        props.engine.apply_move(m);
+      }
+      setSelectedSquare(null);
+    }
+  }
 
   const board: React.ReactNode[][] = [];
   for (let y = 0; y < 8; y++)
@@ -35,9 +49,9 @@ function AppWithWasm() {
         if (name === 'ducks') {
           if (player === 0)
             continue;
-          byte = state.ducks[y];
+          byte = state.ducks[7 - y];
         } else {
-          byte = state[name][player][y];
+          byte = state[name][player][7 - y];
         }
         for (let x = 0; x < 8; x++) {
           const hasPiece = byte & 1;
@@ -59,26 +73,66 @@ function AppWithWasm() {
     }
   }
 
+  const arrows = [];
+  let k = 0;
+  for (const move of moves) {
+    const fromX = move.from % 8;
+    const fromY = 7 - Math.floor(move.from / 8);
+    const toX = move.to % 8;
+    const toY = 7 - Math.floor(move.to / 8);
+    let dx = toX - fromX;
+    let dy = toY - fromY;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    dx /= length;
+    dy /= length;
+    const endX = toX * 50 + 25 - 10 * dx;
+    const endY = toY * 50 + 25 - 10 * dy;
+    let d = `M ${fromX * 50 + 25} ${fromY * 50 + 25} L ${endX} ${endY}`;
+    d += ` L ${endX + 5 * dy} ${endY - 5 * dx} L ${endX + 10 * dx} ${endY + 10 * dy} L ${endX - 5 * dy} ${endY + 5 * dx} L ${endX} ${endY} Z`;
+    const arrow = <path
+      key={k++}
+      d={d}
+      stroke="red"
+      strokeWidth="5"
+      fill="red"
+    />;
+    arrows.push(arrow);
+  }
+
   return (
-    <div style={{ margin: 30 }}>
-      <table style={{ borderCollapse: 'collapse', border: '1px solid black' }}>
+    <div style={{ margin: 30, position: 'relative', width: 400, height: 400, minWidth: 400, minHeight: 400 }}>
+      <svg
+        viewBox="0 0 400 400"
+        style={{ width: 400, height: 400, position: 'absolute', zIndex: 1, pointerEvents: 'none' }}
+      >
+        {arrows}
+      </svg>
+
+      <table style={{ position: 'absolute', borderCollapse: 'collapse', border: '1px solid black' }}>
         <tbody>
           {board.map((row, y) => (
             <tr key={y}>
-              {row.map((piece, x) => (
-                <td key={x} style={{ margin: 0, padding: 0 }}>
-                  <div style={{
-                    width: 50,
-                    maxWidth: 50,
-                    height: 50,
-                    maxHeight: 50,
-                    backgroundColor: (x + y) % 2 === 0 ? '#eca' : '#b97',
-                    textAlign: 'center',
-                  }}>
+              {row.map((piece, x) => {
+                const isSelected = selectedSquare !== null && selectedSquare[0] === x && selectedSquare[1] === y;
+                let backgroundColor = (x + y) % 2 === 0 ? '#eca' : '#b97';
+                if (isSelected)
+                  backgroundColor = '#7f7';
+                return <td key={x} style={{ margin: 0, padding: 0 }}>
+                  <div
+                    style={{
+                      width: 50,
+                      maxWidth: 50,
+                      height: 50,
+                      maxHeight: 50,
+                      backgroundColor,
+                      textAlign: 'center',
+                    }}
+                    onClick={() => clickOn(x, y)}
+                  >
                     {piece}
                   </div>
-                </td>
-              ))}
+                </td>;
+              })}
             </tr>
           ))}
         </tbody>
@@ -90,14 +144,14 @@ function AppWithWasm() {
 }
 
 function App() {
-  const [initialized, setInitialized] = React.useState(false);
+  const [engine, setEngine] = React.useState<Engine | null>(null);
   React.useEffect(() => {
     console.log('Initializing wasm...');
     init()
-      .then(() => setInitialized(true))
+      .then(() => setEngine(new_engine()))
       .catch(console.error);
   }, []);
-  return initialized ? <AppWithWasm /> : <div>Loading WASM...</div>;
+  return engine ? <AppWithEngine engine={engine} /> : <div>Loading WASM...</div>;
 }
 
 export default App;
