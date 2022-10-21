@@ -4,13 +4,22 @@ import init, { new_engine, Engine } from 'engine';
 
 function AppWithEngine(props: { engine: Engine }) {
   const [selectedSquare, setSelectedSquare] = React.useState<[number, number] | null>(null);
+  const [forceUpdateCounter, setForceUpdateCounter] = React.useState(0);
 
   const state = props.engine.get_state();
   const moves: any[] = props.engine.get_moves();
 
   function clickOn(x: number, y: number) {
     if (selectedSquare === null) {
-      setSelectedSquare([x, y]);
+      // Check if this is the initial duck placement.
+      const m = moves.find(m => m.from === 64 && m.to === x + (7 - y) * 8);
+      if (m) {
+        props.engine.apply_move(m);
+        setSelectedSquare(null);
+        setForceUpdateCounter(forceUpdateCounter + 1);
+      } else {
+        setSelectedSquare([x, y]);
+      }
     } else {
       let [fromX, fromY] = selectedSquare;
       fromY = 7 - fromY;
@@ -20,7 +29,6 @@ function AppWithEngine(props: { engine: Engine }) {
       // Find the first move that matches the selected square and the clicked square.
       const m = moves.find((m: any) => m.from === encodedFrom && m.to === encodedTo);
       if (m) {
-        console.log('Move', m);
         props.engine.apply_move(m);
       }
       setSelectedSquare(null);
@@ -39,6 +47,7 @@ function AppWithEngine(props: { engine: Engine }) {
     'queen':  '♛', 'QUEEN':  '♕',
     'king':   '♚', 'KING':   '♔',
     'duck':   '🦆',
+    'enpassant': '👻',
   };
 
   for (let y = 0; y < 8; y++) {
@@ -47,9 +56,13 @@ function AppWithEngine(props: { engine: Engine }) {
         let byte;
         // Special handling for the duck
         if (name === 'ducks') {
-          if (player === 0)
+          if (player === 1)
             continue;
           byte = state.ducks[7 - y];
+        } else if (name === 'enpassants') {
+          if (player === 1)
+            continue;
+          byte = state.enPassant[7 - y];
         } else {
           byte = state[name][player][7 - y];
         }
@@ -59,7 +72,7 @@ function AppWithEngine(props: { engine: Engine }) {
           if (!hasPiece)
             continue;
           let piece = name.slice(0, -1);
-          if (player === 0)
+          if (player === 1)
             piece = piece.toUpperCase();
           board[y][x] = <span style={{
             fontSize: '40px',
@@ -105,7 +118,7 @@ function AppWithEngine(props: { engine: Engine }) {
         viewBox="0 0 400 400"
         style={{ width: 400, height: 400, position: 'absolute', zIndex: 1, pointerEvents: 'none' }}
       >
-        {arrows}
+        {/*arrows*/}
       </svg>
 
       <table style={{ position: 'absolute', borderCollapse: 'collapse', border: '1px solid black' }}>
@@ -115,6 +128,8 @@ function AppWithEngine(props: { engine: Engine }) {
               {row.map((piece, x) => {
                 const isSelected = selectedSquare !== null && selectedSquare[0] === x && selectedSquare[1] === y;
                 let backgroundColor = (x + y) % 2 === 0 ? '#eca' : '#b97';
+                if (state.highlight[7 - y] & (1 << x))
+                  backgroundColor = (x + y) % 2 === 0 ? '#dd9' : '#aa6';
                 if (isSelected)
                   backgroundColor = '#7f7';
                 return <td key={x} style={{ margin: 0, padding: 0 }}>

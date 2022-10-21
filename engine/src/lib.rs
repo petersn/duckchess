@@ -66,6 +66,7 @@ struct State {
 
 const ALL_BUT_A_FILE: u64 = 0xfefefefefefefefe;
 const ALL_BUT_H_FILE: u64 = 0x7f7f7f7f7f7f7f7f;
+const MIDDLE_SIX_RANKS: u64 = 0x00ffffffffffff00;
 
 fn get_square(bitboard: u64) -> Square {
     bitboard.trailing_zeros() as Square
@@ -144,7 +145,7 @@ impl State {
             rooks:           [BitBoard(0x8100000000000000), BitBoard(0x0000000000000081)],
             queens:          [BitBoard(0x0800000000000000), BitBoard(0x0000000000000008)],
             kings:           [BitBoard(0x1000000000000000), BitBoard(0x0000000000000010)],
-            ducks:           BitBoard(0x0000800000000000),
+            ducks:           BitBoard(0),
             en_passant:      BitBoard(0),
             highlight:       BitBoard(0),
             castling_rights: [
@@ -202,21 +203,43 @@ impl State {
             return;
         }
 
+        // Check for castling.
+        if self.castling_rights[is_white as usize].king_side {
+            let movement_mask = if is_white { 0b01100000 } else { 0b01100000 << 56 };
+            if occupied & movement_mask == 0 {
+                moves.push(Move {
+                    from:      get_square(our_king),
+                    to:        get_square(our_king) + 2,
+                    promotion: None,
+                });
+            }
+        }
+        if self.castling_rights[is_white as usize].queen_side {
+            let movement_mask = if is_white { 0b00001110 } else { 0b00001110 << 56 };
+            if occupied & movement_mask == 0 {
+                moves.push(Move {
+                    from:      get_square(our_king),
+                    to:        get_square(our_king) - 2,
+                    promotion: None,
+                });
+            }
+        }
+
         // Find all moves for pawns.
         let (second_rank, seventh_rank) = if is_white {
             (0x000000000000ff00, 0x00ff000000000000)
         } else {
             (0x00ff000000000000, 0x000000000000ff00)
         };
-        let mut single_pawn_pushes = our_pawns & !shift_backward!(occupied);
+        let mut single_pawn_pushes = MIDDLE_SIX_RANKS & our_pawns & !shift_backward!(occupied);
         let mut double_pawn_pushes =
             (single_pawn_pushes & second_rank) & !shift_backward!(shift_backward!(occupied));
 
         let pawn_capturable = their_pieces | (self.en_passant.0 & !self.ducks.0);
         let mut pawn_capture_left =
-            (our_pawns & ALL_BUT_A_FILE) & (shift_backward!(pawn_capturable & ALL_BUT_A_FILE) << 1);
+            our_pawns & (shift_backward!(pawn_capturable & ALL_BUT_H_FILE) << 1);
         let mut pawn_capture_right =
-            (our_pawns & ALL_BUT_H_FILE) & (shift_backward!(pawn_capturable & ALL_BUT_H_FILE) >> 1);
+            our_pawns & (shift_backward!(pawn_capturable & ALL_BUT_A_FILE) >> 1);
 
         let mut promote_single_pawn_pushes = single_pawn_pushes & seventh_rank;
         let mut promote_double_pawn_pushes = double_pawn_pushes & seventh_rank;
@@ -226,15 +249,6 @@ impl State {
         double_pawn_pushes &= !seventh_rank;
         pawn_capture_left &= !seventh_rank;
         pawn_capture_right &= !seventh_rank;
-
-        //log("our pawns:");
-        //log_bitboard(our_pawns);
-        //log("occupied:");
-        //log_bitboard(occupied);
-        //log("!shift_backward!(occupied):");
-        //log_bitboard(!shift_backward!(occupied));
-        //log("single_pawn_pushes:");
-        //log_bitboard(single_pawn_pushes);
 
         macro_rules! add_pawn_moves {
             ("plain", $bits:ident, $moves:ident, $delta:expr) => {
@@ -373,39 +387,127 @@ impl State {
     }
 
     fn apply_move(&mut self, m: &Move) -> bool {
-        let from_mask = 1 << m.from;
+        let from_mask = if m.from == 64 { 0 } else { 1 << m.from };
         let to_mask = 1 << m.to;
-        log("apply_move:");
-        log_bitboard(from_mask);
-        log_bitboard(to_mask);
-        // Figure out the piece and player we're picking up.
-        let mut picked_up = None;
-        'outer: for is_white in [false, true] {
-            for (id, piece_array) in [
-                (0, &mut self.pawns),
-                (1, &mut self.knights),
-                (2, &mut self.bishops),
-                (3, &mut self.rooks),
-                (4, &mut self.queens),
-                (5, &mut self.kings),
-            ] {
-                if piece_array[is_white as usize].0 & from_mask != 0 {
-                    piece_array[is_white as usize].0 ^= from_mask;
-                    picked_up = Some((is_white, id));
-                    break 'outer;
+        if !self.is_duck_move {
+            self.highlight.0 = 0;
+        }
+        self.highlight.0 |= from_mask | to_mask;
+        // Handle duck moves.
+        if self.is_duck_move {
+            if self.ducks.0 & from_mask != 0 || m.from == 64 {
+                self.ducks.0 ^= from_mask;
+                self.ducks.0 |= to_mask;
+                self.is_duck_move = false;
+                self.white_turn = !self.white_turn;
+                return true;
+            }
+            return false;
+        }
+
+        let moving_en_passant = self.en_passant.0 & to_mask != 0;
+        self.en_passant.0 = 0;
+        let mut remove_rooks = 0;
+        let mut new_queens = 0;
+        let mut new_rooks = 0;
+        let mut new_bishops = 0;
+        let mut new_knights = 0;
+
+        enum PieceKind {
+            Pawn,
+            King,
+            Rook,
+            Other,
+        }
+        for (piece_kind, piece_array) in [
+            (PieceKind::Pawn, &mut self.pawns),
+            (PieceKind::Other, &mut self.knights),
+            (PieceKind::Other, &mut self.bishops),
+            (PieceKind::Rook, &mut self.rooks),
+            (PieceKind::Other, &mut self.queens),
+            (PieceKind::King, &mut self.kings),
+        ] {
+            let (a, b) = piece_array.split_at_mut(1);
+            let (us, them) = match self.white_turn {
+                true => (&mut b[0], &mut a[0]),
+                false => (&mut a[0], &mut b[0]),
+            };
+            // Capture pieces on the target square.
+            them.0 &= !to_mask;
+            // Check if this is the kind of piece we're moving.
+            if us.0 & from_mask != 0 {
+                // Move our piece.
+                us.0 ^= from_mask;
+                us.0 |= to_mask;
+                // Handle special rules for special pieces.
+                match (piece_kind, m.from) {
+                    (PieceKind::Pawn, _) => {
+                        // Check if we're taking en passant.
+                        if moving_en_passant {
+                            match self.white_turn {
+                                true => them.0 &= !(1 << (m.to - 8)),
+                                false => them.0 &= !(1 << (m.to + 8)),
+                            }
+                        }
+                        // Setup the en passant state.
+                        let is_double_move = (m.from as i8 - m.to as i8).abs() == 16;
+                        match (is_double_move, self.white_turn) {
+                            (true, true) => self.en_passant.0 = to_mask >> 8,
+                            (true, false) => self.en_passant.0 = to_mask << 8,
+                            (false, _) => {}
+                        }
+                        // Check if we're promoting.
+                        match &m.promotion {
+                            Some(promotion) => {
+                                // Remove the pawn, and setup the promotion.
+                                us.0 &= !to_mask;
+                                match promotion {
+                                    PromotablePiece::Queen => new_queens = to_mask,
+                                    PromotablePiece::Rook => new_rooks = to_mask,
+                                    PromotablePiece::Knight => new_knights = to_mask,
+                                    PromotablePiece::Bishop => new_bishops = to_mask,
+                                }
+                            }
+                            None => {}
+                        }
+                    }
+                    (PieceKind::King, _) => {
+                        self.castling_rights[self.white_turn as usize] = CastlingRights {
+                            king_side:  false,
+                            queen_side: false,
+                        };
+                        // Check if we just castled.
+                        if (m.from as i8 - m.to as i8).abs() == 2 {
+                            let (rook_from, rook_to) = match (m.from, m.to) {
+                                (4, 6) => (7, 5),
+                                (4, 2) => (0, 3),
+                                (60, 62) => (63, 61),
+                                (60, 58) => (56, 59),
+                                _ => unreachable!(),
+                            };
+                            remove_rooks = 1 << rook_from;
+                            new_rooks = 1 << rook_to;
+                        }
+                    }
+                    (PieceKind::Rook, 0) | (PieceKind::Rook, 56) => {
+                        self.castling_rights[self.white_turn as usize].queen_side = false
+                    }
+                    (PieceKind::Rook, 7) | (PieceKind::Rook, 63) => {
+                        self.castling_rights[self.white_turn as usize].king_side = false
+                    }
+                    (PieceKind::Rook, _) => {}
+                    (PieceKind::Other, _) => {}
                 }
             }
         }
-        match picked_up {
-            None => return false,
-            Some((is_white, 0)) => self.pawns[is_white as usize].0 ^= to_mask,
-            Some((is_white, 1)) => self.knights[is_white as usize].0 ^= to_mask,
-            Some((is_white, 2)) => self.bishops[is_white as usize].0 ^= to_mask,
-            Some((is_white, 3)) => self.rooks[is_white as usize].0 ^= to_mask,
-            Some((is_white, 4)) => self.queens[is_white as usize].0 ^= to_mask,
-            Some((is_white, 5)) => self.kings[is_white as usize].0 ^= to_mask,
-            _ => unreachable!(),
-        }
+        self.rooks[self.white_turn as usize].0 &= !remove_rooks;
+        self.knights[self.white_turn as usize].0 |= new_knights;
+        self.bishops[self.white_turn as usize].0 |= new_bishops;
+        self.rooks[self.white_turn as usize].0 |= new_rooks;
+        self.queens[self.white_turn as usize].0 |= new_queens;
+
+        //self.white_turn = !self.white_turn;
+        self.is_duck_move = true;
         true
     }
 }
