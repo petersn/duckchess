@@ -547,8 +547,8 @@ impl State {
     self.rooks[self.white_turn as usize].0 |= new_rooks;
     self.queens[self.white_turn as usize].0 |= new_queens;
 
-    self.white_turn = !self.white_turn;
-    //self.is_duck_move = true;
+    //self.white_turn = !self.white_turn;
+    self.is_duck_move = true;
     true
   }
 }
