@@ -7,6 +7,9 @@ use std::{
 use serde::{ser::SerializeSeq, Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
+#[cfg(not(target_arch = "wasm32"))]
+mod python;
+
 include!(concat!(env!("OUT_DIR"), "/tables.rs"));
 
 #[wasm_bindgen]
