@@ -10,7 +10,14 @@ function AppWithEngine(props: { engine: Engine }) {
   const state = props.engine.get_state();
   const moves: any[] = props.engine.get_moves();
   React.useEffect(() => {
-    setPair(props.engine.run(4));
+    let pair = props.engine.run(5);
+    setPair(pair);
+    setTimeout(() => {
+      if (pair && pair[1][0]) {
+        props.engine.apply_move(pair[1][0]);
+        setForceUpdateCounter(forceUpdateCounter + 1);
+      }
+    }, 100);
   }, [forceUpdateCounter]);
 
   console.log('Pair:', pair);
@@ -94,7 +101,7 @@ function AppWithEngine(props: { engine: Engine }) {
   }
 
   let showMoves: any[] = (pair && pair[1][0]) ? pair[1] : [];
-  if (state.isDuckMove && showMoves) {
+  if ((state.isDuckMove || true) && showMoves) {
     showMoves = showMoves.slice(0, 1);
   }
 
@@ -187,8 +194,9 @@ function App() {
   const [engine, setEngine] = React.useState<Engine | null>(null);
   React.useEffect(() => {
     console.log('Initializing wasm...');
+    const seed = Math.floor(Math.random() * 1e9);
     init()
-      .then(() => setEngine(new_engine()))
+      .then(() => setEngine(new_engine(seed)))
       .catch(console.error);
   }, []);
   return engine ? <AppWithEngine engine={engine} /> : <div>Loading WASM...</div>;

@@ -174,34 +174,34 @@ impl State {
     self.kings[0].0 == 0 || self.kings[1].0 == 0
   }
 
-  fn move_gen_for_color<const quiescence: bool, const is_white: bool>(
+  fn move_gen_for_color<const QUIESCENCE: bool, const IS_WHITE: bool>(
     &self,
     moves: &mut Vec<Move>,
   ) {
     macro_rules! shift_backward {
       ($board:expr) => {
-        if is_white {
+        if IS_WHITE {
           $board >> 8
         } else {
           $board << 8
         }
       };
     }
-    let forward_one_row: SquareDelta = if is_white { 8 } else { 248 };
-    let our_pawns = self.pawns[is_white as usize].0;
-    let our_knights = self.knights[is_white as usize].0;
-    let our_bishops = self.bishops[is_white as usize].0;
-    let our_rooks = self.rooks[is_white as usize].0;
-    let our_queens = self.queens[is_white as usize].0;
-    let our_king = self.kings[is_white as usize].0;
-    let mut our_pieces: u64 =
+    let forward_one_row: SquareDelta = if IS_WHITE { 8 } else { 248 };
+    let our_pawns = self.pawns[IS_WHITE as usize].0;
+    let our_knights = self.knights[IS_WHITE as usize].0;
+    let our_bishops = self.bishops[IS_WHITE as usize].0;
+    let our_rooks = self.rooks[IS_WHITE as usize].0;
+    let our_queens = self.queens[IS_WHITE as usize].0;
+    let our_king = self.kings[IS_WHITE as usize].0;
+    let our_pieces: u64 =
       our_pawns | our_knights | our_bishops | our_rooks | our_queens | our_king;
-    let mut their_pieces: u64 = self.pawns[(!is_white) as usize].0
-      | self.knights[(!is_white) as usize].0
-      | self.bishops[(!is_white) as usize].0
-      | self.rooks[(!is_white) as usize].0
-      | self.queens[(!is_white) as usize].0
-      | self.kings[(!is_white) as usize].0;
+    let their_pieces: u64 = self.pawns[(!IS_WHITE) as usize].0
+      | self.knights[(!IS_WHITE) as usize].0
+      | self.bishops[(!IS_WHITE) as usize].0
+      | self.rooks[(!IS_WHITE) as usize].0
+      | self.queens[(!IS_WHITE) as usize].0
+      | self.kings[(!IS_WHITE) as usize].0;
     let occupied: u64 = self.ducks.0 | our_pieces | their_pieces;
 
     // Handle the duck move part of the turn.
@@ -218,37 +218,39 @@ impl State {
     }
 
     // Check for castling.
-    if self.castling_rights[is_white as usize].king_side {
-      let movement_mask = if is_white {
-        0b01100000
-      } else {
-        0b01100000 << 56
-      };
-      if occupied & movement_mask == 0 {
-        moves.push(Move {
-          from:      get_square(our_king),
-          to:        get_square(our_king) + 2,
-          promotion: None,
-        });
+    if !QUIESCENCE {
+      if self.castling_rights[IS_WHITE as usize].king_side {
+        let movement_mask = if IS_WHITE {
+          0b01100000
+        } else {
+          0b01100000 << 56
+        };
+        if occupied & movement_mask == 0 {
+          moves.push(Move {
+            from:      get_square(our_king),
+            to:        get_square(our_king) + 2,
+            promotion: None,
+          });
+        }
       }
-    }
-    if self.castling_rights[is_white as usize].queen_side {
-      let movement_mask = if is_white {
-        0b00001110
-      } else {
-        0b00001110 << 56
-      };
-      if occupied & movement_mask == 0 {
-        moves.push(Move {
-          from:      get_square(our_king),
-          to:        get_square(our_king) - 2,
-          promotion: None,
-        });
+      if self.castling_rights[IS_WHITE as usize].queen_side {
+        let movement_mask = if IS_WHITE {
+          0b00001110
+        } else {
+          0b00001110 << 56
+        };
+        if occupied & movement_mask == 0 {
+          moves.push(Move {
+            from:      get_square(our_king),
+            to:        get_square(our_king) - 2,
+            promotion: None,
+          });
+        }
       }
     }
 
     // Find all moves for pawns.
-    let (second_rank, seventh_rank) = if is_white {
+    let (second_rank, seventh_rank) = if IS_WHITE {
       (0x000000000000ff00, 0x00ff000000000000)
     } else {
       (0x00ff000000000000, 0x000000000000ff00)
@@ -286,9 +288,9 @@ impl State {
         while let Some(pos) = iter_bits(&mut $bits) {
           for promotable_piece in [
             PromotablePiece::Queen,
-            PromotablePiece::Knight,
-            PromotablePiece::Rook,
-            PromotablePiece::Bishop,
+            //PromotablePiece::Knight,
+            //PromotablePiece::Rook,
+            //PromotablePiece::Bishop,
           ] {
             $moves.push(Move {
               from:      pos,
@@ -299,22 +301,8 @@ impl State {
         }
       };
     }
-    add_pawn_moves!("plain", single_pawn_pushes, moves, forward_one_row);
-    add_pawn_moves!("plain", double_pawn_pushes, moves, forward_one_row * 2);
     add_pawn_moves!("plain", pawn_capture_left, moves, forward_one_row - 1);
     add_pawn_moves!("plain", pawn_capture_right, moves, forward_one_row + 1);
-    add_pawn_moves!(
-      "promotion",
-      promote_single_pawn_pushes,
-      moves,
-      forward_one_row
-    );
-    add_pawn_moves!(
-      "promotion",
-      promote_double_pawn_pushes,
-      moves,
-      forward_one_row * 2
-    );
     add_pawn_moves!(
       "promotion",
       promote_pawn_capture_left,
@@ -327,6 +315,22 @@ impl State {
       moves,
       forward_one_row + 1
     );
+    add_pawn_moves!(
+      "promotion",
+      promote_single_pawn_pushes,
+      moves,
+      forward_one_row
+    );
+    add_pawn_moves!(
+      "promotion",
+      promote_double_pawn_pushes,
+      moves,
+      forward_one_row * 2
+    );
+    if !QUIESCENCE {
+      add_pawn_moves!("plain", single_pawn_pushes, moves, forward_one_row);
+      add_pawn_moves!("plain", double_pawn_pushes, moves, forward_one_row * 2);
+    }
 
     let moveable_mask = !(our_pieces | self.ducks.0);
 
@@ -336,6 +340,9 @@ impl State {
       let mut knight_moves = KNIGHT_MOVES[pos as usize];
       knight_moves &= moveable_mask;
       while let Some(knight_move) = iter_bits(&mut knight_moves) {
+        if QUIESCENCE && their_pieces & (1 << knight_move) == 0 {
+          continue;
+        }
         moves.push(Move {
           from:      pos,
           to:        knight_move,
@@ -350,6 +357,9 @@ impl State {
       let mut king_moves = KING_MOVES[pos as usize];
       king_moves &= moveable_mask;
       while let Some(king_move) = iter_bits(&mut king_moves) {
+        if QUIESCENCE && their_pieces & (1 << king_move) == 0 {
+          continue;
+        }
         moves.push(Move {
           from:      pos,
           to:        king_move,
@@ -364,6 +374,9 @@ impl State {
       let attacked = rook_attacks(occupied, pos);
       let mut rook_moves = attacked & moveable_mask;
       while let Some(rook_move) = iter_bits(&mut rook_moves) {
+        if QUIESCENCE && their_pieces & (1 << rook_move) == 0 {
+          continue;
+        }
         moves.push(Move {
           from:      pos,
           to:        rook_move,
@@ -378,6 +391,9 @@ impl State {
       let attacked = bishop_attacks(occupied, pos);
       let mut bishop_moves = attacked & moveable_mask;
       while let Some(bishop_move) = iter_bits(&mut bishop_moves) {
+        if QUIESCENCE && their_pieces & (1 << bishop_move) == 0 {
+          continue;
+        }
         moves.push(Move {
           from:      pos,
           to:        bishop_move,
@@ -392,6 +408,9 @@ impl State {
       let attacked = queen_attacks(occupied, pos);
       let mut queen_moves = attacked & moveable_mask;
       while let Some(queen_move) = iter_bits(&mut queen_moves) {
+        if QUIESCENCE && their_pieces & (1 << queen_move) == 0 {
+          continue;
+        }
         moves.push(Move {
           from:      pos,
           to:        queen_move,
@@ -401,14 +420,10 @@ impl State {
     }
   }
 
-  fn move_gen<const quiescence: bool>(&self, moves: &mut Vec<Move>) {
-    // For now no movegen is done in quiescence search.
-    if quiescence {
-      return;
-    }
+  fn move_gen<const QUIESCENCE: bool>(&self, moves: &mut Vec<Move>) {
     match self.white_turn {
-      true => self.move_gen_for_color::<quiescence, true>(moves),
-      false => self.move_gen_for_color::<quiescence, false>(moves),
+      true => self.move_gen_for_color::<QUIESCENCE, true>(moves),
+      false => self.move_gen_for_color::<QUIESCENCE, false>(moves),
     }
   }
 
@@ -636,22 +651,16 @@ fn evaluate_state(state: &State) -> Evaluation {
       score -= pst[(pos ^ pst_xor) as usize];
     }
   }
-  score
-}
-
-#[wasm_bindgen]
-pub struct Engine {
-  state:            State,
-  move_order_table: HashMap<u64, Move>,
+  score + 25
 }
 
 const QUIESCENCE_DEPTH: u16 = 10;
 
 fn make_terminal_scores_slightly_less_extreme<T>(p: (Evaluation, T)) -> (Evaluation, T) {
   let (score, m) = p;
-  let score = if score < -1000 {
+  let score = if score < -100_000 {
     score + 1
-  } else if score > 1000 {
+  } else if score > 100_000 {
     score - 1
   } else {
     score
@@ -661,14 +670,23 @@ fn make_terminal_scores_slightly_less_extreme<T>(p: (Evaluation, T)) -> (Evaluat
 
 fn make_terminal_scores_much_less_extreme<T>(p: (Evaluation, T)) -> (Evaluation, T) {
   let (score, m) = p;
-  let score = if score < -1000 {
+  let score = if score < -100_000 {
     score + 100
-  } else if score > 1000 {
+  } else if score > 100_000 {
     score - 100
   } else {
     score
   };
   (score, m)
+}
+
+#[wasm_bindgen]
+pub struct Engine {
+  nodes_searched:   u64,
+  seed:             u32,
+  state:            State,
+  move_order_table: HashMap<u64, Move>,
+  killer_moves:     [Option<Move>; 100],
 }
 
 #[wasm_bindgen]
@@ -705,17 +723,28 @@ impl Engine {
   }
 
   pub fn run(&mut self, depth: u16) -> JsValue {
+    self.nodes_searched = 0;
     let start_state = self.state.clone();
     // Apply iterative deepening.
     let mut p = (-1, (None, None));
-    for d in [depth] {//1..=depth {
+    for d in 1..=depth {
       p = self.pvs::<false>(d, &start_state, VERY_NEGATIVE_EVAL, VERY_POSITIVE_EVAL);
-      log(&format!("Depth {}: {}", d, p.0));
+      log(&format!("Depth {}: {} (nodes={})", d, p.0, self.nodes_searched));
     }
     serde_wasm_bindgen::to_value(&p).unwrap_or_else(|e| {
       log(&format!("Failed to serialize score: {}", e));
       JsValue::NULL
     })
+  }
+
+  fn next_random(&mut self) -> u32 {
+    self.seed = self.seed.wrapping_add(1);
+    let mut x = self.seed.wrapping_mul(0x6c078965);
+    for _ in 0..4 {
+      x ^= x >> 17;
+      x = x.wrapping_mul(0x6c078965);
+    }
+    x
   }
 
   fn pvs<const quiescence: bool>(
@@ -725,19 +754,20 @@ impl Engine {
     mut alpha: Evaluation,
     mut beta: Evaluation,
   ) -> (Evaluation, (Option<Move>, Option<Move>)) {
-    assert!(!quiescence);
+    self.nodes_searched += 1;
     let game_over = state.is_game_over();
+    let random_bonus = (self.next_random() & 0xf) as Evaluation;
     match (game_over, depth, quiescence) {
-      (true, _, _) => return (evaluate_state(state), (None, None)),
-      (_, 0, _) => return (evaluate_state(state), (None, None)),
-      // (_, 0, false) => {
-      //   return make_terminal_scores_much_less_extreme(self.pvs::<true>(
-      //     QUIESCENCE_DEPTH,
-      //     state,
-      //     alpha,
-      //     beta,
-      //   ))
-      // }
+      (true, _, _) => return (evaluate_state(state) + random_bonus, (None, None)),
+      (_, 0, true) => return (evaluate_state(state) + random_bonus, (None, None)),
+      (_, 0, false) => {
+        return make_terminal_scores_much_less_extreme(self.pvs::<true>(
+          QUIESCENCE_DEPTH,
+          state,
+          alpha,
+          beta,
+        ))
+      }
       _ => {}
     }
 
@@ -746,7 +776,7 @@ impl Engine {
 
     // If we're in a quiescence search and have quiesced, then return.
     if quiescence && moves.is_empty() {
-      return (evaluate_state(state), (None, None));
+      return (evaluate_state(state) + random_bonus, (None, None));
     }
     assert!(!moves.is_empty());
 
@@ -754,18 +784,42 @@ impl Engine {
     let mut s = DefaultHasher::new();
     state.hash(&mut s);
     let state_hash: u64 = s.finish();
-    if let Some(mot_move) = self.move_order_table.get(&state_hash) {
-      //log(&format!("Found move in move order table: {:?}", mot_move));
+
+    let mot_move = match quiescence {
+      false => self.move_order_table.get(&state_hash),
+      true => None,
+    };
+    let killer_move = match quiescence {
+      false => self.killer_moves[depth as usize],
+      true => None,
+    };
+
+    if mot_move.is_some() || killer_move.is_some() {
       moves.sort_by(|a, b| {
-        if a == mot_move {
-          Ordering::Less
-        } else if b == mot_move {
-          Ordering::Greater
-        } else {
-          Ordering::Equal
+        let mut a_score = 0;
+        let mut b_score = 0;
+        if let Some(mot_move) = mot_move {
+          if a == mot_move {
+            a_score += 1;
+          }
+          if b == mot_move {
+            b_score += 1;
+          }
         }
+        if let Some(killer_move) = killer_move {
+          if *a == killer_move {
+            a_score += 1;
+          }
+          if *b == killer_move {
+            b_score += 1;
+          }
+        }
+        b_score.cmp(&a_score)
       });
     }
+    //moves.sort_by(|_, _| {
+    //  self.next_random().cmp(&self.next_random())
+    //});
 
     //log(&format!("pvs({}, {}, {}) moves={}", depth, alpha, beta, moves.len()));
     let mut best_score = VERY_NEGATIVE_EVAL;
@@ -773,7 +827,7 @@ impl Engine {
 
     // If we're in a quiescence search then we're allowed to pass.
     if quiescence {
-      alpha = alpha.max(evaluate_state(state));
+      alpha = alpha.max(evaluate_state(state) + random_bonus);
       if alpha >= beta {
         moves.clear();
       }
@@ -812,9 +866,10 @@ impl Engine {
           }
         }
       }
-
-      if score > best_score {
-        best_score = score;
+      // TODO: For some reason adding the random bonus in here makes play awful??
+      let comparison_score = score;// + random_bonus;
+      if comparison_score > best_score {
+        best_score = comparison_score;
         best_pair = (Some(m), next_pair.0);
       }
       if score > alpha && !quiescence {
@@ -822,6 +877,7 @@ impl Engine {
       }
       alpha = alpha.max(score);
       if alpha >= beta {
+        self.killer_moves[depth as usize] = Some(m);
         break;
       }
       first = false;
@@ -832,9 +888,12 @@ impl Engine {
 }
 
 #[wasm_bindgen]
-pub fn new_engine() -> Engine {
+pub fn new_engine(seed: u32) -> Engine {
   Engine {
+    nodes_searched: 0,
+    seed,
     state:            State::starting_state(),
     move_order_table: HashMap::new(),
+    killer_moves:     [None; 100],
   }
 }
