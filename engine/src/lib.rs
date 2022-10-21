@@ -578,64 +578,125 @@ type Evaluation = i32;
 const VERY_NEGATIVE_EVAL: Evaluation = -1_000_000_000;
 const VERY_POSITIVE_EVAL: Evaluation = 1_000_000_000;
 
-const PAWN_PST: [Evaluation; 64] = [
-  0, 0, 0, 0, 0, 0, 0, 0, 50, 50, 50, 50, 50, 50, 50, 50, 10, 10, 20, 30, 30, 20, 10, 10, 5, 5, 10,
-  25, 25, 10, 5, 5, 0, 0, 0, 20, 20, 0, 0, 0, 5, -5, -10, 0, 0, -10, -5, 5, 5, 10, 10, -20, -20,
-  10, 10, 5, 0, 0, 0, 0, 0, 0, 0, 0,
+#[rustfmt::skip]
+const PAWN_MIDDLEGAME_PST: [Evaluation; 64] = [
+   0,  0,  0,  0,  0,  0,  0,  0,
+  50, 50, 50, 50, 50, 50, 50, 50,
+  10, 10, 20, 30, 30, 20, 10, 10,
+   5,  5, 10, 25, 25, 10,  5,  5,
+   0,  0,  0, 20, 20,  0,  0,  0,
+   5, -5,-10,  0,  0,-10, -5,  5,
+   5, 10, 10,-20,-20, 10, 10,  5,
+   0,  0,  0,  0,  0,  0,  0,  0,
 ];
 
+#[rustfmt::skip]
+const PAWN_ENDGAME_PST: [Evaluation; 64] = [
+   0,  0,  0,  0,  0,  0,  0,  0,
+  99, 99, 99, 99, 99, 99, 99, 99,
+  40, 40, 60, 70, 70, 60, 40, 40,
+  35, 35, 40, 55, 55, 40, 35, 35,
+  20, 20, 20, 40, 40, 20, 20, 20,
+  15,  5,  0, 10, 10,  0,  5, 15,
+   5, 10, 10,-20,-20, 10, 10,  5,
+   0,  0,  0,  0,  0,  0,  0,  0,
+];
+
+#[rustfmt::skip]
 const KNIGHT_PST: [Evaluation; 64] = [
-  -50, -40, -30, -30, -30, -30, -40, -50, -40, -20, 0, 0, 0, 0, -20, -40, -30, 0, 10, 15, 15, 10,
-  0, -30, -30, 5, 15, 20, 20, 15, 5, -30, -30, 0, 15, 20, 20, 15, 0, -30, -30, 5, 10, 15, 15, 10,
-  5, -30, -40, -20, 0, 5, 5, 0, -20, -40, -50, -40, -30, -30, -30, -30, -40, -50,
+  -50,-40,-30,-30,-30,-30,-40,-50,
+  -40,-20,  0,  0,  0,  0,-20,-40,
+  -30,  0, 10, 15, 15, 10,  0,-30,
+  -30,  5, 15, 20, 20, 15,  5,-30,
+  -30,  0, 15, 20, 20, 15,  0,-30,
+  -30,  5, 10, 15, 15, 10,  5,-30,
+  -40,-20,  0,  5,  5,  0,-20,-40,
+  -50,-40,-30,-30,-30,-30,-40,-50,
 ];
 
+#[rustfmt::skip]
 const BISHOP_PST: [Evaluation; 64] = [
-  -20, -10, -10, -10, -10, -10, -10, -20, -10, 0, 0, 0, 0, 0, 0, -10, -10, 0, 5, 10, 10, 5, 0, -10,
-  -10, 5, 5, 10, 10, 5, 5, -10, -10, 0, 10, 10, 10, 10, 0, -10, -10, 10, 10, 10, 10, 10, 10, -10,
-  -10, 5, 0, 0, 0, 0, 5, -10, -20, -10, -10, -10, -10, -10, -10, -20,
+  -20,-10,-10,-10,-10,-10,-10,-20,
+  -10,  0,  0,  0,  0,  0,  0,-10,
+  -10,  0,  5, 10, 10,  5,  0,-10,
+  -10,  5,  5, 10, 10,  5,  5,-10,
+  -10,  0, 10, 10, 10, 10,  0,-10,
+  -10, 10, 10, 10, 10, 10, 10,-10,
+  -10,  5,  0,  0,  0,  0,  5,-10,
+  -20,-10,-10,-10,-10,-10,-10,-20,
 ];
 
+#[rustfmt::skip]
 const ROOK_PST: [Evaluation; 64] = [
-  0, 0, 0, 0, 0, 0, 0, 0, 5, 10, 10, 10, 10, 10, 10, 5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0,
-  0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, 0, 0, 0,
-  5, 5, 0, 0, 0,
+   0,  0,  0,  0,  0,  0,  0,  0,
+   5, 10, 10, 10, 10, 10, 10,  5,
+  -5,  0,  0,  0,  0,  0,  0, -5,
+  -5,  0,  0,  0,  0,  0,  0, -5,
+  -5,  0,  0,  0,  0,  0,  0, -5,
+  -5,  0,  0,  0,  0,  0,  0, -5,
+  -5,  0,  0,  0,  0,  0,  0, -5,
+   0,  0,  0,  5,  5,  0,  0,  0,
 ];
 
+#[rustfmt::skip]
 const QUEEN_PST: [Evaluation; 64] = [
-  -20, -10, -10, -5, -5, -10, -10, -20, -10, 0, 0, 0, 0, 0, 0, -10, -10, 0, 5, 5, 5, 5, 0, -10, -5,
-  0, 5, 5, 5, 5, 0, -5, 0, 0, 5, 5, 5, 5, 0, -5, -10, 5, 5, 5, 5, 5, 0, -10, -10, 0, 5, 0, 0, 0, 0,
-  -10, -20, -10, -10, -5, -5, -10, -10, -20,
+  -20,-10,-10, -5, -5,-10,-10,-20,
+  -10,  0,  0,  0,  0,  0,  0,-10,
+  -10,  0,  5,  5,  5,  5,  0,-10,
+   -5,  0,  5,  5,  5,  5,  0, -5,
+    0,  0,  5,  5,  5,  5,  0, -5,
+  -10,  5,  5,  5,  5,  5,  0,-10,
+  -10,  0,  5,  0,  0,  0,  0,-10,
+  -20,-10,-10, -5, -5,-10,-10,-20,
 ];
 
+#[rustfmt::skip]
 const KING_MIDDLEGAME_PST: [Evaluation; 64] = [
-  -30, -40, -40, -50, -50, -40, -40, -30, -30, -40, -40, -50, -50, -40, -40, -30, -30, -40, -40,
-  -50, -50, -40, -40, -30, -30, -40, -40, -50, -50, -40, -40, -30, -20, -30, -30, -40, -40, -30,
-  -30, -20, -10, -20, -20, -20, -20, -20, -20, -10, 20, 20, 0, 0, 0, 0, 20, 20, 20, 30, 10, 0, 0,
-  10, 30, 20,
+  -30,-40,-40,-50,-50,-40,-40,-30,
+  -30,-40,-40,-50,-50,-40,-40,-30,
+  -30,-40,-40,-50,-50,-40,-40,-30,
+  -30,-40,-40,-50,-50,-40,-40,-30,
+  -20,-30,-30,-40,-40,-30,-30,-20,
+  -10,-20,-20,-20,-20,-20,-20,-10,
+   20, 20,  0,  0,  0,  0, 20, 20,
+   20, 30, 10,  0,  0, 10, 30, 20,
 ];
 
+#[rustfmt::skip]
 const KING_ENDGAME_PST: [Evaluation; 64] = [
-  -50, -40, -30, -20, -20, -30, -40, -50, -30, -20, -10, 0, 0, -10, -20, -30, -30, -10, 20, 30, 30,
-  20, -10, -30, -30, -10, 30, 40, 40, 30, -10, -30, -30, -10, 30, 40, 40, 30, -10, -30, -30, -10,
-  20, 30, 30, 20, -10, -30, -30, -30, 0, 0, 0, 0, -30, -30, -50, -30, -30, -30, -30, -30, -30, -50,
+  -50,-40,-30,-20,-20,-30,-40,-50,
+  -30,-20,-10,  0,  0,-10,-20,-30,
+  -30,-10, 20, 30, 30, 20,-10,-30,
+  -30,-10, 30, 40, 40, 30,-10,-30,
+  -30,-10, 30, 40, 40, 30,-10,-30,
+  -30,-10, 20, 30, 30, 20,-10,-30,
+  -30,-30,  0,  0,  0,  0,-30,-30,
+  -50,-30,-30,-30,-30,-30,-30,-50,
 ];
 
 fn evaluate_state(state: &State) -> Evaluation {
   let mut score = 0;
-  let is_endgame = state.queens[0].0 == 0 && state.queens[1].0 == 0;
-  let king_pst = if is_endgame {
-    KING_ENDGAME_PST
-  } else {
-    KING_MIDDLEGAME_PST
-  };
-  for (piece_value, pst, piece_array) in [
-    (100, PAWN_PST, &state.pawns),
-    (400, KNIGHT_PST, &state.knights),
-    (300, BISHOP_PST, &state.bishops),
-    (500, ROOK_PST, &state.rooks),
-    (900, QUEEN_PST, &state.queens),
-    (1_000_000, king_pst, &state.kings),
+  // endgame factor is 0 for middlegame, 1 for endgame
+  let endgame_factor = 1.0 - (
+    2 * state.queens[0].0.count_ones() +
+    2 * state.queens[1].0.count_ones() +
+    state.rooks[0].0.count_ones() +
+    state.rooks[1].0.count_ones()
+  ) as f32 / 8.0;
+  //let king_pst = if is_endgame {
+  //  KING_ENDGAME_PST
+  //} else {
+  //  KING_MIDDLEGAME_PST
+  //};
+  for (pst_mult, piece_value, pst, piece_array) in [
+    (1.0 - endgame_factor,  50, PAWN_MIDDLEGAME_PST, &state.pawns),
+    (endgame_factor,  50, PAWN_ENDGAME_PST, &state.pawns),
+    (1.0, 450, KNIGHT_PST, &state.knights),
+    (1.0, 250, BISHOP_PST, &state.bishops),
+    (1.0, 500, ROOK_PST, &state.rooks),
+    (1.0, 900, QUEEN_PST, &state.queens),
+    (1.0 - endgame_factor, 1_000_000, KING_MIDDLEGAME_PST, &state.kings),
+    (endgame_factor, 1_000_000, KING_ENDGAME_PST, &state.kings),
   ] {
     let (mut us, mut them, pst_xor) = match state.white_turn {
       //let (mut us, mut them, pst_xor) = match true {
@@ -645,10 +706,10 @@ fn evaluate_state(state: &State) -> Evaluation {
     score += us.count_ones() as Evaluation * piece_value;
     score -= them.count_ones() as Evaluation * piece_value;
     while let Some(pos) = iter_bits(&mut us) {
-      score += pst[(pos ^ pst_xor ^ 56) as usize];
+      score += (pst_mult * pst[(pos ^ pst_xor ^ 56) as usize] as f32) as Evaluation;
     }
     while let Some(pos) = iter_bits(&mut them) {
-      score -= pst[(pos ^ pst_xor) as usize];
+      score -= (pst_mult * pst[(pos ^ pst_xor) as usize] as f32) as Evaluation;
     }
   }
   score + 25
@@ -683,7 +744,7 @@ fn make_terminal_scores_much_less_extreme<T>(p: (Evaluation, T)) -> (Evaluation,
 #[wasm_bindgen]
 pub struct Engine {
   nodes_searched:   u64,
-  seed:             u32,
+  seed:             u64,
   state:            State,
   move_order_table: HashMap<u64, Move>,
   killer_moves:     [Option<Move>; 100],
@@ -737,12 +798,12 @@ impl Engine {
     })
   }
 
-  fn next_random(&mut self) -> u32 {
+  fn next_random(&mut self) -> u64 {
     self.seed = self.seed.wrapping_add(1);
-    let mut x = self.seed.wrapping_mul(0x6c078965);
+    let mut x = self.seed.wrapping_mul(0x243f6a8885a308d3);
     for _ in 0..4 {
-      x ^= x >> 17;
-      x = x.wrapping_mul(0x6c078965);
+      x ^= x >> 37;
+      x = x.wrapping_mul(0x243f6a8885a308d3);
     }
     x
   }
@@ -904,8 +965,19 @@ pub fn run_internal(this: &mut Engine, depth: u16) -> (Evaluation, (Option<Move>
   p
 }
 
+pub fn get_outcome_internal(this: &Engine) -> Option<&'static str> {
+  match this.state.is_game_over() {
+    true => Some(if this.state.kings[0].0 == 0 {
+      "1-0"
+    } else {
+      "0-1"
+    }),
+    false => None,
+  }
+}
+
 #[wasm_bindgen]
-pub fn new_engine(seed: u32) -> Engine {
+pub fn new_engine(seed: u64) -> Engine {
   Engine {
     nodes_searched: 0,
     seed,
