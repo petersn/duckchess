@@ -10,14 +10,14 @@ function AppWithEngine(props: { engine: Engine }) {
   const state = props.engine.get_state();
   const moves: any[] = props.engine.get_moves();
   React.useEffect(() => {
-    let pair = props.engine.run(5);
+    let pair = props.engine.run(4);
     setPair(pair);
     setTimeout(() => {
       if (pair && pair[1][0]) {
         props.engine.apply_move(pair[1][0]);
         setForceUpdateCounter(forceUpdateCounter + 1);
       }
-    }, 100);
+    }, 10);
   }, [forceUpdateCounter]);
 
   console.log('Pair:', pair);

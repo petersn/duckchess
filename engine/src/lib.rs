@@ -279,7 +279,7 @@ impl State {
         while let Some(pos) = iter_bits(&mut $bits) {
           $moves.push(Move {
             from:      pos,
-            to:        pos + $delta,
+            to:        pos.wrapping_add($delta),
             promotion: None,
           });
         }
@@ -294,7 +294,7 @@ impl State {
           ] {
             $moves.push(Move {
               from:      pos,
-              to:        pos + $delta,
+              to:        pos.wrapping_add($delta),
               promotion: Some(promotable_piece),
             });
           }
@@ -329,7 +329,7 @@ impl State {
     );
     if !QUIESCENCE {
       add_pawn_moves!("plain", single_pawn_pushes, moves, forward_one_row);
-      add_pawn_moves!("plain", double_pawn_pushes, moves, forward_one_row * 2);
+      add_pawn_moves!("plain", double_pawn_pushes, moves, forward_one_row.wrapping_mul(2));
     }
 
     let moveable_mask = !(our_pieces | self.ducks.0);
@@ -567,7 +567,7 @@ type Square = u8;
 type SquareDelta = u8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-struct Move {
+pub struct Move {
   from:      Square,
   to:        Square,
   promotion: Option<PromotablePiece>,
@@ -747,7 +747,7 @@ impl Engine {
     x
   }
 
-  fn pvs<const quiescence: bool>(
+  fn pvs<const QUIESCENCE: bool>(
     &mut self,
     depth: u16,
     state: &State,
@@ -757,7 +757,7 @@ impl Engine {
     self.nodes_searched += 1;
     let game_over = state.is_game_over();
     let random_bonus = (self.next_random() & 0xf) as Evaluation;
-    match (game_over, depth, quiescence) {
+    match (game_over, depth, QUIESCENCE) {
       (true, _, _) => return (evaluate_state(state) + random_bonus, (None, None)),
       (_, 0, true) => return (evaluate_state(state) + random_bonus, (None, None)),
       (_, 0, false) => {
@@ -772,10 +772,10 @@ impl Engine {
     }
 
     let mut moves = Vec::new();
-    state.move_gen::<quiescence>(&mut moves);
+    state.move_gen::<QUIESCENCE>(&mut moves);
 
     // If we're in a quiescence search and have quiesced, then return.
-    if quiescence && moves.is_empty() {
+    if QUIESCENCE && moves.is_empty() {
       return (evaluate_state(state) + random_bonus, (None, None));
     }
     assert!(!moves.is_empty());
@@ -785,11 +785,11 @@ impl Engine {
     state.hash(&mut s);
     let state_hash: u64 = s.finish();
 
-    let mot_move = match quiescence {
+    let mot_move = match QUIESCENCE {
       false => self.move_order_table.get(&state_hash),
       true => None,
     };
-    let killer_move = match quiescence {
+    let killer_move = match QUIESCENCE {
       false => self.killer_moves[depth as usize],
       true => None,
     };
@@ -825,8 +825,8 @@ impl Engine {
     let mut best_score = VERY_NEGATIVE_EVAL;
     let mut best_pair = (None, None);
 
-    // If we're in a quiescence search then we're allowed to pass.
-    if quiescence {
+    // If we're in a QUIESCENCE search then we're allowed to pass.
+    if QUIESCENCE {
       alpha = alpha.max(evaluate_state(state) + random_bonus);
       if alpha >= beta {
         moves.clear();
@@ -846,22 +846,22 @@ impl Engine {
 
       if new_state.is_duck_move {
         if first {
-          (score, next_pair) = self.pvs::<quiescence>(depth - 1, &new_state, alpha, beta);
+          (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, alpha, beta);
         } else {
-          (score, next_pair) = self.pvs::<quiescence>(depth - 1, &new_state, alpha, alpha + 1);
+          (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, alpha, alpha + 1);
           if alpha < score && score < beta {
-            (score, next_pair) = self.pvs::<quiescence>(depth - 1, &new_state, score, beta);
+            (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, score, beta);
           }
         }
       } else {
         if first {
-          (score, next_pair) = self.pvs::<quiescence>(depth - 1, &new_state, -beta, -alpha);
+          (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, -beta, -alpha);
           score *= -1;
         } else {
-          (score, next_pair) = self.pvs::<quiescence>(depth - 1, &new_state, -alpha - 1, -alpha);
+          (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, -alpha - 1, -alpha);
           score *= -1;
           if alpha < score && score < beta {
-            (score, next_pair) = self.pvs::<quiescence>(depth - 1, &new_state, -beta, -score);
+            (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, -beta, -score);
             score *= -1;
           }
         }
@@ -872,7 +872,7 @@ impl Engine {
         best_score = comparison_score;
         best_pair = (Some(m), next_pair.0);
       }
-      if score > alpha && !quiescence {
+      if score > alpha && !QUIESCENCE {
         self.move_order_table.insert(state_hash, m);
       }
       alpha = alpha.max(score);
@@ -885,6 +885,23 @@ impl Engine {
 
     make_terminal_scores_slightly_less_extreme((alpha, best_pair))
   }
+}
+
+
+pub fn apply_move_internal(this: &mut Engine, m: Move) -> bool {
+  this.state.apply_move(&m)
+}
+
+pub fn run_internal(this: &mut Engine, depth: u16) -> (Evaluation, (Option<Move>, Option<Move>)) {
+  this.nodes_searched = 0;
+  let start_state = this.state.clone();
+  // Apply iterative deepening.
+  let mut p = (-1, (None, None));
+  for d in 1..=depth {
+    p = this.pvs::<false>(d, &start_state, VERY_NEGATIVE_EVAL, VERY_POSITIVE_EVAL);
+    //log(&format!("Depth {}: {} (nodes={})", d, p.0, this.nodes_searched));
+  }
+  p
 }
 
 #[wasm_bindgen]
