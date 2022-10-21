@@ -20,13 +20,13 @@ extern "C" {
 
 #[derive(Clone, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CastlingRights {
-  king_side:  bool,
-  queen_side: bool,
+pub struct CastlingRights {
+  pub king_side:  bool,
+  pub queen_side: bool,
 }
 
 #[derive(Clone, Hash)]
-struct BitBoard(u64);
+pub struct BitBoard(pub u64);
 
 impl Serialize for BitBoard {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -58,19 +58,19 @@ impl<'de> Deserialize<'de> for BitBoard {
 
 #[derive(Clone, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct State {
-  pawns:           [BitBoard; 2],
-  knights:         [BitBoard; 2],
-  bishops:         [BitBoard; 2],
-  rooks:           [BitBoard; 2],
-  queens:          [BitBoard; 2],
-  kings:           [BitBoard; 2],
-  ducks:           BitBoard,
-  en_passant:      BitBoard,
-  highlight:       BitBoard,
-  castling_rights: [CastlingRights; 2],
-  white_turn:      bool,
-  is_duck_move:    bool,
+pub struct State {
+  pub pawns:           [BitBoard; 2],
+  pub knights:         [BitBoard; 2],
+  pub bishops:         [BitBoard; 2],
+  pub rooks:           [BitBoard; 2],
+  pub queens:          [BitBoard; 2],
+  pub kings:           [BitBoard; 2],
+  pub ducks:           BitBoard,
+  pub en_passant:      BitBoard,
+  pub highlight:       BitBoard,
+  pub castling_rights: [CastlingRights; 2],
+  pub white_turn:      bool,
+  pub is_duck_move:    bool,
 }
 
 const ALL_BUT_A_FILE: u64 = 0xfefefefefefefefe;
@@ -197,8 +197,7 @@ impl State {
     let our_rooks = self.rooks[IS_WHITE as usize].0;
     let our_queens = self.queens[IS_WHITE as usize].0;
     let our_king = self.kings[IS_WHITE as usize].0;
-    let our_pieces: u64 =
-      our_pawns | our_knights | our_bishops | our_rooks | our_queens | our_king;
+    let our_pieces: u64 = our_pawns | our_knights | our_bishops | our_rooks | our_queens | our_king;
     let their_pieces: u64 = self.pawns[(!IS_WHITE) as usize].0
       | self.knights[(!IS_WHITE) as usize].0
       | self.bishops[(!IS_WHITE) as usize].0
@@ -332,7 +331,12 @@ impl State {
     );
     if !QUIESCENCE {
       add_pawn_moves!("plain", single_pawn_pushes, moves, forward_one_row);
-      add_pawn_moves!("plain", double_pawn_pushes, moves, forward_one_row.wrapping_mul(2));
+      add_pawn_moves!(
+        "plain",
+        double_pawn_pushes,
+        moves,
+        forward_one_row.wrapping_mul(2)
+      );
     }
 
     let moveable_mask = !(our_pieces | self.ducks.0);
@@ -680,25 +684,30 @@ const KING_ENDGAME_PST: [Evaluation; 64] = [
 fn evaluate_state(state: &State) -> Evaluation {
   let mut score = 0;
   // endgame factor is 0 for middlegame, 1 for endgame
-  let endgame_factor = 1.0 - (
-    2 * state.queens[0].0.count_ones() +
-    2 * state.queens[1].0.count_ones() +
-    state.rooks[0].0.count_ones() +
-    state.rooks[1].0.count_ones()
-  ) as f32 / 8.0;
+  let endgame_factor = 1.0
+    - (2 * state.queens[0].0.count_ones()
+      + 2 * state.queens[1].0.count_ones()
+      + state.rooks[0].0.count_ones()
+      + state.rooks[1].0.count_ones()) as f32
+      / 8.0;
   //let king_pst = if is_endgame {
   //  KING_ENDGAME_PST
   //} else {
   //  KING_MIDDLEGAME_PST
   //};
   for (pst_mult, piece_value, pst, piece_array) in [
-    (1.0 - endgame_factor,  50, PAWN_MIDDLEGAME_PST, &state.pawns),
-    (endgame_factor,  50, PAWN_ENDGAME_PST, &state.pawns),
+    (1.0 - endgame_factor, 50, PAWN_MIDDLEGAME_PST, &state.pawns),
+    (endgame_factor, 50, PAWN_ENDGAME_PST, &state.pawns),
     (1.0, 450, KNIGHT_PST, &state.knights),
     (1.0, 250, BISHOP_PST, &state.bishops),
     (1.0, 500, ROOK_PST, &state.rooks),
     (1.0, 900, QUEEN_PST, &state.queens),
-    (1.0 - endgame_factor, 1_000_000, KING_MIDDLEGAME_PST, &state.kings),
+    (
+      1.0 - endgame_factor,
+      1_000_000,
+      KING_MIDDLEGAME_PST,
+      &state.kings,
+    ),
     (endgame_factor, 1_000_000, KING_ENDGAME_PST, &state.kings),
   ] {
     let (mut us, mut them, pst_xor) = match state.white_turn {
@@ -793,7 +802,10 @@ impl Engine {
     let mut p = (-1, (None, None));
     for d in 1..=depth {
       p = self.pvs::<false>(d, &start_state, VERY_NEGATIVE_EVAL, VERY_POSITIVE_EVAL);
-      log(&format!("Depth {}: {} (nodes={})", d, p.0, self.nodes_searched));
+      log(&format!(
+        "Depth {}: {} (nodes={})",
+        d, p.0, self.nodes_searched
+      ));
     }
     serde_wasm_bindgen::to_value(&p).unwrap_or_else(|e| {
       log(&format!("Failed to serialize score: {}", e));
@@ -931,7 +943,7 @@ impl Engine {
         }
       }
       // TODO: For some reason adding the random bonus in here makes play awful??
-      let comparison_score = score;// + random_bonus;
+      let comparison_score = score; // + random_bonus;
       if comparison_score > best_score {
         best_score = comparison_score;
         best_pair = (Some(m), next_pair.0);
@@ -951,6 +963,11 @@ impl Engine {
   }
 }
 
+pub fn get_moves_internal(this: &Engine) -> Vec<Move> {
+  let mut moves = Vec::new();
+  this.state.move_gen::<false>(&mut moves);
+  moves
+}
 
 pub fn apply_move_internal(this: &mut Engine, m: Move) -> bool {
   this.state.apply_move(&m)
@@ -979,13 +996,17 @@ pub fn get_outcome_internal(this: &Engine) -> Option<&'static str> {
   }
 }
 
+pub fn get_state_internal(this: &Engine) -> State {
+  this.state.clone()
+}
+
 #[wasm_bindgen]
 pub fn new_engine(seed: u64) -> Engine {
   Engine {
     nodes_searched: 0,
     seed,
-    state:            State::starting_state(),
+    state: State::starting_state(),
     move_order_table: HashMap::new(),
-    killer_moves:     [None; 100],
+    killer_moves: [None; 100],
   }
 }

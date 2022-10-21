@@ -9,7 +9,7 @@ fn work() {
     let mut engine = engine::new_engine(rand::random());
     for _ in 0..300 {
       let p = engine::run_internal(&mut engine, 4);
-      if let Some(m) = p.1.0 {
+      if let Some(m) = p.1 .0 {
         moves.push(m);
         engine::apply_move_internal(&mut engine, m);
       } else {
@@ -17,7 +17,11 @@ fn work() {
       }
     }
     let outcome = engine::get_outcome_internal(&engine);
-    println!("Game generated: moves={} outcome={:?}", moves.len(), outcome);
+    println!(
+      "Game generated: moves={} outcome={:?}",
+      moves.len(),
+      outcome
+    );
     let obj = serde_json::json!({
       "outcome": outcome,
       "moves": moves,
@@ -32,7 +36,7 @@ fn work() {
 fn main() {
   // Launch workers for every thread.
   let mut workers = vec![];
-  for _ in 0..num_cpus::get() {
+  for _ in 0..(num_cpus::get() - 2) {
     workers.push(std::thread::spawn(work));
   }
   // Wait for all workers to finish.
