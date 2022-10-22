@@ -3,23 +3,25 @@ import './App.css';
 import init, { new_engine, Engine } from 'engine';
 import * as tf from '@tensorflow/tfjs';
 
-function createConvModel(): tf.LayersModel {
-  const model = tf.sequential();
-  model.add(tf.layers.conv2d({
-    inputShape: [28, 28, 1],
-    kernelSize: 3,
-    filters: 16,
-    activation: 'relu'
-  }));
-  model.add(tf.layers.maxPooling2d({poolSize: 2, strides: 2}));
-  model.add(tf.layers.conv2d({kernelSize: 3, filters: 32, activation: 'relu'}));
-  model.add(tf.layers.maxPooling2d({poolSize: 2, strides: 2}));
-  model.add(tf.layers.conv2d({kernelSize: 3, filters: 32, activation: 'relu'}));
-  model.add(tf.layers.flatten({}));
-  model.add(tf.layers.dense({units: 64, activation: 'relu'}));
-  model.add(tf.layers.dense({units: 10, activation: 'softmax'}));
-  model.loadWeights('http://localhost:3000/weights/model.json');
+async function createConvModel(): Promise<tf.LayersModel> {
+  const model = await tf.loadLayersModel('http://localhost:3000/model.json');
   return model;
+  //const model = tf.sequential();
+  //model.add(tf.layers.conv2d({
+  //  inputShape: [28, 28, 1],
+  //  kernelSize: 3,
+  //  filters: 16,
+  //  activation: 'relu'
+  //}));
+  //model.add(tf.layers.maxPooling2d({poolSize: 2, strides: 2}));
+  //model.add(tf.layers.conv2d({kernelSize: 3, filters: 32, activation: 'relu'}));
+  //model.add(tf.layers.maxPooling2d({poolSize: 2, strides: 2}));
+  //model.add(tf.layers.conv2d({kernelSize: 3, filters: 32, activation: 'relu'}));
+  //model.add(tf.layers.flatten({}));
+  //model.add(tf.layers.dense({units: 64, activation: 'relu'}));
+  //model.add(tf.layers.dense({units: 10, activation: 'softmax'}));
+  //model.loadWeights('http://localhost:8000/model.json');
+  //return model;
 }
 
 function AppWithComputation(props: { computation: Computation }) {
@@ -31,7 +33,7 @@ function AppWithComputation(props: { computation: Computation }) {
   const state = engine.get_state();
   const moves: any[] = engine.get_moves();
   React.useEffect(() => {
-    const tfjsResult = tfjsModel.predict(tf.zeros([1, 28, 28, 1]));
+    const tfjsResult = tfjsModel.predict(tf.ones([1, 16]));
     (tfjsResult as any).print();
     let pair = engine.run(4);
     setPair(pair);
@@ -224,11 +226,12 @@ function App() {
     console.log('Initializing wasm...');
     const seed = Math.floor(Math.random() * 1e9);
     init()
-      .then(() => setComputation({
-        engine: new_engine(BigInt(seed)),
-        tfjsModel: createConvModel(),
-      }))
-      .catch(console.error);
+      .then(() => createConvModel()
+        .then((tfjsModel) => setComputation({
+          engine: new_engine(BigInt(seed)),
+          tfjsModel,
+        }))
+      ).catch(console.error);
   }, []);
   return computation ? <AppWithComputation computation={computation} /> : <div>Loading WASM...</div>;
 }

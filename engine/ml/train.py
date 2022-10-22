@@ -7,10 +7,9 @@ dtype = torch.float32
 
 train = np.load("train.npz")
 input = torch.tensor(train["input"], dtype=dtype).cuda()
-policy = torch.tensor(train["policy"], dtype=dtype).cuda()
+policy = torch.tensor(train["policy"], dtype=torch.int64).cuda()
 value = torch.tensor(train["value"], dtype=dtype).cuda()
 
-policy = policy.reshape((-1, 2 * 8 * 8))
 value = value.reshape((-1, 1))
 
 samples = len(input)
@@ -30,7 +29,7 @@ class ConvBlock(torch.nn.Module):
         self.conv2 = torch.nn.Conv2d(
             filters, filters, kernel_size=kernel_size, padding="same"
         )
-        self.activation = torch.nn.LeakyReLU(0.1)
+        self.activation = torch.nn.ReLU()
 
     def forward(self, x):
         skip0 = x
@@ -38,7 +37,7 @@ class ConvBlock(torch.nn.Module):
         x = self.activation(x)
         x = self.conv2(x)
         x = self.activation(x)
-        x += skip0
+        x = x + skip0
         return x
 
 class Flatten(torch.nn.Module):
@@ -48,20 +47,32 @@ class Flatten(torch.nn.Module):
         return x.reshape((n, -1))
 
 class Network(torch.nn.Module):
-    def __init__(self, blocks, input_channels, feature_count, sm_outputs, sigmoid_outputs):
+    def __init__(
+        self,
+        blocks,
+        input_channels,
+        feature_count,
+        final_features,
+        sm_outputs,
+        sigmoid_outputs,
+    ):
         super().__init__()
         # Map the three input channels up to our internal features.
         layers = [
-            torch.nn.Conv2d(input_channels, feature_count, kernel_size=3, padding="same")
+            torch.nn.Conv2d(input_channels, feature_count, kernel_size=3, padding="same"),
         ]
         # Build the main processing tower.
         for _ in range(blocks):
             layers.append(ConvBlock(feature_count))
+        layers.extend([
+            torch.nn.Conv2d(feature_count, final_features, kernel_size=3, padding="same"),
+            torch.nn.ReLU(),
+        ])
         # Globally flatten.
         layers.append(Flatten())
         self.cnn_layers = torch.nn.Sequential(*layers)
-        self.sm_linear = torch.nn.Linear(64 * feature_count, sm_outputs)
-        self.sigmoid_linear = torch.nn.Linear(64 * feature_count, sigmoid_outputs)
+        self.sm_linear = torch.nn.Linear(64 * final_features, sm_outputs)
+        self.sigmoid_linear = torch.nn.Linear(64 * final_features, sigmoid_outputs)
 
     def forward(self, x):
         deep_embedding = self.cnn_layers(x)
@@ -77,7 +88,8 @@ model = Network(
     blocks=12,
     input_channels=input.shape[1],
     feature_count=128,
-    sm_outputs=2 * 8 * 8,
+    final_features=4,
+    sm_outputs=64 * 64,
     sigmoid_outputs=1,
 ).cuda()
 if dtype == torch.float16:

@@ -20,7 +20,7 @@ print("Total games:", len(all_games))
 print("Total moves:", total_moves)
 
 input_array = np.zeros((total_moves, channel_count, 8, 8), dtype=np.int8)
-policy_array = np.zeros((total_moves, 2, 8, 8), dtype=np.int8)
+policy_array = np.zeros((total_moves,), dtype=np.int32)
 value_array = np.zeros((total_moves,), dtype=np.int8)
 b = input_array.nbytes + policy_array.nbytes + value_array.nbytes
 print("Total storage:", b / 1024 / 1024, "MiB")
@@ -34,8 +34,8 @@ for game in tqdm(all_games):
         # Save a triple into our arrays.
         features = input_array[entry]
         e.get_state_into_array(features.nbytes, features.ctypes.data)
-        policy = policy_array[entry]
-        engine.encode_move(move_str, policy.nbytes, policy.ctypes.data)
+        policy_array[entry] = (move["from"] % 64)  * 64 + move["to"]
+        #engine.encode_move(move_str, policy.nbytes, policy.ctypes.data)
         value_array[entry] = value
         entry += 1
         # Apply the move.
