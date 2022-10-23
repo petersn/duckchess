@@ -33,8 +33,14 @@ function AppWithComputation(props: { computation: Computation }) {
   const state = engine.get_state();
   const moves: any[] = engine.get_moves();
   React.useEffect(() => {
-    const tfjsResult = tfjsModel.predict(tf.ones([1, 16]));
-    (tfjsResult as any).print();
+    for (let i = 0; i < 100; i++) {
+      const start = performance.now();
+      const tfjsResult = tfjsModel.predict(tf.ones([64, 8, 8, 22])) as tf.Tensor[];
+      tfjsResult[0].data()
+      const end = performance.now();
+      console.log('tfjs prediction took', end - start, 'ms');
+    }
+    //console.log(tfjsResult[0], tfjsResult[1]);
     let pair = engine.run(4);
     setPair(pair);
     setTimeout(() => {
@@ -42,7 +48,7 @@ function AppWithComputation(props: { computation: Computation }) {
         engine.apply_move(pair[1][0]);
         setForceUpdateCounter(forceUpdateCounter + 1);
       }
-    }, 1000);
+    }, 1000000);
   }, [forceUpdateCounter]);
 
   console.log('Pair:', pair);
@@ -220,7 +226,7 @@ interface Computation {
   tfjsModel: tf.LayersModel;
 }
 
-function App() {
+function OldApp() {
   const [computation, setComputation] = React.useState<Computation | null>(null);
   React.useEffect(() => {
     console.log('Initializing wasm...');
@@ -234,6 +240,92 @@ function App() {
       ).catch(console.error);
   }, []);
   return computation ? <AppWithComputation computation={computation} /> : <div>Loading WASM...</div>;
+}
+
+let globalBatchSize = 16;
+
+function App() {
+  const [model, setModel] = React.useState<tf.LayersModel | null>(null);
+  const [batchSize, setBatchSize] = React.useState('16');
+  const [fut1Latency, setFut1Latency] = React.useState(1000);
+  const [fut2Latency, setFut2Latency] = React.useState(1000);
+
+  React.useEffect(() => {
+    console.log('Initializing tfjs...');
+    createConvModel()
+      .then((model) => {
+        setModel(model);
+        // Start a loop of evaluating the model.
+        const loop = async () => {
+          let inp1 = tf.randomUniform([globalBatchSize, 8, 8, 22]);
+          let inp2 = tf.randomUniform([globalBatchSize, 8, 8, 22]);
+          let fut1LaunchTime = performance.now();
+          let fut1 = model.predict(inp1) as tf.Tensor[];
+          let fut2LaunchTime = performance.now();
+          let fut2 = model.predict(inp2) as tf.Tensor[];
+          // Keep two computations in flight at all times.
+          while (true) {
+            console.log('EVALUATED');
+            fut1LaunchTime = performance.now();
+            fut1 = model.predict(inp1) as tf.Tensor[];
+            await fut2[0].data();
+            await fut2[1].data();
+            setFut2Latency(performance.now() - fut2LaunchTime);
+            fut2[0].dispose();
+            fut2[1].dispose();
+            fut2LaunchTime = performance.now();
+            fut2 = model.predict(inp2) as tf.Tensor[];
+            await fut1[0].data();
+            await fut1[1].data();
+            const fut1FinishTime = performance.now();
+            setFut1Latency(fut1FinishTime - fut1LaunchTime);
+            fut1[0].dispose();
+            fut1[1].dispose();
+            if (inp1.shape[0] !== globalBatchSize && Number.isInteger(globalBatchSize) && globalBatchSize > 0) {
+              console.log('Resizing inputs to:', globalBatchSize);
+              inp1.dispose();
+              inp2.dispose();
+              inp1 = tf.randomUniform([globalBatchSize, 8, 8, 22]);
+              inp2 = tf.randomUniform([globalBatchSize, 8, 8, 22]);
+            }
+          }
+        }
+        loop();
+      })
+      .catch(console.error);
+  }, []);
+
+  return (
+    <div style={{ margin: 30 }}>
+      <h1>tfjs performance tester</h1>
+      <p>
+        {model ? 'Loaded tfjs model.' : 'Loading tfjs model...'}
+      </p>
+      <p>
+        <label>Batch size: <input
+          type="number"
+          value={batchSize}
+          onChange={(e) => {
+            setBatchSize(e.target.value);
+            const value = parseInt(e.target.value);
+            globalBatchSize = value;
+          }}
+        /></label>
+      </p>
+      <p>
+        <label>Future 1 latency: {fut1Latency.toFixed(1)} ms</label>
+      </p>
+      <p>
+        <label>Future 2 latency: {fut2Latency.toFixed(1)} ms</label>
+      </p>
+      <p>
+        Batch size: {globalBatchSize}
+      </p>
+      <p>
+        Nodes per second: {(2 * globalBatchSize * 1000 / ((fut1Latency + fut2Latency) / 2)).toFixed(1)}
+      </p>
+    </div>
+  );
 }
 
 export default App;
