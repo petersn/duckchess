@@ -4,7 +4,7 @@ import init, { new_engine, Engine } from 'engine';
 import * as tf from '@tensorflow/tfjs';
 
 async function createConvModel(): Promise<tf.LayersModel> {
-  const model = await tf.loadLayersModel('http://localhost:3000/model.json');
+  const model = await tf.loadLayersModel('/duck-chess-engine/model.json');
   return model;
   //const model = tf.sequential();
   //model.add(tf.layers.conv2d({
