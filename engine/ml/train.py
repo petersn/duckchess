@@ -6,9 +6,9 @@ dtype = torch.float32
 #dtype = torch.float16
 
 train = np.load("train.npz")
-input = torch.tensor(train["input"], dtype=dtype).cuda()
-policy = torch.tensor(train["policy"], dtype=torch.int64).cuda()
-value = torch.tensor(train["value"], dtype=dtype).cuda()
+input = torch.tensor(train["input"], dtype=dtype)
+policy = torch.tensor(train["policy"], dtype=torch.int64)
+value = torch.tensor(train["value"], dtype=dtype)
 
 value = value.reshape((-1, 1))
 
@@ -110,9 +110,9 @@ class EWMA:
 def make_batch(batch_size):
     indices = np.random.randint(0, len(input), size=batch_size)
     return (
-        input[indices],
-        policy[indices],
-        value[indices],
+        input[indices].cuda(),
+        policy[indices].cuda(),
+        value[indices].cuda(),
     )
 
 # Perform generator pretraining.
@@ -124,7 +124,7 @@ sigmoid_loss_ewma = EWMA()
 
 for i in range(1_000_000):
     optimizer.zero_grad()
-    inp, pol, val = make_batch(512)
+    inp, pol, val = make_batch(1024)
     sm_output, sigmoid_output = model(inp)
     sm_loss = cross_en(sm_output, pol)
     sigmoid_loss = mse_func(sigmoid_output, val)

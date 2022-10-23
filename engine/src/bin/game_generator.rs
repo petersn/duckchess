@@ -1,15 +1,27 @@
 use std::io::Write;
+use rand::seq::SliceRandom;
 
 fn work() {
   // Open a file for writing
   let output_path = format!("games/games-{:016x}.json", rand::random::<u64>());
   let mut output_file = std::fs::File::create(output_path).unwrap();
+  let mut rng = rand::thread_rng();
   loop {
     let mut moves = vec![];
+    let mut was_rand = vec![];
     let mut engine = engine::new_engine(rand::random());
-    for _ in 0..300 {
-      let p = engine::run_internal(&mut engine, 4);
-      if let Some(m) = p.1 .0 {
+    for move_index in 0..300 {
+      let r: f32 = rand::random();
+      let mut random_move: bool = if move_index < 6 { r < 0.5 } else { r < 0.01 };
+      if move_index == 0 {
+        random_move = true;
+      }
+      let p = match random_move {
+        true => engine::get_moves_internal(&engine).choose(&mut rng).map(|x| *x),
+        false => engine::run_internal(&mut engine, 4).1.0,
+      };
+      if let Some(m) = p {
+        was_rand.push(random_move);
         moves.push(m);
         engine::apply_move_internal(&mut engine, m);
       } else {
@@ -25,6 +37,8 @@ fn work() {
     let obj = serde_json::json!({
       "outcome": outcome,
       "moves": moves,
+      "was_rand": was_rand,
+      "version": 3,
     });
     let s = serde_json::to_string(&obj).unwrap();
     output_file.write_all(s.as_bytes()).unwrap();
@@ -36,7 +50,7 @@ fn work() {
 fn main() {
   // Launch workers for every thread.
   let mut workers = vec![];
-  for _ in 0..(num_cpus::get() - 2) {
+  for _ in 0..(num_cpus::get() - 3) {
     workers.push(std::thread::spawn(work));
   }
   // Wait for all workers to finish.

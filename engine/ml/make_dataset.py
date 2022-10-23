@@ -14,7 +14,15 @@ for path in glob.glob("games/games-*.json"):
         for line in f:
             all_games.append(json.loads(line))
 
-total_moves = sum(len(game["moves"]) for game in all_games)
+total_moves = 0
+for game in all_games:
+    version = game.get("version", 1)
+    if version == 1:
+        total_moves += len(game["moves"])
+    elif version == 2:
+        assert False
+    elif version == 3:
+        total_moves += sum(x is False for x in game["was_rand"])
 
 print("Total games:", len(all_games))
 print("Total moves:", total_moves)
@@ -27,10 +35,14 @@ print("Total storage:", b / 1024 / 1024, "MiB")
 
 entry = 0
 for game in tqdm(all_games):
+    version = game.get("version", 1)
     value = {"1-0": +1, "0-1": -1, None: 0}[game["outcome"]]
     e = engine.Engine(0)
-    for move in game["moves"]:
+    for i, move in enumerate(game["moves"]):
         move_str = json.dumps(move)
+        if version == 3 and game["was_rand"][i] is True:
+            e.apply_move(move_str)
+            continue
         # Save a triple into our arrays.
         features = input_array[entry]
         e.get_state_into_array(features.nbytes, features.ctypes.data)
