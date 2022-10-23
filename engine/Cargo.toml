@@ -17,3 +17,4 @@ rand = "0.8.5"
 serde_json = "1.0.87"
 num_cpus = "1.13.1"
 pyo3 = { version = "0.17.2", features = ["extension-module"] }
+onnxruntime = "0.0.14"
