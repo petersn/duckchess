@@ -1,5 +1,4 @@
 import numpy as np
-from responses import activate
 import tensorflow as tf
 
 train = np.load("train.npz")
@@ -39,3 +38,5 @@ model.fit(
     batch_size=512,
     epochs=1000,
 )
+
+

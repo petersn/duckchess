@@ -46,7 +46,7 @@ for game in tqdm(all_games):
         # Save a triple into our arrays.
         features = input_array[entry]
         e.get_state_into_array(features.nbytes, features.ctypes.data)
-        policy_array[entry] = (move["from"] % 64)  * 64 + move["to"]
+        policy_array[entry] = (move["from"] % 64) * 64 + move["to"]
         #engine.encode_move(move_str, policy.nbytes, policy.ctypes.data)
         value_array[entry] = value
         entry += 1

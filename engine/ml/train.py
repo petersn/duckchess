@@ -6,9 +6,9 @@ dtype = torch.float32
 #dtype = torch.float16
 
 train = np.load("train.npz")
-input = torch.tensor(train["input"], dtype=dtype)
-policy = torch.tensor(train["policy"], dtype=torch.int64)
-value = torch.tensor(train["value"], dtype=dtype)
+input = torch.tensor(train["input"])#, dtype=dtype)
+policy = torch.tensor(train["policy"])#, dtype=torch.int64)
+value = torch.tensor(train["value"])#, dtype=dtype)
 
 value = value.reshape((-1, 1))
 
@@ -113,19 +113,26 @@ class EWMA:
 def make_batch(batch_size):
     indices = np.random.randint(0, len(input), size=batch_size)
     return (
-        input[indices].cuda(),
-        policy[indices].cuda(),
-        value[indices].cuda(),
+        input[indices].cuda().to(dtype),
+        policy[indices].cuda().to(torch.int64),
+        value[indices].cuda().to(dtype),
     )
 
 # Perform generator pretraining.
 cross_en = torch.nn.CrossEntropyLoss()
 mse_func = torch.nn.MSELoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5)
 sm_loss_ewma = EWMA()
 sigmoid_loss_ewma = EWMA()
 
-for i in range(1_000_000):
+# Load up the model
+#model.load_state_dict(torch.load("models/model-001-steps=140000.pt"))
+#model.load_state_dict(torch.load("models/model-001-steps=350000.pt"))
+model.load_state_dict(torch.load("models/model-001-steps=440000.pt"))
+
+#for i in range(140_001, 1_000_000):
+#for i in range(350_001, 1_000_000):
+for i in range(440_001, 10_000_000):
     optimizer.zero_grad()
     inp, pol, val = make_batch(1024)
     sm_output, sigmoid_output = model(inp)

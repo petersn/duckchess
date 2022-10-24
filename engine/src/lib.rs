@@ -7,6 +7,8 @@ use std::{
 use serde::{ser::SerializeSeq, Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
+mod mcts;
+
 #[cfg(not(target_arch = "wasm32"))]
 mod python;
 
@@ -71,6 +73,13 @@ pub struct State {
   pub castling_rights: [CastlingRights; 2],
   pub white_turn:      bool,
   pub is_duck_move:    bool,
+}
+
+pub enum GameOutcome {
+  Ongoing,
+  Draw,
+  WhiteWin,
+  BlackWin,
 }
 
 const ALL_BUT_A_FILE: u64 = 0xfefefefefefefefe;
