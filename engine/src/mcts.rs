@@ -1,13 +1,15 @@
-use std::sync::{Weak, Arc};
+use std::{sync::{Weak, Arc}, collections::HashMap, future::Future};
 
-use crate::{Move, State};
+use crate::rules::{Move, State, GameOutcome};
 
-async fn evaluate_network(state: &State, evals: &mut evals) {
-  self.state.move_gen::<false>(evals.moves);
+const EXPLORATION_ALPHA: f32 = 5.0;
+
+async fn evaluate_network(state: &State, evals: &mut Evals) {
+  state.move_gen::<false>(&mut evals.moves);
   // TODO: Actually pass data to TensorFlow here.
   // For now, just wait a small random amount.
   let delay = rand::random::<u64>() % 100;
-  tokio::time::sleep(Duration::from_millis(delay)).await;
+  tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
 }
 
 struct Evals {
@@ -18,6 +20,15 @@ struct Evals {
 }
 
 impl Evals {
+  fn new() -> Self {
+    Self {
+      outcome: GameOutcome::Ongoing,
+      moves: Vec::new(),
+      policy: [0.0; 64 * 64],
+      value: 0.0,
+    }
+  }
+
   fn posterior(&self, m: Move) -> f32 {
     self.policy[(m.from % 64) as usize * 64 + m.to as usize]
   }
@@ -31,9 +42,9 @@ struct MctsEdge {
 
 impl MctsEdge {
   fn get_edge_score(&self) -> f32 {
-    match visits == 0 {
+    match self.visits == 0 {
       true => 0.0,
-      false => total_score / visits as f32,
+      false => self.total_score / self.visits as f32,
     }
   }
 
@@ -53,13 +64,13 @@ struct MctsNode {
 
 impl MctsNode {
   fn total_action_score(&self, m: Move) -> f32 {
-    let (u, Q) = match outgoing_edges.get(m) {
+    let (u, Q) = match self.outgoing_edges.get(&m) {
       None => (
-        (1.0 + self.all_edge_visits).sqrt(),
+        (1.0 + self.all_edge_visits as f32).sqrt(),
         0.0,
       ),
       Some(edge) => (
-        (1.0 + self.all_edge_visits).sqrt() / (1.0 + edge.visits),
+        (1.0 + self.all_edge_visits as f32).sqrt() / (1.0 + edge.visits as f32),
         edge.get_edge_score(),
       ),
     };
@@ -67,9 +78,14 @@ impl MctsNode {
     Q + u
   }
 
-  fn populate_evals(&mut self) ->  {
-    if self.evals.is_none() {
-      self.evals = Some(self.state.evaluate());
+  async fn get_evals(&mut self) -> &Evals {
+    match self.evals.get_or_insert_with(Evals::new) {
+      None => {
+        let e = self.evals.insert(Evals::new());
+        evaluate_network(&self.state, e).await;
+        e
+      }
+      Some(e) => e,
     }
   }
 }
