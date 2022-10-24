@@ -17,9 +17,6 @@ assert len(input) == len(policy) == len(value)
 print("Loaded", samples, "samples")
 print("Value variance:", np.var(train["value"]))
 
-PATCH_SIZE = 128
-UPSCALE_COUNT = 1
-
 class ConvBlock(torch.nn.Module):
     def __init__(self, filters, kernel_size=3):
         super().__init__()
