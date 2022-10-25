@@ -1,10 +1,6 @@
 include!(concat!(env!("OUT_DIR"), "/tables.rs"));
 
-use std::{
-  cmp::Ordering,
-  collections::HashMap,
-  hash::Hash,
-};
+use std::{cmp::Ordering, collections::HashMap, hash::Hash};
 
 use serde::{ser::SerializeSeq, Deserialize, Serialize};
 
@@ -66,7 +62,6 @@ pub struct State {
   pub white_turn:      bool,
   pub is_duck_move:    bool,
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -462,7 +457,7 @@ impl State {
     }
   }
 
-  pub fn apply_move(&mut self, m: &Move) -> bool {
+  pub fn apply_move(&mut self, m: Move) -> bool {
     let from_mask = if m.from == 64 { 0 } else { 1 << m.from };
     let to_mask = 1 << m.to;
     if !self.is_duck_move {

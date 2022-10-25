@@ -16,6 +16,7 @@ wasm-bindgen = "0.2.83"
 
 [target.'cfg(not(target_arch="wasm32"))'.dependencies]
 rand = "0.8.5"
+rand_distr = "0.4.3"
 serde_json = "1.0.87"
 num_cpus = "1.13.1"
 pyo3 = { version = "0.17.2", features = ["extension-module"] }

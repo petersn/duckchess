@@ -1,7 +1,7 @@
-use std::collections::{HashMap, hash_map::DefaultHasher};
+use std::collections::{hash_map::DefaultHasher, HashMap};
 use std::hash::{Hash, Hasher};
 
-use crate::rules::{iter_bits, Move, State, GameOutcome};
+use crate::rules::{iter_bits, GameOutcome, Move, State};
 
 type Evaluation = i32;
 
@@ -187,11 +187,11 @@ pub struct Engine {
 impl Engine {
   pub fn new(seed: u64) -> Self {
     Self {
-      nodes_searched:   0,
+      nodes_searched: 0,
       seed,
-      state:            State::starting_state(),
+      state: State::starting_state(),
       move_order_table: HashMap::new(),
-      killer_moves:     [None; 100],
+      killer_moves: [None; 100],
     }
   }
 
@@ -214,7 +214,7 @@ impl Engine {
   }
 
   pub fn apply_move(&mut self, m: Move) {
-    self.state.apply_move(&m);
+    self.state.apply_move(m);
   }
 
   pub fn get_moves(&self) -> Vec<Move> {
@@ -331,7 +331,7 @@ impl Engine {
     let mut first = true;
     for m in moves {
       let mut new_state = state.clone();
-      new_state.apply_move(&m);
+      new_state.apply_move(m);
 
       let mut score;
       let mut next_pair;

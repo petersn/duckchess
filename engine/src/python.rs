@@ -1,6 +1,9 @@
 use pyo3::prelude::*;
 
-use crate::{rules::{Move, GameOutcome}, search};
+use crate::{
+  rules::{GameOutcome, Move},
+  search,
+};
 
 #[pyclass]
 struct Engine {

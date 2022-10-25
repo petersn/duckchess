@@ -1,4 +1,5 @@
 use std::io::Write;
+
 use rand::seq::SliceRandom;
 
 fn work() {
@@ -18,7 +19,7 @@ fn work() {
       }
       let p = match random_move {
         true => engine.get_moves().choose(&mut rng).map(|x| *x),
-        false => engine.run(4).1.0,
+        false => engine.run(4).1 .0,
       };
       if let Some(m) = p {
         was_rand.push(random_move);
