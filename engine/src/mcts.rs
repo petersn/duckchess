@@ -227,7 +227,7 @@ impl Mcts {
       }
       Some(m) => {
         // If the move is non-null then expand once at the leaf.
-        println!("Expanding depth={} move={:?}", pv_edges.len(), m);
+        //println!("Expanding depth={} move={:?}", pv_edges.len(), m);
         let child = NodeIndex(self.nodes.len());
         let edge_index = EdgeIndex(self.edges.len());
         let pv_leaf_node = &mut self.nodes[pv_leaf.0];
