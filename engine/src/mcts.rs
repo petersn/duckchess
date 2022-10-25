@@ -8,7 +8,7 @@ use std::{
 use crate::inference::InferenceEngine;
 use crate::rules::{GameOutcome, Move, State};
 
-const EXPLORATION_ALPHA: f32 = 1.0;
+const EXPLORATION_ALPHA: f32 = 5.0;
 const DIRICHLET_ALPHA: f32 = 0.15;
 const DIRICHLET_WEIGHT: f32 = 0.25;
 
@@ -135,7 +135,7 @@ impl MctsNode {
       None => ((1.0 + self.all_edge_visits as f32).sqrt(), 0.0),
       Some(edge_index) => {
         let edge = &edges[edge_index.0];
-        println!("edge stats: {} / {}", edge.visits, self.all_edge_visits);
+        //println!("edge stats: {} / {}", edge.visits, self.all_edge_visits);
         (
           (1.0 + self.all_edge_visits as f32).sqrt() / (1.0 + edge.visits as f32),
           edge.get_edge_score(),
@@ -173,7 +173,7 @@ pub struct Mcts {
 }
 
 impl Mcts {
-  pub async fn create() -> Self {
+  pub async fn create() -> Mcts {
     let mut inference_engine = InferenceEngine::create().await;
     let mut node = MctsNode::create(&mut inference_engine, State::starting_state()).await;
     node.evals.add_dirichlet_noise();
@@ -282,12 +282,12 @@ impl Mcts {
       for (m, edge_index) in &node.outgoing_edges {
         let edge = &self.edges[edge_index.0];
         println!(
-          "{}edge={:?} move={:?} visits={} totscore={}",
+          "{}edge={:?} move={:?} visits={} score={}",
           "  ".repeat(depth + 1),
           edge_index.0,
           m,
           edge.visits,
-          edge.total_score
+          edge.total_score / (edge.visits as f32 + 1e-6),
         );
         queue.push((edge.child, depth + 1));
       }
