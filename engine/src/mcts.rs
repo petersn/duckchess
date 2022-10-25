@@ -63,7 +63,7 @@ struct MctsNode {
 }
 
 impl MctsNode {
-  fn total_action_score(&self, m: Move) -> f32 {
+  async fn total_action_score(&mut self, m: Move) -> f32 {
     let (u, Q) = match self.outgoing_edges.get(&m) {
       None => (
         (1.0 + self.all_edge_visits as f32).sqrt(),
@@ -74,19 +74,16 @@ impl MctsNode {
         edge.get_edge_score(),
       ),
     };
-    let u = EXPLORATION_ALPHA * self.evals.unwrap().posterior(m) * u;
+    let u = EXPLORATION_ALPHA * self.get_evals().await.posterior(m) * u;
     Q + u
   }
 
   async fn get_evals(&mut self) -> &Evals {
-    match self.evals.get_or_insert_with(Evals::new) {
-      None => {
-        let e = self.evals.insert(Evals::new());
-        evaluate_network(&self.state, e).await;
-        e
-      }
-      Some(e) => e,
+    if self.evals.is_none() {
+      self.evals = Some(Evals::new());
+      evaluate_network(&self.state, self.evals.as_mut().unwrap()).await;
     }
+    self.evals.as_ref().unwrap()
   }
 }
 

@@ -1,8 +1,10 @@
 use pyo3::prelude::*;
 
+use crate::{rules::{Move, GameOutcome}, search};
+
 #[pyclass]
 struct Engine {
-  engine: crate::Engine,
+  engine: search::Engine,
 }
 
 // We have:
@@ -22,19 +24,18 @@ impl Engine {
   #[new]
   fn new(seed: u64) -> Self {
     Self {
-      engine: crate::new_engine(seed),
+      engine: search::Engine::new(seed),
     }
   }
 
   fn get_state(&self) -> String {
-    let state = crate::get_state_internal(&self.engine);
-    serde_json::to_string(&state).unwrap()
+    serde_json::to_string(self.engine.get_state()).unwrap()
   }
 
   fn get_state_into_array(&self, array_len: usize, array: usize) {
     assert_eq!(array_len, 64 * CHANNEL_COUNT);
     let array: &mut [[u8; 64]; CHANNEL_COUNT] = unsafe { &mut *(array as *mut _) };
-    let state = crate::get_state_internal(&self.engine);
+    let state = self.engine.get_state();
     let mut layer_index = 0;
     let mut emit_bitboard = |bitboard: u64| {
       for i in 0..64 {
@@ -77,24 +78,24 @@ impl Engine {
   }
 
   fn get_moves(&self) -> Vec<String> {
-    let moves = crate::get_moves_internal(&self.engine);
+    let moves = self.engine.get_moves();
     moves.into_iter().map(|m| serde_json::to_string(&m).unwrap()).collect()
   }
 
   fn run(&mut self, depth: u16) -> (i32, String) {
-    let p = crate::run_internal(&mut self.engine, depth);
-    let serialized = serde_json::to_string(&p.1).unwrap();
-    (p.0, serialized)
+    let (score, best_move) = self.engine.run(depth);
+    let serialized = serde_json::to_string(&best_move).unwrap();
+    (score, serialized)
   }
 
   fn apply_move(&mut self, m: &str) {
-    let m: crate::Move = serde_json::from_str(m).unwrap();
-    crate::apply_move_internal(&mut self.engine, m);
+    let m: Move = serde_json::from_str(m).unwrap();
+    self.engine.apply_move(m);
+    //crate::apply_move_internal(&mut self.engine, m);
   }
 
-  fn get_outcome(&self) -> Option<String> {
-    let outcome = crate::get_outcome_internal(&self.engine);
-    outcome.map(|s| s.to_owned())
+  fn get_outcome(&self) -> Option<&'static str> {
+    self.engine.get_outcome().to_str()
   }
 }
 
@@ -102,7 +103,7 @@ impl Engine {
 fn encode_move(m: &str, array_len: usize, array: usize) {
   assert_eq!(array_len, 64 * 2);
   let array: &mut [[u8; 64]; 2] = unsafe { &mut *(array as *mut _) };
-  let m: crate::Move = serde_json::from_str(m).unwrap();
+  let m: Move = serde_json::from_str(m).unwrap();
   let mut layer_index = 0;
   let mut emit_bitboard = |bitboard: u64| {
     for i in 0..64 {

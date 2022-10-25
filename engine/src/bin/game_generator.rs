@@ -9,7 +9,7 @@ fn work() {
   loop {
     let mut moves = vec![];
     let mut was_rand = vec![];
-    let mut engine = engine::new_engine(rand::random());
+    let mut engine = engine::search::Engine::new(rand::random());
     for move_index in 0..300 {
       let r: f32 = rand::random();
       let mut random_move: bool = if move_index < 6 { r < 0.5 } else { r < 0.01 };
@@ -17,28 +17,28 @@ fn work() {
         random_move = true;
       }
       let p = match random_move {
-        true => engine::get_moves_internal(&engine).choose(&mut rng).map(|x| *x),
-        false => engine::run_internal(&mut engine, 4).1.0,
+        true => engine.get_moves().choose(&mut rng).map(|x| *x),
+        false => engine.run(4).1.0,
       };
       if let Some(m) = p {
         was_rand.push(random_move);
         moves.push(m);
-        engine::apply_move_internal(&mut engine, m);
+        engine.apply_move(m);
       } else {
         break;
       }
     }
-    let outcome = engine::get_outcome_internal(&engine);
+    let outcome = engine.get_outcome().to_str();
     println!(
       "Game generated: moves={} outcome={:?}",
       moves.len(),
-      outcome
+      outcome,
     );
     let obj = serde_json::json!({
       "outcome": outcome,
       "moves": moves,
       "was_rand": was_rand,
-      "version": 3,
+      "version": 4,
     });
     let s = serde_json::to_string(&obj).unwrap();
     output_file.write_all(s.as_bytes()).unwrap();

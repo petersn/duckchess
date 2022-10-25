@@ -70,7 +70,7 @@ pub struct State {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-enum PromotablePiece {
+pub enum PromotablePiece {
   // Ordered here based on likelihood of promotion.
   Queen,
   Knight,
@@ -95,11 +95,22 @@ pub enum GameOutcome {
   BlackWin,
 }
 
+impl GameOutcome {
+  pub fn to_str(&self) -> Option<&'static str> {
+    match self {
+      GameOutcome::Ongoing => None,
+      GameOutcome::Draw => Some("1/2-1/2"),
+      GameOutcome::WhiteWin => Some("1-0"),
+      GameOutcome::BlackWin => Some("0-1"),
+    }
+  }
+}
+
 fn get_square(bitboard: u64) -> Square {
   bitboard.trailing_zeros() as Square
 }
 
-fn iter_bits(bitboard: &mut u64) -> Option<Square> {
+pub fn iter_bits(bitboard: &mut u64) -> Option<Square> {
   let pos = bitboard.trailing_zeros();
   if pos == 64 {
     return None;
@@ -153,7 +164,7 @@ fn queen_attacks(occupancy: u64, pos: Square) -> u64 {
 }
 
 impl State {
-  fn starting_state() -> State {
+  pub fn starting_state() -> State {
     State {
       pawns:           [BitBoard(0x00ff000000000000), BitBoard(0x000000000000ff00)],
       knights:         [BitBoard(0x4200000000000000), BitBoard(0x0000000000000042)],
@@ -180,12 +191,12 @@ impl State {
   }
 
   // TODO: Implement stalemate.
-  fn is_game_over(&self) -> bool {
+  pub fn is_game_over(&self) -> bool {
     self.kings[0].0 == 0 || self.kings[1].0 == 0
   }
 
   // TODO: Implement stalemate.
-  fn get_outcome(&self) -> GameOutcome {
+  pub fn get_outcome(&self) -> GameOutcome {
     match (self.kings[0].0 == 0, self.kings[1].0 == 0) {
       (false, false) => GameOutcome::Ongoing,
       (true, false) => GameOutcome::WhiteWin,

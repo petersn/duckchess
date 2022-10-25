@@ -1,3 +1,8 @@
+use std::collections::{HashMap, hash_map::DefaultHasher};
+use std::hash::{Hash, Hasher};
+
+use crate::rules::{iter_bits, Move, State, GameOutcome};
+
 type Evaluation = i32;
 
 const VERY_NEGATIVE_EVAL: Evaluation = -1_000_000_000;
@@ -99,7 +104,7 @@ const KING_ENDGAME_PST: [Evaluation; 64] = [
   -50,-30,-30,-30,-30,-30,-30,-50,
 ];
 
-fn evaluate_state(state: &State) -> Evaluation {
+pub fn evaluate_state(state: &State) -> Evaluation {
   let mut score = 0;
   // endgame factor is 0 for middlegame, 1 for endgame
   let endgame_factor = 1.0
@@ -180,30 +185,14 @@ pub struct Engine {
 }
 
 impl Engine {
-  pub fn apply_move(&mut self, m: JsValue) -> bool {
-    let m: Move = serde_wasm_bindgen::from_value(m).unwrap_or_else(|e| {
-      log(&format!("Failed to deserialize move: {}", e));
-      panic!("Failed to deserialize move: {}", e);
-    });
-    self.state.apply_move(&m)
-  }
-
-  pub fn run(&mut self, depth: u16) -> JsValue {
-    self.nodes_searched = 0;
-    let start_state = self.state.clone();
-    // Apply iterative deepening.
-    let mut p = (-1, (None, None));
-    for d in 1..=depth {
-      p = self.pvs::<false>(d, &start_state, VERY_NEGATIVE_EVAL, VERY_POSITIVE_EVAL);
-      log(&format!(
-        "Depth {}: {} (nodes={})",
-        d, p.0, self.nodes_searched
-      ));
+  pub fn new(seed: u64) -> Self {
+    Self {
+      nodes_searched:   0,
+      seed,
+      state:            State::starting_state(),
+      move_order_table: HashMap::new(),
+      killer_moves:     [None; 100],
     }
-    serde_wasm_bindgen::to_value(&p).unwrap_or_else(|e| {
-      log(&format!("Failed to serialize score: {}", e));
-      JsValue::NULL
-    })
   }
 
   fn next_random(&mut self) -> u64 {
@@ -214,6 +203,43 @@ impl Engine {
       x = x.wrapping_mul(0x243f6a8885a308d3);
     }
     x
+  }
+
+  pub fn get_state(&self) -> &State {
+    &self.state
+  }
+
+  pub fn set_state(&mut self, state: State) {
+    self.state = state;
+  }
+
+  pub fn apply_move(&mut self, m: Move) {
+    self.state.apply_move(&m);
+  }
+
+  pub fn get_moves(&self) -> Vec<Move> {
+    let mut moves = vec![];
+    self.state.move_gen::<false>(&mut moves);
+    moves
+  }
+
+  pub fn get_outcome(&self) -> GameOutcome {
+    self.state.get_outcome()
+  }
+
+  pub fn run(&mut self, depth: u16) -> (Evaluation, (Option<Move>, Option<Move>)) {
+    self.nodes_searched = 0;
+    let start_state = self.state.clone();
+    // Apply iterative deepening.
+    let mut p = (0, (None, None));
+    for d in 1..=depth {
+      p = self.pvs::<false>(d, &start_state, VERY_NEGATIVE_EVAL, VERY_POSITIVE_EVAL);
+      //log(&format!(
+      //  "Depth {}: {} (nodes={})",
+      //  d, p.0, self.nodes_searched
+      //));
+    }
+    p
   }
 
   fn pvs<const QUIESCENCE: bool>(
@@ -356,6 +382,7 @@ impl Engine {
   }
 }
 
+/*
 pub fn get_moves_internal(this: &Engine) -> Vec<Move> {
   let mut moves = Vec::new();
   this.state.move_gen::<false>(&mut moves);
@@ -392,14 +419,4 @@ pub fn get_outcome_internal(this: &Engine) -> Option<&'static str> {
 pub fn get_state_internal(this: &Engine) -> State {
   this.state.clone()
 }
-
-#[wasm_bindgen]
-pub fn new_engine(seed: u64) -> Engine {
-  Engine {
-    nodes_searched: 0,
-    seed,
-    state: State::starting_state(),
-    move_order_table: HashMap::new(),
-    killer_moves: [None; 100],
-  }
-}
+*/
