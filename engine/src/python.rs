@@ -48,20 +48,14 @@ impl Engine {
 }
 
 #[pyfunction]
-fn encode_move(m: &str, array_len: usize, array: usize) {
-  assert_eq!(array_len, 64 * 2);
-  let array: &mut [[u8; 64]; 2] = unsafe { &mut *(array as *mut _) };
+fn index_to_move(index: u16) -> String {
+  serde_json::to_string(&Move::from_index(index)).unwrap()
+}
+
+#[pyfunction]
+fn move_to_index(m: &str) -> u16 {
   let m: Move = serde_json::from_str(m).unwrap();
-  let mut layer_index = 0;
-  let mut emit_bitboard = |bitboard: u64| {
-    for i in 0..64 {
-      array[layer_index][i] = ((bitboard >> i) & 1) as u8;
-    }
-    layer_index += 1;
-  };
-  emit_bitboard(if m.from == 64 { 0 } else { 1 << m.from });
-  emit_bitboard(1 << m.to);
-  assert_eq!(layer_index, 2);
+  m.to_index()
 }
 
 #[pyfunction]
@@ -76,7 +70,8 @@ fn version() -> i64 {
 
 #[pymodule]
 fn engine(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
-  m.add_function(wrap_pyfunction!(encode_move, m)?)?;
+  m.add_function(wrap_pyfunction!(index_to_move, m)?)?;
+  m.add_function(wrap_pyfunction!(move_to_index, m)?)?;
   m.add_function(wrap_pyfunction!(channel_count, m)?)?;
   m.add_function(wrap_pyfunction!(version, m)?)?;
   m.add_class::<Engine>()?;

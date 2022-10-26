@@ -4,9 +4,11 @@ use std::hash::Hash;
 
 use serde::{ser::SerializeSeq, Deserialize, Serialize};
 
-const ALL_BUT_A_FILE: u64 = 0xfefefefefefefefe;
-const ALL_BUT_H_FILE: u64 = 0x7f7f7f7f7f7f7f7f;
+#[rustfmt::skip]
+const ALL_BUT_A_FILE:   u64 = 0xfefefefefefefefe;
+const ALL_BUT_H_FILE:   u64 = 0x7f7f7f7f7f7f7f7f;
 const MIDDLE_SIX_RANKS: u64 = 0x00ffffffffffff00;
+const LAST_RANKS:       u64 = 0xff000000000000ff;
 
 #[derive(Debug, Clone, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -80,7 +82,21 @@ type SquareDelta = u8;
 pub struct Move {
   pub from:      Square,
   pub to:        Square,
-  pub promotion: Option<PromotablePiece>,
+  //pub promotion: Option<PromotablePiece>,
+}
+
+impl Move {
+  pub fn to_index(&self) -> u16 {
+    let from = self.from as u16;
+    let to = self.to as u16;
+    from * 64 + to
+  }
+
+  pub fn from_index(index: u16) -> Self {
+    let from = (index / 64) as Square;
+    let to = (index % 64) as Square;
+    Move { from, to }
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -241,7 +257,7 @@ impl State {
         moves.push(Move {
           from:      get_square(self.ducks.0),
           to:        pos,
-          promotion: None,
+          //promotion: None,
         });
       }
       return;
@@ -259,7 +275,7 @@ impl State {
           moves.push(Move {
             from:      get_square(our_king),
             to:        get_square(our_king) + 2,
-            promotion: None,
+            //promotion: None,
           });
         }
       }
@@ -273,7 +289,7 @@ impl State {
           moves.push(Move {
             from:      get_square(our_king),
             to:        get_square(our_king) - 2,
-            promotion: None,
+            //promotion: None,
           });
         }
       }
@@ -295,10 +311,10 @@ impl State {
     let mut pawn_capture_right =
       our_pawns & (shift_backward!(pawn_capturable & ALL_BUT_A_FILE) >> 1);
 
-    let mut promote_single_pawn_pushes = single_pawn_pushes & seventh_rank;
-    let mut promote_double_pawn_pushes = double_pawn_pushes & seventh_rank;
-    let mut promote_pawn_capture_left = pawn_capture_left & seventh_rank;
-    let mut promote_pawn_capture_right = pawn_capture_right & seventh_rank;
+    //let mut promote_single_pawn_pushes = single_pawn_pushes & seventh_rank;
+    //let mut promote_double_pawn_pushes = double_pawn_pushes & seventh_rank;
+    //let mut promote_pawn_capture_left = pawn_capture_left & seventh_rank;
+    //let mut promote_pawn_capture_right = pawn_capture_right & seventh_rank;
     single_pawn_pushes &= !seventh_rank;
     double_pawn_pushes &= !seventh_rank;
     pawn_capture_left &= !seventh_rank;
@@ -310,7 +326,7 @@ impl State {
           $moves.push(Move {
             from:      pos,
             to:        pos.wrapping_add($delta),
-            promotion: None,
+            //promotion: None,
           });
         }
       };
@@ -333,30 +349,30 @@ impl State {
     }
     add_pawn_moves!("plain", pawn_capture_left, moves, forward_one_row - 1);
     add_pawn_moves!("plain", pawn_capture_right, moves, forward_one_row + 1);
-    add_pawn_moves!(
-      "promotion",
-      promote_pawn_capture_left,
-      moves,
-      forward_one_row - 1
-    );
-    add_pawn_moves!(
-      "promotion",
-      promote_pawn_capture_right,
-      moves,
-      forward_one_row + 1
-    );
-    add_pawn_moves!(
-      "promotion",
-      promote_single_pawn_pushes,
-      moves,
-      forward_one_row
-    );
-    add_pawn_moves!(
-      "promotion",
-      promote_double_pawn_pushes,
-      moves,
-      forward_one_row * 2
-    );
+    // add_pawn_moves!(
+    //   "promotion",
+    //   promote_pawn_capture_left,
+    //   moves,
+    //   forward_one_row - 1
+    // );
+    // add_pawn_moves!(
+    //   "promotion",
+    //   promote_pawn_capture_right,
+    //   moves,
+    //   forward_one_row + 1
+    // );
+    // add_pawn_moves!(
+    //   "promotion",
+    //   promote_single_pawn_pushes,
+    //   moves,
+    //   forward_one_row
+    // );
+    // add_pawn_moves!(
+    //   "promotion",
+    //   promote_double_pawn_pushes,
+    //   moves,
+    //   forward_one_row * 2
+    // );
     if !QUIESCENCE {
       add_pawn_moves!("plain", single_pawn_pushes, moves, forward_one_row);
       add_pawn_moves!(
@@ -381,7 +397,7 @@ impl State {
         moves.push(Move {
           from:      pos,
           to:        knight_move,
-          promotion: None,
+          //promotion: None,
         });
       }
     }
@@ -398,7 +414,7 @@ impl State {
         moves.push(Move {
           from:      pos,
           to:        king_move,
-          promotion: None,
+          //promotion: None,
         });
       }
     }
@@ -415,7 +431,7 @@ impl State {
         moves.push(Move {
           from:      pos,
           to:        rook_move,
-          promotion: None,
+          //promotion: None,
         });
       }
     }
@@ -432,7 +448,7 @@ impl State {
         moves.push(Move {
           from:      pos,
           to:        bishop_move,
-          promotion: None,
+          //promotion: None,
         });
       }
     }
@@ -449,7 +465,7 @@ impl State {
         moves.push(Move {
           from:      pos,
           to:        queen_move,
-          promotion: None,
+          //promotion: None,
         });
       }
     }
@@ -466,7 +482,7 @@ impl State {
   }
 
   pub fn apply_move(&mut self, m: Move) -> bool {
-    let from_mask = if m.from == 64 { 0 } else { 1 << m.from };
+    let from_mask = 1 << m.from;
     let to_mask = 1 << m.to;
     if !self.is_duck_move {
       self.highlight.0 = 0;
@@ -474,8 +490,8 @@ impl State {
     self.highlight.0 |= from_mask | to_mask;
     // Handle duck moves.
     if self.is_duck_move {
-      if self.ducks.0 & from_mask != 0 || m.from == 64 {
-        self.ducks.0 ^= from_mask;
+      if self.ducks.0 & from_mask != 0 {
+        self.ducks.0 &= !from_mask;
         self.ducks.0 |= to_mask;
         self.is_duck_move = false;
         self.white_turn = !self.white_turn;
@@ -489,8 +505,8 @@ impl State {
     let mut remove_rooks = 0;
     let mut new_queens = 0;
     let mut new_rooks = 0;
-    let mut new_bishops = 0;
-    let mut new_knights = 0;
+    //let mut new_bishops = 0;
+    //let mut new_knights = 0;
 
     enum PieceKind {
       Pawn,
@@ -516,7 +532,7 @@ impl State {
       // Check if this is the kind of piece we're moving.
       if us.0 & from_mask != 0 {
         // Move our piece.
-        us.0 ^= from_mask;
+        us.0 &= !from_mask;
         us.0 |= to_mask;
         // Handle special rules for special pieces.
         match (piece_kind, m.from) {
@@ -536,19 +552,23 @@ impl State {
               (false, _) => {}
             }
             // Check if we're promoting.
-            match &m.promotion {
-              Some(promotion) => {
+            //match &m.promotion {
+            //  Some(promotion) => {
+                // Prevent promotions that aren't on the first or last rank.
+                // This allows our move encoding to be lazy, and just say every move is promoting to queen.
+                let promotion_mask = to_mask & LAST_RANKS;
                 // Remove the pawn, and setup the promotion.
-                us.0 &= !to_mask;
-                match promotion {
-                  PromotablePiece::Queen => new_queens = to_mask,
-                  PromotablePiece::Rook => new_rooks = to_mask,
-                  PromotablePiece::Knight => new_knights = to_mask,
-                  PromotablePiece::Bishop => new_bishops = to_mask,
-                }
-              }
-              None => {}
-            }
+                us.0 &= !promotion_mask;
+                new_queens = promotion_mask;
+                //match promotion {
+                //  PromotablePiece::Queen => new_queens = promotion_mask,
+                //  PromotablePiece::Rook => new_rooks = promotion_mask,
+                //  PromotablePiece::Knight => new_knights = promotion_mask,
+                //  PromotablePiece::Bishop => new_bishops = promotion_mask,
+                //}
+            //  }
+            //  None => {}
+            //}
           }
           (PieceKind::King, _) => {
             self.castling_rights[self.white_turn as usize] = CastlingRights {
@@ -580,8 +600,8 @@ impl State {
       }
     }
     self.rooks[self.white_turn as usize].0 &= !remove_rooks;
-    self.knights[self.white_turn as usize].0 |= new_knights;
-    self.bishops[self.white_turn as usize].0 |= new_bishops;
+    //self.knights[self.white_turn as usize].0 |= new_knights;
+    //self.bishops[self.white_turn as usize].0 |= new_bishops;
     self.rooks[self.white_turn as usize].0 |= new_rooks;
     self.queens[self.white_turn as usize].0 |= new_queens;
 

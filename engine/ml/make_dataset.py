@@ -32,7 +32,7 @@ def process_game_paths(paths):
     print("Total games:", len(all_games))
     print("Total moves:", total_moves)
 
-    input_array = np.zeros((total_moves, channel_count, 8, 8), dtype=np.int8)
+    input_array = np.zeros((total_moves, 8, 8, channel_count), dtype=np.int8)
     policy_array = np.zeros((total_moves,), dtype=np.int32)
     value_array = np.zeros((total_moves,), dtype=np.int8)
     b = input_array.nbytes + policy_array.nbytes + value_array.nbytes
