@@ -108,9 +108,9 @@ technically statistically biases the games slightly towards being shorter.)
         formatter_class=Formatter,
     )
     parser.add_argument("--prefix", metavar="PATH", default=".", help="Prefix directory. Make sure this directory contains games/ and models/ subdirectories.")
-    parser.add_argument("--game-count", metavar="N", type=int, default=5000, help="Minimum number of games to generate per iteration.")
-    parser.add_argument("--training-steps-const", metavar="N", type=int, default=5000, help="Base number of training steps to perform per iteration.")
-    parser.add_argument("--training-steps-linear", metavar="N", type=int, default=1000, help="We also apply an additional N steps for each additional iteration included in the training window.")
+    parser.add_argument("--game-count", metavar="N", type=int, default=2500, help="Minimum number of games to generate per iteration.")
+    parser.add_argument("--training-steps-const", metavar="N", type=int, default=1000, help="Base number of training steps to perform per iteration.")
+    parser.add_argument("--training-steps-linear", metavar="N", type=int, default=250, help="We also apply an additional N steps for each additional iteration included in the training window.")
     parser.add_argument("--training-window", metavar="N", type=int, default=10, help="When training include games from the past N iterations.")
     parser.add_argument("--training-window-exclude", metavar="N", type=int, default=0, help="To help things get started faster we exclude games from the very first N iterations from later training game windows.")
     parser.add_argument("--parallel-games-processes", metavar="N", type=int, default=3, help="Number of games processes to run in parallel.")
@@ -144,7 +144,8 @@ technically statistically biases the games slightly towards being shorter.)
         try:
             os.mkdir(index_to_dir(current_model_number + 1))
         except FileExistsError:
-            print("\x1b[91mWeird, should this already exist?\x1b0m", index_to_dir(current_model_number + 1))
+            #print("\x1b[91mWeird, should this already exist?\x1b[0m", index_to_dir(current_model_number + 1))
+            pass
 
         print("=========================== Doing training:", old_model, "->", new_model)
         # Figure out the directories of games to train on.

@@ -2,6 +2,19 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
+class EWMA:
+    def __init__(self, alpha=0.02):
+        self.alpha = alpha
+        self.value = None
+        self.all_values = []
+
+    def apply(self, x):
+        self.all_values.append(x)
+        if self.value is None:
+            self.value = x
+        else:
+            self.value = (1 - self.alpha) * self.value + self.alpha * x
+
 class ConvBlock(torch.nn.Module):
     def __init__(self, filters, kernel_size=3):
         super().__init__()
@@ -93,12 +106,14 @@ if __name__ == "__main__":
     policy = torch.tensor(policy)
     value = torch.tensor(value)
 
+    value = value.reshape((-1, 1))
+
     def make_batch(batch_size):
         indices = np.random.randint(0, len(input), size=batch_size)
         return (
-            input[indices].cuda().to(dtype),
+            input[indices].cuda().to(torch.float32),
             policy[indices].cuda().to(torch.int64),
-            value[indices].cuda().to(dtype),
+            value[indices].cuda().to(torch.float32),
         )
 
     # Perform generator pretraining.
@@ -117,6 +132,12 @@ if __name__ == "__main__":
         optimizer.zero_grad()
         inp, pol, val = make_batch(args.minibatch_size)
         sm_output, tanh_output = model(inp)
+        # Print all shapes.
+        # print("inp", inp.shape)
+        # print("pol", pol.shape)
+        # print("val", val.shape)
+        # print("sm_output", sm_output.shape)
+        # print("tanh_output", tanh_output.shape)
         sm_loss = cross_en(sm_output, pol)
         tanh_loss = mse_func(tanh_output, val)
         loss = sm_loss + tanh_loss

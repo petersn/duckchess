@@ -10,7 +10,7 @@ channel_count = engine.channel_count()
 
 def process_game_paths(paths):
     all_games = []
-    for path in glob.glob(paths):
+    for path in paths:
         with open(path) as f:
             for line in f:
                 all_games.append(json.loads(line))
@@ -69,7 +69,7 @@ def process_game_paths(paths):
 
 if __name__ == "__main__":
     game_paths = "rl-games/games-*.json"
-    input_array, policy_array, value_array = process_game_paths(game_paths)
+    input_array, policy_array, value_array = process_game_paths(glob.glob(game_paths))
     # Save the output as three numpy arrays packed into a single .npz file.
     np.savez_compressed(
         "train.npz",
