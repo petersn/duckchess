@@ -8,14 +8,14 @@ const ALL_BUT_A_FILE: u64 = 0xfefefefefefefefe;
 const ALL_BUT_H_FILE: u64 = 0x7f7f7f7f7f7f7f7f;
 const MIDDLE_SIX_RANKS: u64 = 0x00ffffffffffff00;
 
-#[derive(Clone, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CastlingRights {
   pub king_side:  bool,
   pub queen_side: bool,
 }
 
-#[derive(Clone, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct BitBoard(pub u64);
 
 impl Serialize for BitBoard {
@@ -46,7 +46,7 @@ impl<'de> Deserialize<'de> for BitBoard {
   }
 }
 
-#[derive(Clone, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct State {
   pub pawns:           [BitBoard; 2],
@@ -196,7 +196,11 @@ impl State {
       (false, false) => GameOutcome::Ongoing,
       (true, false) => GameOutcome::WhiteWin,
       (false, true) => GameOutcome::BlackWin,
-      (true, true) => unreachable!(),
+      (true, true) => {
+        // Print out the entire state.
+        println!("{:?}", self);
+        panic!("Both kings gone??");
+      }
     }
   }
 
@@ -451,6 +455,9 @@ impl State {
   }
 
   pub fn move_gen<const QUIESCENCE: bool>(&self, moves: &mut Vec<Move>) {
+    if self.is_game_over() {
+      return;
+    }
     match self.white_turn {
       true => self.move_gen_for_color::<QUIESCENCE, true>(moves),
       false => self.move_gen_for_color::<QUIESCENCE, false>(moves),
@@ -554,7 +561,7 @@ impl State {
                 (4, 2) => (0, 3),
                 (60, 62) => (63, 61),
                 (60, 58) => (56, 59),
-                _ => unreachable!(),
+                _ => panic!("Invalid castling move"),
               };
               remove_rooks = 1 << rook_from;
               new_rooks = 1 << rook_to;

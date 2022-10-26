@@ -47,9 +47,10 @@ struct Evals {
 
 impl Evals {
   async fn create(worker_id: usize, inference_engine: &InferenceEngine, state: &State) -> Self {
-    let outputs = inference_engine.predict(worker_id, state).await;
+    let mut outputs = inference_engine.predict(worker_id, state).await;
     let mut moves = vec![];
     state.move_gen::<false>(&mut moves);
+    outputs.renormalize(&moves);
     // TODO: The rest of the stuff.
     Self {
       outcome: state.get_outcome(),
@@ -123,7 +124,7 @@ struct MctsNode {
 
 impl MctsNode {
   async fn create(worker_id: usize, inference_engine: &InferenceEngine, state: State) -> Self {
-    let mut evals = Evals::create(worker_id, inference_engine, &state).await;
+    let evals = Evals::create(worker_id, inference_engine, &state).await;
     Self {
       state,
       evals,
@@ -133,7 +134,7 @@ impl MctsNode {
     }
   }
 
-  fn total_action_score(&self, edges: &Vec<MctsEdge>, m: Move) -> f32 {
+  fn total_action_score(&self, edges: &[MctsEdge], m: Move) -> f32 {
     let (u, q) = match self.outgoing_edges.get(&m) {
       None => ((1.0 + self.all_edge_visits as f32).sqrt(), 0.0),
       Some(edge_index) => {
@@ -145,11 +146,14 @@ impl MctsNode {
         )
       }
     };
+    if self.evals.posterior(m) > 0.1 {
+      //println!("u: {}, q: {}, posterior: {}", u, q, self.evals.posterior(m));
+    }
     let u = EXPLORATION_ALPHA * self.evals.posterior(m) * u;
     q + u
   }
 
-  fn select_action(&self, edges: &Vec<MctsEdge>) -> Option<Move> {
+  fn select_action(&self, edges: &[MctsEdge]) -> Option<Move> {
     if self.evals.moves.is_empty() {
       return None;
     }
@@ -260,7 +264,28 @@ impl<'a> Mcts<'a> {
     }
   }
 
-  async fn play(&mut self, m: Move) {
+  pub fn sample_move_by_visit_count(&self) -> Option<Move> {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    let mut total_visits: i32 = 0;
+    println!("-------- {}", self.nodes[self.root.0].outgoing_edges.len());
+    for (_, edge_index) in &self.nodes[self.root.0].outgoing_edges {
+      total_visits += self.edges[edge_index.0].visits as i32;
+    }
+    if total_visits == 0 {
+      return None;
+    }
+    let mut visit_count = rng.gen_range(0..total_visits);
+    for (m, edge_index) in &self.nodes[self.root.0].outgoing_edges {
+      visit_count -= self.edges[edge_index.0].visits as i32;
+      if visit_count < 0 {
+        return Some(*m);
+      }
+    }
+    panic!("Failed to sample move by visit count");
+  }
+
+  pub async fn apply_move(&mut self, m: Move) {
     match self.nodes[self.root.0].outgoing_edges.get(&m) {
       // If we already have a node for this move, then just make it the new root.
       Some(edge_index) => self.root = self.edges[edge_index.0].child,

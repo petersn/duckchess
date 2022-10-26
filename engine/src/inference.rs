@@ -4,9 +4,12 @@ use tensorflow::{
   FetchToken, Graph, Operation, SavedModelBundle, Session, SessionOptions, SessionRunArgs, Tensor,
 };
 
-use crate::rules::State;
+use crate::rules::{State, Move};
 
-pub const BATCH_SIZE: usize = 4;
+pub const BATCH_SIZE: usize = 256;
+
+// We triple buffer, to improve performance.
+pub const BUFFER_COUNT: usize = 2;
 
 // We have:
 //   Six channels for white pieces: pawns, knights, bishops, rooks, queens, kings
@@ -26,6 +29,23 @@ pub struct ModelOutputs {
   pub policy: [f32; 64 * 64],
   // value is a valuation for the current player from -1 to +1.
   pub value:  f32,
+}
+
+impl ModelOutputs {
+  pub fn renormalize(&mut self, moves: &[Move]) {
+    let mut temp = [0.0; 64 * 64];
+    let mut sum = 0.0;
+    for m in moves {
+      let idx = (m.from % 64) as usize * 64 + m.to as usize;
+      let val = self.policy[idx];
+      temp[idx] = val;
+      sum += val;
+    }
+    let rescale = 1.0 / (1e-16 + sum);
+    for i in 0..64 * 64 {
+      self.policy[i] = temp[i] * rescale;
+    }
+  }
 }
 
 fn featurize_state<T: From<u8>>(state: &State, array: &mut [T; 64 * CHANNEL_COUNT]) {
@@ -72,8 +92,9 @@ fn featurize_state<T: From<u8>>(state: &State, array: &mut [T; 64 * CHANNEL_COUN
 }
 
 struct ReturnChannels {
-  slot_index: usize,
-  channels:   [Option<tokio::sync::oneshot::Sender<ModelOutputs>>; 2 * BATCH_SIZE],
+  next_buffer: usize,
+  slot_index:  usize,
+  channels:    [Option<tokio::sync::oneshot::Sender<ModelOutputs>>; BUFFER_COUNT * BATCH_SIZE],
 }
 
 pub struct InferenceEngine {
@@ -84,8 +105,9 @@ pub struct InferenceEngine {
   //session_run_args: RefCell<SessionRunArgs<'a>>,
   //policy_ft: FetchToken,
   //value_ft: FetchToken,
-  input_tensors:   [&'static SyncUnsafeCell<Tensor<f32>>; 2],
+  input_tensors:   [&'static SyncUnsafeCell<Tensor<f32>>; BUFFER_COUNT],
   return_channels: tokio::sync::Mutex<ReturnChannels>,
+  eval_count:      &'static std::sync::atomic::AtomicUsize,
   //input_op: String,
   //output_op: String,
 }
@@ -96,12 +118,11 @@ impl InferenceEngine {
   pub async fn create() -> InferenceEngine {
     // Initialize save_dir, input tensor, and an empty graph
     let save_dir = "/tmp/keras";
-    let input_tensors = (0..2).map(|_| &*Box::leak(Box::new(
+    let input_tensors = (0..BUFFER_COUNT).map(|_| &*Box::leak(Box::new(
       SyncUnsafeCell::new(
       Tensor::new(&[BATCH_SIZE as u64, 8, 8, 22])
       )
     ))).collect::<Vec<_>>();
-    let input_tensors = [input_tensors[0], input_tensors[1]];
     let mut graph = Graph::new();
 
     // Load saved model bundle (session state + meta_graph data)
@@ -134,26 +155,41 @@ impl InferenceEngine {
     let policy_op = graph.operation_by_name_required(&policy_info.name().name).unwrap();
     let value_op = graph.operation_by_name_required(&value_info.name().name).unwrap();
 
+    let eval_count: &'static _ = Box::leak(Box::new(std::sync::atomic::AtomicUsize::new(0)));
+
+    // Launch a thread to read eval_count periodically.
+    tokio::spawn(async move {
+      let mut last_eval_count = 0;
+      loop {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let eval_count = eval_count.load(std::sync::atomic::Ordering::Relaxed) * BATCH_SIZE;
+        println!("eval_count: {} ({} per second)", eval_count, eval_count - last_eval_count);
+        last_eval_count = eval_count;
+      }
+    });
+
     InferenceEngine {
       bundle,
       input_op,
       policy_op,
       value_op,
-      input_tensors,
+      input_tensors: input_tensors[..].try_into().unwrap(),
       return_channels: tokio::sync::Mutex::new(ReturnChannels {
+        next_buffer: 0,
         slot_index: 0,
-        channels: (0..2*BATCH_SIZE).map(|_| None).collect::<Vec<_>>().try_into().map_err(|_| ()).unwrap(),
+        channels: (0..BUFFER_COUNT*BATCH_SIZE).map(|_| None).collect::<Vec<_>>().try_into().map_err(|_| ()).unwrap(),
       }),
+      eval_count,
     }
   }
 
   pub async fn predict(&self, worker_id: usize, state: &State) -> ModelOutputs {
     // Allocate a slot.
-    let (slot_index, rx) = {
+    let (slot_index, rx, work) = {
       let mut guard = self.return_channels.lock().await;
       //println!("[{worker_id}] \x1b[93m >>> LOCKED\x1b[0m");
       let slot_index = guard.slot_index;
-      guard.slot_index = (guard.slot_index + 1) % (2 * BATCH_SIZE);
+      guard.slot_index = (guard.slot_index + 1) % (BUFFER_COUNT * BATCH_SIZE);
       // Make sure we haven't overflowed.
       let g: String = guard.channels.iter().map(|c| match c {
         Some(_) => "[ ]",
@@ -161,35 +197,49 @@ impl InferenceEngine {
       }).collect();
 
       //println!("[{worker_id}] All channels: {:?} (index={})", g, slot_index);
-      //if guard.channels[slot_index].is_some() {
-      //  panic!("Overflowed!");
-      //}
-      assert!(guard.channels[slot_index].is_none());
+      if guard.channels[slot_index].is_some() {
+        //println!("[{worker_id}] \x1b[91m >>> OVERFLOW\x1b[0m");
+        panic!("Overflowed!");
+      }
+      //assert!(guard.channels[slot_index].is_none());
+      // Featurize.
+      let array: &mut [f32] = unsafe {
+        let input_tensor: *mut Tensor<f32> = self.input_tensors[slot_index / BATCH_SIZE].get();
+        let offset = (slot_index % BATCH_SIZE) * SLOT_SIZE;
+        &mut input_tensor.as_mut().unwrap()[offset..offset + SLOT_SIZE]
+      };
+      featurize_state::<f32>(state, array.try_into().unwrap());
+
+      //println!("[{worker_id}] Allocated slot {} (next_buffer={})", slot_index, guard.next_buffer);
+
+      let work = match slot_index % BATCH_SIZE == BATCH_SIZE - 1 {
+        true => {
+          let buffer = guard.next_buffer;
+          guard.next_buffer = (guard.next_buffer + 1) % BUFFER_COUNT;
+          Some(buffer)
+        }
+        false => None,
+      };
+
       // Insert a new channel.
       let (tx, rx) = tokio::sync::oneshot::channel();
       guard.channels[slot_index] = Some(tx);
       //println!("[{worker_id}] \x1b[93m <<< UNLOCKING\x1b[0m");
       drop(guard);
-      (slot_index, rx)
+      (slot_index, rx, work)
     };
 
-    let tensor_index = slot_index / BATCH_SIZE;
-    //println!("[{worker_id}] Allocated slot {} (tensor={})", slot_index, tensor_index);
+    //let tensor_index = slot_index / BATCH_SIZE;
+    ////println!("[{worker_id}] Allocated slot {} (tensor={})", slot_index, slot_index / BATCH_SIZE);
 
-    // Featurize.
-    let array: &mut [f32] = unsafe {
-      let input_tensor: *mut Tensor<f32> = self.input_tensors[tensor_index].get();
-      &mut input_tensor.as_mut().unwrap()[slot_index..slot_index + SLOT_SIZE]
-    };
-    featurize_state::<f32>(state, array.try_into().unwrap());
+    if let Some(buffer) = work {
 
-    if slot_index == BATCH_SIZE - 1 || slot_index == 2 * BATCH_SIZE - 1 {
       //println!("[{worker_id}] >>>>>>>>>> Running inference");
       // If we're the last slot, run the batch.
       let (policy_output, value_output) = {
         let session = &self.bundle.session;
         let mut session_run_args = SessionRunArgs::new();
-        session_run_args.add_feed(&self.input_op, 0, unsafe { &*self.input_tensors[tensor_index].get() });
+        session_run_args.add_feed(&self.input_op, 0, unsafe { &*self.input_tensors[buffer].get() });
         let policy_ft = session_run_args.request_fetch(&self.policy_op, 0);
         let value_ft = session_run_args.request_fetch(&self.value_op, 1);
         session.run(&mut session_run_args).expect("Can't run session");
@@ -197,14 +247,14 @@ impl InferenceEngine {
         let value_output = session_run_args.fetch::<f32>(value_ft).expect("Can't fetch output");
         (policy_output, value_output)
       };
+      self.eval_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
       let mut guard = self.return_channels.lock().await;
-      //println!("[{worker_id}] \x1b[92m >>> LOCKING\x1b[0m");
-      let relevant_return_channels = match tensor_index {
-        0 => &mut guard.channels[0..BATCH_SIZE],
-        1 => &mut guard.channels[BATCH_SIZE..2 * BATCH_SIZE],
-        _ => unreachable!(),
-      };
+      //let mut guard = self.return_channels.lock().await;
+      //println!("[{worker_id}] \x1b[92m >>> LOCKING: {buffer}\x1b[0m");
+      // Acquire the lock.
+      let relevant_return_channels = &mut guard.channels[buffer * BATCH_SIZE .. (buffer + 1) * BATCH_SIZE];
+
       for (i, channel) in relevant_return_channels.iter_mut().enumerate() {
         let tx = channel.take().unwrap();
         tx.send(ModelOutputs {
@@ -218,7 +268,7 @@ impl InferenceEngine {
       }).collect();
 
       //println!("[{worker_id}] Channels after infr: {:?}", g);
-      //println!("[{worker_id}] \x1b[92m <<< UNLOCKING\x1b[0m");
+      //println!("[{worker_id}] \x1b[92m <<< UNLOCKING: {buffer}\x1b[0m");
       drop(guard);
     }
 

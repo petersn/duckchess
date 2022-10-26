@@ -7,16 +7,33 @@ async fn main() {
 
   // Spawn several tasks to run MCTS in parallel.
   let mut tasks = Vec::new();
-  for task_id in 0..2*engine::inference::BATCH_SIZE {
+  for task_id in 0..2*engine::inference::BATCH_SIZE - 1 {
     tasks.push(tokio::spawn(async move {
-      //println!("Starting task {} (on thread: {:?})", task_id, std::thread::current().id());
-      let mut mcts = Mcts::create(task_id, inference_engine).await;
-      println!("[{task_id}] Completed init");
-      for step in 0..10 {
-        //println!("Task {} step {} (on thread: {:?})", task_id, step, std::thread::current().id());
-        mcts.step().await;
+      loop {
+        let mut mcts = Mcts::create(task_id, inference_engine).await;
+        let mut game = vec![];
+        for _ in 0..300 {
+          for _ in 0..400 {
+            mcts.step().await;
+          }
+          match mcts.sample_move_by_visit_count() {
+            None => break,
+            Some(m) => {
+              //println!("[{task_id}] Generated a move: {:?}", m);
+              game.push(m);
+              mcts.apply_move(m).await;
+            }
+          }
+        }
+        println!("[{task_id}] Generated a game len={}", game.len());
       }
-      println!("[{task_id}] Completed steps");
+      //println!("Starting task {} (on thread: {:?})", task_id, std::thread::current().id());
+      //println!("[{task_id}] Completed init");
+      //for step in 0..1_000_000 {
+      //  //println!("Task {} step {} (on thread: {:?})", task_id, step, std::thread::current().id());
+      //  mcts.step().await;
+      //}
+      //println!("[{task_id}] Completed steps");
     }));
   }
   // Join all the tasks.
