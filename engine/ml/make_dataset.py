@@ -25,6 +25,7 @@ def process_game_paths(paths):
         elif version == 3:
             total_moves += sum(x is False for x in game["was_rand"])
         elif version == 101:
+            # Version 101 is an MCTS game for RL, so we only take moves that got full searches.
             total_moves += sum(wl and mov is not None for wl, mov in zip(game["was_large"], game["train_moves"]))
         else:
             raise RuntimeError("Unknown game version: " + str(version))
@@ -43,8 +44,8 @@ def process_game_paths(paths):
         version = game.get("version", 1)
         value = {"1-0": +1, "0-1": -1, None: 0}[game["outcome"]]
         e = engine.Engine(0)
+
         moves_list = game["train_moves"] if "train_moves" in game else game["moves"]
-        #assert len(moves_list) == len(game["moves"])
         for i, move in enumerate(moves_list):
             if i >= len(game["moves"]):
                 continue
