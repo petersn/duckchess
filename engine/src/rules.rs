@@ -83,6 +83,7 @@ pub struct Move {
   pub promotion: Option<PromotablePiece>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum GameOutcome {
   Ongoing,
   Draw,

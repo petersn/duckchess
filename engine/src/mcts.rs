@@ -39,6 +39,7 @@ async fn evaluate_network(inference_engine: &InferenceEngine, state: &State, eva
 }
 */
 
+#[derive(Clone)]
 struct Evals {
   outcome: GameOutcome,
   moves:   Vec<Move>,
@@ -93,6 +94,7 @@ struct NodeIndex(usize);
 #[derive(Clone, Copy)]
 struct EdgeIndex(usize);
 
+#[derive(Clone)]
 struct MctsEdge {
   visits:      u32,
   total_score: f32,
@@ -114,6 +116,7 @@ impl MctsEdge {
   }
 }
 
+#[derive(Clone)]
 struct MctsNode {
   state:           State,
   evals:           Evals,
@@ -227,6 +230,10 @@ impl<'a> Mcts<'a> {
     }
   }
 
+  pub fn get_state(&self) -> &State {
+    &self.nodes[self.root.0].state
+  }
+
   pub async fn step(&mut self) {
     let (pv_leaf, pv_edges, pv_move) = self.select_principal_variation(false).await;
     let new_node = match pv_move {
@@ -288,7 +295,11 @@ impl<'a> Mcts<'a> {
   pub async fn apply_move(&mut self, m: Move) {
     match self.nodes[self.root.0].outgoing_edges.get(&m) {
       // If we already have a node for this move, then just make it the new root.
-      Some(edge_index) => self.root = self.edges[edge_index.0].child,
+      Some(edge_index) => {
+        self.root = self.edges[edge_index.0].child;
+        // We now perform garbage collection.
+        todo!();
+      }
       // Otherwise, we throw everything away.
       None => {
         let mut new_state = self.nodes[self.root.0].state.clone();

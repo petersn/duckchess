@@ -24,6 +24,7 @@ pub const BUFFER_COUNT: usize = 2;
 const CHANNEL_COUNT: usize = 6 + 6 + 1 + 1 + 1 + 4 + 1 + 1 + 1;
 const SLOT_SIZE: usize = 64 * CHANNEL_COUNT;
 
+#[derive(Clone)]
 pub struct ModelOutputs {
   // policy[64 * from + to] is a probability 0 to 1.
   pub policy: [f32; 64 * 64],
