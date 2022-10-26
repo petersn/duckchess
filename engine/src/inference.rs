@@ -1,8 +1,6 @@
 use std::cell::SyncUnsafeCell;
 
-use tensorflow::{
-  Graph, Operation, SavedModelBundle, SessionOptions, SessionRunArgs, Tensor,
-};
+use tensorflow::{Graph, Operation, SavedModelBundle, SessionOptions, SessionRunArgs, Tensor};
 
 use crate::rules::{Move, State};
 

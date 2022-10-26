@@ -1,7 +1,6 @@
+use clap::Parser;
 use engine::inference::InferenceEngine;
 use engine::mcts::Mcts;
-
-use clap::Parser;
 
 const PLAYOUT_CAP_RANDOMIZATION_P: f32 = 0.25;
 const LARGE_PLAYOUTS: u32 = 1600;
@@ -23,9 +22,14 @@ async fn main() {
   // Parse command line arguments.
   let args = Args::parse();
 
-  let inference_engine: &InferenceEngine = Box::leak(Box::new(InferenceEngine::create(&args.model_dir).await));
+  let inference_engine: &InferenceEngine =
+    Box::leak(Box::new(InferenceEngine::create(&args.model_dir).await));
 
-  let output_path = format!("{}/games-{:016x}.json", args.output_dir, rand::random::<u64>());
+  let output_path = format!(
+    "{}/games-{:016x}.json",
+    args.output_dir,
+    rand::random::<u64>()
+  );
   println!("Writing to {}", output_path);
   let output_file: &'static _ = Box::leak(Box::new(tokio::sync::Mutex::new(
     std::fs::File::create(output_path).unwrap(),
@@ -71,7 +75,12 @@ async fn main() {
           }
         }
         let total_steps = steps_performed.iter().sum::<u32>();
-        println!("[{task_id}] Generated a game len={} total-steps={} steps-per-move={:.2}", moves.len(), total_steps, total_steps as f32 / moves.len() as f32);
+        println!(
+          "[{task_id}] Generated a game len={} total-steps={} steps-per-move={:.2}",
+          moves.len(),
+          total_steps,
+          total_steps as f32 / moves.len() as f32
+        );
         {
           let mut file = output_file.lock().await;
           let obj = serde_json::json!({

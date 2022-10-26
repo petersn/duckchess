@@ -1,9 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{
-  rules::Move,
-  search,
-};
+use crate::{rules::Move, search};
 
 #[pyclass]
 struct Engine {

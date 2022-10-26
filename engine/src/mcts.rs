@@ -47,18 +47,24 @@ impl Evals {
     let turn_flip = if state.white_turn { 1.0 } else { -1.0 };
     let mut outputs = match state.get_outcome() {
       GameOutcome::Ongoing => inference_engine.predict(state).await,
-      GameOutcome::WhiteWin => ModelOutputs { policy: [0.0; 64 * 64], value: turn_flip },
-      GameOutcome::BlackWin => ModelOutputs { policy: [0.0; 64 * 64], value: -turn_flip },
-      GameOutcome::Draw => ModelOutputs { policy: [0.0; 64 * 64], value: 0.0 },
+      GameOutcome::WhiteWin => ModelOutputs {
+        policy: [0.0; 64 * 64],
+        value:  turn_flip,
+      },
+      GameOutcome::BlackWin => ModelOutputs {
+        policy: [0.0; 64 * 64],
+        value:  -turn_flip,
+      },
+      GameOutcome::Draw => ModelOutputs {
+        policy: [0.0; 64 * 64],
+        value:  0.0,
+      },
     };
     let mut moves = vec![];
     state.move_gen::<false>(&mut moves);
     outputs.renormalize(&moves);
     // TODO: The rest of the stuff.
-    Self {
-      moves,
-      outputs,
-    }
+    Self { moves, outputs }
   }
 
   fn add_dirichlet_noise(&mut self) {
@@ -250,8 +256,7 @@ impl<'a> Mcts<'a> {
         //println!("Expanding depth={} move={:?}", pv_edges.len(), m);
         let mut state = self.nodes[pv_leaf].state.clone();
         state.apply_move(m);
-        let child =
-          self.nodes.insert(MctsNode::create(&self.inference_engine, state).await);
+        let child = self.nodes.insert(MctsNode::create(&self.inference_engine, state).await);
         let edge_index = self.edges.insert(MctsEdge {
           visits: 0,
           total_score: 0.0,
@@ -273,7 +278,10 @@ impl<'a> Mcts<'a> {
       parent.all_edge_visits += 1;
     }
     // Assert that the root's edge visit count went up by one.
-    assert_eq!(self.nodes[self.root].all_edge_visits, root_all_edge_visits + 1);
+    assert_eq!(
+      self.nodes[self.root].all_edge_visits,
+      root_all_edge_visits + 1
+    );
   }
 
   pub async fn step_until(&mut self, tree_size: u32) -> u32 {
@@ -383,9 +391,8 @@ impl<'a> Mcts<'a> {
         new_state.apply_move(m);
         self.nodes.clear();
         self.edges.clear();
-        self.root = self
-          .nodes
-          .insert(MctsNode::create(&mut self.inference_engine, new_state).await);
+        self.root =
+          self.nodes.insert(MctsNode::create(&mut self.inference_engine, new_state).await);
       }
     }
   }
