@@ -1,12 +1,12 @@
-use std::cell::{SyncUnsafeCell, Cell};
+use std::cell::{Cell, SyncUnsafeCell};
 
 use tensorflow::{
   FetchToken, Graph, Operation, SavedModelBundle, Session, SessionOptions, SessionRunArgs, Tensor,
 };
 
-use crate::rules::{State, Move};
+use crate::rules::{Move, State};
 
-pub const BATCH_SIZE: usize = 256;
+pub const BATCH_SIZE: usize = 128;
 
 // We triple buffer, to improve performance.
 pub const BUFFER_COUNT: usize = 2;
@@ -116,19 +116,25 @@ pub struct InferenceEngine {
 //unsafe impl Sync for InferenceEngine {}
 
 impl InferenceEngine {
-  pub async fn create() -> InferenceEngine {
-    // Initialize save_dir, input tensor, and an empty graph
-    let save_dir = "/tmp/keras";
-    let input_tensors = (0..BUFFER_COUNT).map(|_| &*Box::leak(Box::new(
-      SyncUnsafeCell::new(
-      Tensor::new(&[BATCH_SIZE as u64, 8, 8, 22])
-      )
-    ))).collect::<Vec<_>>();
+  pub async fn create(model_dir: &str) -> InferenceEngine {
+    // Initialize model_dir, input tensor, and an empty graph
+    let input_tensors = (0..BUFFER_COUNT)
+      .map(|_| {
+        &*Box::leak(Box::new(SyncUnsafeCell::new(Tensor::new(&[
+          BATCH_SIZE as u64,
+          8,
+          8,
+          22,
+        ]))))
+      })
+      .collect::<Vec<_>>();
     let mut graph = Graph::new();
+
+    println!("Loading model from {}", model_dir);
 
     // Load saved model bundle (session state + meta_graph data)
     let bundle = Box::leak(Box::new(
-      SavedModelBundle::load(&SessionOptions::new(), &["serve"], &mut graph, save_dir)
+      SavedModelBundle::load(&SessionOptions::new(), &["serve"], &mut graph, model_dir)
         .expect("Can't load saved model"),
     ));
 
@@ -164,7 +170,11 @@ impl InferenceEngine {
       loop {
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         let eval_count = eval_count.load(std::sync::atomic::Ordering::Relaxed) * BATCH_SIZE;
-        println!("eval_count: {} ({} per second)", eval_count, (eval_count - last_eval_count) / 3);
+        println!(
+          "eval_count: {} ({} per second)",
+          eval_count,
+          (eval_count - last_eval_count) / 3
+        );
         last_eval_count = eval_count;
       }
     });
@@ -177,8 +187,13 @@ impl InferenceEngine {
       input_tensors: input_tensors[..].try_into().unwrap(),
       return_channels: tokio::sync::Mutex::new(ReturnChannels {
         next_buffer: 0,
-        slot_index: 0,
-        channels: (0..BUFFER_COUNT*BATCH_SIZE).map(|_| None).collect::<Vec<_>>().try_into().map_err(|_| ()).unwrap(),
+        slot_index:  0,
+        channels:    (0..BUFFER_COUNT * BATCH_SIZE)
+          .map(|_| None)
+          .collect::<Vec<_>>()
+          .try_into()
+          .map_err(|_| ())
+          .unwrap(),
       }),
       eval_count,
     }
@@ -192,10 +207,14 @@ impl InferenceEngine {
       let slot_index = guard.slot_index;
       guard.slot_index = (guard.slot_index + 1) % (BUFFER_COUNT * BATCH_SIZE);
       // Make sure we haven't overflowed.
-      let g: String = guard.channels.iter().map(|c| match c {
-        Some(_) => "[ ]",
-        None => " - ",
-      }).collect();
+      let g: String = guard
+        .channels
+        .iter()
+        .map(|c| match c {
+          Some(_) => "[ ]",
+          None => " - ",
+        })
+        .collect();
 
       //println!("[{worker_id}] All channels: {:?} (index={})", g, slot_index);
       if guard.channels[slot_index].is_some() {
@@ -234,13 +253,14 @@ impl InferenceEngine {
     ////println!("[{worker_id}] Allocated slot {} (tensor={})", slot_index, slot_index / BATCH_SIZE);
 
     if let Some(buffer) = work {
-
       //println!("[{worker_id}] >>>>>>>>>> Running inference");
       // If we're the last slot, run the batch.
       let (policy_output, value_output) = {
         let session = &self.bundle.session;
         let mut session_run_args = SessionRunArgs::new();
-        session_run_args.add_feed(&self.input_op, 0, unsafe { &*self.input_tensors[buffer].get() });
+        session_run_args.add_feed(&self.input_op, 0, unsafe {
+          &*self.input_tensors[buffer].get()
+        });
         let policy_ft = session_run_args.request_fetch(&self.policy_op, 0);
         let value_ft = session_run_args.request_fetch(&self.value_op, 1);
         session.run(&mut session_run_args).expect("Can't run session");
@@ -254,19 +274,26 @@ impl InferenceEngine {
       //let mut guard = self.return_channels.lock().await;
       //println!("[{worker_id}] \x1b[92m >>> LOCKING: {buffer}\x1b[0m");
       // Acquire the lock.
-      let relevant_return_channels = &mut guard.channels[buffer * BATCH_SIZE .. (buffer + 1) * BATCH_SIZE];
+      let relevant_return_channels =
+        &mut guard.channels[buffer * BATCH_SIZE..(buffer + 1) * BATCH_SIZE];
 
       for (i, channel) in relevant_return_channels.iter_mut().enumerate() {
         let tx = channel.take().unwrap();
         tx.send(ModelOutputs {
-          policy: policy_output[i..i + 64*64].try_into().unwrap(),
-          value: value_output[i],
-        }).map_err(|_| ()).expect("failed to send");
+          policy: policy_output[i..i + 64 * 64].try_into().unwrap(),
+          value:  value_output[i],
+        })
+        .map_err(|_| ())
+        .expect("failed to send");
       }
-      let g: String = guard.channels.iter().map(|c| match c {
-        Some(_) => "[ ]",
-        None => " - ",
-      }).collect();
+      let g: String = guard
+        .channels
+        .iter()
+        .map(|c| match c {
+          Some(_) => "[ ]",
+          None => " - ",
+        })
+        .collect();
 
       //println!("[{worker_id}] Channels after infr: {:?}", g);
       //println!("[{worker_id}] \x1b[92m <<< UNLOCKING: {buffer}\x1b[0m");

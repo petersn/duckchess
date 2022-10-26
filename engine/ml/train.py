@@ -24,7 +24,7 @@ class ConvBlock(torch.nn.Module):
             filters, filters, kernel_size=kernel_size, padding="same",
         )
         self.conv2 = torch.nn.Conv2d(
-            filters, filters, kernel_size=kernel_size, padding="same"
+            filters, filters, kernel_size=kernel_size, padding="same",
         )
         self.activation = torch.nn.ReLU()
 

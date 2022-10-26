@@ -23,4 +23,5 @@ pyo3 = { version = "0.17.2", features = ["extension-module"] }
 tensorflow = { version = "0.19.1", features = ["tensorflow_gpu"] }
 tokio = { version = "1.21.2", features = ["full"] }
 slotmap = "1.0.6"
+clap = { version = "4.0.18", features = ["derive"] }
 #onnxruntime = "0.0.14"
