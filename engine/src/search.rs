@@ -247,7 +247,7 @@ impl Engine {
     depth: u16,
     state: &State,
     mut alpha: Evaluation,
-    mut beta: Evaluation,
+    beta: Evaluation,
   ) -> (Evaluation, (Option<Move>, Option<Move>)) {
     self.nodes_searched += 1;
     let game_over = state.is_game_over();

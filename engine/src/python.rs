@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 
 use crate::{
-  rules::{GameOutcome, Move},
+  rules::Move,
   search,
 };
 

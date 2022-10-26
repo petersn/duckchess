@@ -37,7 +37,7 @@ async fn main() {
     tasks.push(tokio::spawn(async move {
       use std::io::Write;
       loop {
-        let mut mcts = Mcts::create(task_id, inference_engine).await;
+        let mut mcts = Mcts::create(inference_engine).await;
         let mut moves = vec![];
         let mut train_moves = vec![];
         let mut was_large = vec![];

@@ -1,6 +1,6 @@
 include!(concat!(env!("OUT_DIR"), "/tables.rs"));
 
-use std::{cmp::Ordering, collections::HashMap, hash::Hash};
+use std::hash::Hash;
 
 use serde::{ser::SerializeSeq, Deserialize, Serialize};
 

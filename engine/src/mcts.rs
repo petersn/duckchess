@@ -1,9 +1,4 @@
-use std::{
-  cell::{Cell, UnsafeCell},
-  collections::HashMap,
-  future::Future,
-  rc::{Rc, Weak},
-};
+use std::collections::HashMap;
 
 use slotmap::SlotMap;
 
@@ -43,20 +38,24 @@ async fn evaluate_network(inference_engine: &InferenceEngine, state: &State, eva
 
 #[derive(Clone)]
 struct Evals {
-  outcome: GameOutcome,
   moves:   Vec<Move>,
   outputs: ModelOutputs,
 }
 
 impl Evals {
-  async fn create(worker_id: usize, inference_engine: &InferenceEngine, state: &State) -> Self {
-    let mut outputs = inference_engine.predict(worker_id, state).await;
+  async fn create(inference_engine: &InferenceEngine, state: &State) -> Self {
+    let turn_flip = if state.white_turn { 1.0 } else { -1.0 };
+    let mut outputs = match state.get_outcome() {
+      GameOutcome::Ongoing => inference_engine.predict(state).await,
+      GameOutcome::WhiteWin => ModelOutputs { policy: [0.0; 64 * 64], value: turn_flip },
+      GameOutcome::BlackWin => ModelOutputs { policy: [0.0; 64 * 64], value: -turn_flip },
+      GameOutcome::Draw => ModelOutputs { policy: [0.0; 64 * 64], value: 0.0 },
+    };
     let mut moves = vec![];
     state.move_gen::<false>(&mut moves);
     outputs.renormalize(&moves);
     // TODO: The rest of the stuff.
     Self {
-      outcome: state.get_outcome(),
       moves,
       outputs,
     }
@@ -129,8 +128,8 @@ struct MctsNode {
 }
 
 impl MctsNode {
-  async fn create(worker_id: usize, inference_engine: &InferenceEngine, state: State) -> Self {
-    let evals = Evals::create(worker_id, inference_engine, &state).await;
+  async fn create(inference_engine: &InferenceEngine, state: State) -> Self {
+    let evals = Evals::create(inference_engine, &state).await;
     Self {
       state,
       evals,
@@ -179,7 +178,6 @@ impl MctsNode {
 }
 
 pub struct Mcts<'a> {
-  worker_id:        usize,
   inference_engine: &'a InferenceEngine,
   root:             NodeIndex,
   nodes:            SlotMap<NodeIndex, MctsNode>,
@@ -187,13 +185,12 @@ pub struct Mcts<'a> {
 }
 
 impl<'a> Mcts<'a> {
-  pub async fn create(worker_id: usize, inference_engine: &'a InferenceEngine) -> Mcts<'a> {
-    let mut node = MctsNode::create(worker_id, inference_engine, State::starting_state()).await;
+  pub async fn create(inference_engine: &'a InferenceEngine) -> Mcts<'a> {
+    let mut node = MctsNode::create(inference_engine, State::starting_state()).await;
     node.evals.add_dirichlet_noise();
     let mut nodes = SlotMap::with_key();
     let root = nodes.insert(node);
     Self {
-      worker_id,
       inference_engine,
       root,
       nodes,
@@ -254,7 +251,7 @@ impl<'a> Mcts<'a> {
         let mut state = self.nodes[pv_leaf].state.clone();
         state.apply_move(m);
         let child =
-          self.nodes.insert(MctsNode::create(self.worker_id, &self.inference_engine, state).await);
+          self.nodes.insert(MctsNode::create(&self.inference_engine, state).await);
         let edge_index = self.edges.insert(MctsEdge {
           visits: 0,
           total_score: 0.0,
@@ -359,7 +356,7 @@ impl<'a> Mcts<'a> {
     match self.nodes[self.root].outgoing_edges.get(&m) {
       // If we already have a node for this move, then just make it the new root.
       Some(edge_index) => {
-        let pre_gc_size = self.nodes.len();
+        //let pre_gc_size = self.nodes.len();
         let new_root = self.edges[*edge_index].child;
         // We now perform garbage collection by recursively deleting
         // everything, but stopping at the new root.
@@ -388,7 +385,7 @@ impl<'a> Mcts<'a> {
         self.edges.clear();
         self.root = self
           .nodes
-          .insert(MctsNode::create(self.worker_id, &mut self.inference_engine, new_state).await);
+          .insert(MctsNode::create(&mut self.inference_engine, new_state).await);
       }
     }
   }

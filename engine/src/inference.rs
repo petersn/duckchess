@@ -1,7 +1,7 @@
-use std::cell::{Cell, SyncUnsafeCell};
+use std::cell::SyncUnsafeCell;
 
 use tensorflow::{
-  FetchToken, Graph, Operation, SavedModelBundle, Session, SessionOptions, SessionRunArgs, Tensor,
+  Graph, Operation, SavedModelBundle, SessionOptions, SessionRunArgs, Tensor,
 };
 
 use crate::rules::{Move, State};
@@ -199,22 +199,22 @@ impl InferenceEngine {
     }
   }
 
-  pub async fn predict(&self, worker_id: usize, state: &State) -> ModelOutputs {
+  pub async fn predict(&self, state: &State) -> ModelOutputs {
     // Allocate a slot.
-    let (slot_index, rx, work) = {
+    let (rx, work) = {
       let mut guard = self.return_channels.lock().await;
       //println!("[{worker_id}] \x1b[93m >>> LOCKED\x1b[0m");
       let slot_index = guard.slot_index;
       guard.slot_index = (guard.slot_index + 1) % (BUFFER_COUNT * BATCH_SIZE);
       // Make sure we haven't overflowed.
-      let g: String = guard
-        .channels
-        .iter()
-        .map(|c| match c {
-          Some(_) => "[ ]",
-          None => " - ",
-        })
-        .collect();
+      //let g: String = guard
+      //  .channels
+      //  .iter()
+      //  .map(|c| match c {
+      //    Some(_) => "[ ]",
+      //    None => " - ",
+      //  })
+      //  .collect();
 
       //println!("[{worker_id}] All channels: {:?} (index={})", g, slot_index);
       if guard.channels[slot_index].is_some() {
@@ -245,8 +245,7 @@ impl InferenceEngine {
       let (tx, rx) = tokio::sync::oneshot::channel();
       guard.channels[slot_index] = Some(tx);
       //println!("[{worker_id}] \x1b[93m <<< UNLOCKING\x1b[0m");
-      drop(guard);
-      (slot_index, rx, work)
+      (rx, work)
     };
 
     //let tensor_index = slot_index / BATCH_SIZE;
@@ -286,14 +285,14 @@ impl InferenceEngine {
         .map_err(|_| ())
         .expect("failed to send");
       }
-      let g: String = guard
-        .channels
-        .iter()
-        .map(|c| match c {
-          Some(_) => "[ ]",
-          None => " - ",
-        })
-        .collect();
+      //let g: String = guard
+      //  .channels
+      //  .iter()
+      //  .map(|c| match c {
+      //    Some(_) => "[ ]",
+      //    None => " - ",
+      //  })
+      //  .collect();
 
       //println!("[{worker_id}] Channels after infr: {:?}", g);
       //println!("[{worker_id}] \x1b[92m <<< UNLOCKING: {buffer}\x1b[0m");

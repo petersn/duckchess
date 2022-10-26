@@ -41,7 +41,7 @@ fn main() {
   // Run the model once, timing the execution
   let start = std::time::Instant::now();
   session.run(&mut args).expect("Can't run session");
-  let result = args.fetch::<f32>(out).expect("Can't fetch output");
+  let _result = args.fetch::<f32>(out).expect("Can't fetch output");
   let duration = start.elapsed();
   println!("Time elapsed in expensive_function() is: {:?}", duration);
 
@@ -49,7 +49,7 @@ fn main() {
   let start = std::time::Instant::now();
   for _ in 0..100 {
     session.run(&mut args).expect("Can't run session");
-    let result = args.fetch::<f32>(out).expect("Can't fetch output");
+    let _result = args.fetch::<f32>(out).expect("Can't fetch output");
     //println!("{:?}", result);
   }
   let duration = start.elapsed();
