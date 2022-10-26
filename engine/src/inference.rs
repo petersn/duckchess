@@ -6,7 +6,7 @@ use crate::rules::{Move, State};
 
 pub const BATCH_SIZE: usize = 128;
 
-// We triple buffer, to improve performance.
+// We double buffer, to improve performance.
 pub const BUFFER_COUNT: usize = 2;
 
 // We have:
@@ -51,7 +51,6 @@ fn featurize_state<T: From<u8>>(state: &State, array: &mut [T; 64 * CHANNEL_COUN
   let mut layer_index = 0;
   let mut emit_bitboard = |bitboard: u64| {
     for i in 0..64 {
-      //array[64 * layer_index + i] = (((bitboard >> i) & 1) as u8).into();
       array[22 * i + layer_index] = (((bitboard >> i) & 1) as u8).into();
     }
     layer_index += 1;
@@ -101,17 +100,10 @@ pub struct InferenceEngine {
   input_op:        Operation,
   policy_op:       Operation,
   value_op:        Operation,
-  //session_run_args: RefCell<SessionRunArgs<'a>>,
-  //policy_ft: FetchToken,
-  //value_ft: FetchToken,
   input_tensors:   [&'static SyncUnsafeCell<Tensor<f32>>; BUFFER_COUNT],
   return_channels: tokio::sync::Mutex<ReturnChannels>,
   eval_count:      &'static std::sync::atomic::AtomicUsize,
-  //input_op: String,
-  //output_op: String,
 }
-
-//unsafe impl Sync for InferenceEngine {}
 
 impl InferenceEngine {
   pub async fn create(model_dir: &str) -> InferenceEngine {
@@ -205,21 +197,7 @@ impl InferenceEngine {
       let slot_index = guard.slot_index;
       guard.slot_index = (guard.slot_index + 1) % (BUFFER_COUNT * BATCH_SIZE);
       // Make sure we haven't overflowed.
-      //let g: String = guard
-      //  .channels
-      //  .iter()
-      //  .map(|c| match c {
-      //    Some(_) => "[ ]",
-      //    None => " - ",
-      //  })
-      //  .collect();
-
-      //println!("[{worker_id}] All channels: {:?} (index={})", g, slot_index);
-      if guard.channels[slot_index].is_some() {
-        //println!("[{worker_id}] \x1b[91m >>> OVERFLOW\x1b[0m");
-        panic!("Overflowed!");
-      }
-      //assert!(guard.channels[slot_index].is_none());
+      assert!(guard.channels[slot_index].is_none());
       // Featurize.
       let array: &mut [f32] = unsafe {
         let input_tensor: *mut Tensor<f32> = self.input_tensors[slot_index / BATCH_SIZE].get();
@@ -245,9 +223,6 @@ impl InferenceEngine {
       //println!("[{worker_id}] \x1b[93m <<< UNLOCKING\x1b[0m");
       (rx, work)
     };
-
-    //let tensor_index = slot_index / BATCH_SIZE;
-    ////println!("[{worker_id}] Allocated slot {} (tensor={})", slot_index, slot_index / BATCH_SIZE);
 
     if let Some(buffer) = work {
       //println!("[{worker_id}] >>>>>>>>>> Running inference");
@@ -283,16 +258,6 @@ impl InferenceEngine {
         .map_err(|_| ())
         .expect("failed to send");
       }
-      //let g: String = guard
-      //  .channels
-      //  .iter()
-      //  .map(|c| match c {
-      //    Some(_) => "[ ]",
-      //    None => " - ",
-      //  })
-      //  .collect();
-
-      //println!("[{worker_id}] Channels after infr: {:?}", g);
       //println!("[{worker_id}] \x1b[92m <<< UNLOCKING: {buffer}\x1b[0m");
       drop(guard);
     }

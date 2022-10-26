@@ -9,33 +9,6 @@ const EXPLORATION_ALPHA: f32 = 1.0;
 const DIRICHLET_ALPHA: f32 = 0.15;
 const DIRICHLET_WEIGHT: f32 = 0.25;
 
-/*
-async fn evaluate_network(inference_engine: &InferenceEngine, state: &State, evals: &mut Evals) {
-  let turn_flip = if state.white_turn { 1.0 } else { -1.0 };
-  evals.outcome = state.get_outcome();
-  match evals.outcome {
-    GameOutcome::Ongoing => {}
-    GameOutcome::WhiteWin => return evals.value = turn_flip,
-    GameOutcome::BlackWin => return evals.value = -turn_flip,
-    GameOutcome::Draw => return evals.value = 0.0,
-  }
-  state.move_gen::<false>(&mut evals.moves);
-
-  //inference_engine.predict(state, &mut evals.policy, &mut evals.value).await;
-
-  //// Make the posterior uniform over all legal moves.
-  //let value = 1.0 / evals.moves.len() as f32;
-  //for m in &evals.moves {
-  //  evals.policy[(m.from % 64) as usize * 64 + m.to as usize] = value;
-  //}
-
-  // TODO: Actually pass data to TensorFlow here.
-  // For now, just wait a small random amount.
-  //let delay = rand::random::<u64>() % 100;
-  //tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
-}
-*/
-
 #[derive(Clone)]
 struct Evals {
   moves:   Vec<Move>,
@@ -128,7 +101,6 @@ impl MctsEdge {
 struct MctsNode {
   state:           State,
   evals:           Evals,
-  //incoming: Option<EdgeIndex>,
   all_edge_visits: u32,
   outgoing_edges:  HashMap<Move, EdgeIndex>,
 }
@@ -139,7 +111,6 @@ impl MctsNode {
     Self {
       state,
       evals,
-      //incoming,
       all_edge_visits: 0,
       outgoing_edges: HashMap::new(),
     }
@@ -150,7 +121,6 @@ impl MctsNode {
       None => ((1.0 + self.all_edge_visits as f32).sqrt(), 0.0),
       Some(edge_index) => {
         let edge = &edges[*edge_index];
-        //println!("edge stats: {} / {}", edge.visits, self.all_edge_visits);
         (
           (1.0 + self.all_edge_visits as f32).sqrt() / (1.0 + edge.visits as f32),
           edge.get_edge_score(),
@@ -158,7 +128,6 @@ impl MctsNode {
       }
     };
     if self.evals.posterior(m) > 0.1 {
-      //println!("u: {}, q: {}, posterior: {}", u, q, self.evals.posterior(m));
     }
     let u = EXPLORATION_ALPHA * self.evals.posterior(m) * u;
     q + u
@@ -170,10 +139,8 @@ impl MctsNode {
     }
     let mut best_score = -std::f32::INFINITY;
     let mut best_move = None;
-    //println!("-------------");
     for m in &self.evals.moves {
       let score = self.total_action_score(edges, *m);
-      //println!("{:?}: {}", m, score);
       if score > best_score {
         best_score = score;
         best_move = Some(*m);
@@ -212,7 +179,6 @@ impl<'a> Mcts<'a> {
     let mut node = &self.nodes[self.root];
     let mut edges = vec![];
     loop {
-      //println!("got here");
       let m: Option<Move> = match best {
         true => node
           .outgoing_edges
@@ -253,7 +219,6 @@ impl<'a> Mcts<'a> {
       }
       Some(m) => {
         // If the move is non-null then expand once at the leaf.
-        //println!("Expanding depth={} move={:?}", pv_edges.len(), m);
         let mut state = self.nodes[pv_leaf].state.clone();
         state.apply_move(m);
         let child = self.nodes.insert(MctsNode::create(&self.inference_engine, state).await);
@@ -339,7 +304,6 @@ impl<'a> Mcts<'a> {
     use rand::Rng;
     let mut rng = rand::thread_rng();
     let mut total_visits: i32 = 0;
-    //println!("-------- {}", self.nodes[self.root.0].outgoing_edges.len());
     for (_, edge_index) in &self.nodes[self.root].outgoing_edges {
       total_visits += self.edges[*edge_index].visits as i32;
     }
@@ -364,7 +328,6 @@ impl<'a> Mcts<'a> {
     match self.nodes[self.root].outgoing_edges.get(&m) {
       // If we already have a node for this move, then just make it the new root.
       Some(edge_index) => {
-        //let pre_gc_size = self.nodes.len();
         let new_root = self.edges[*edge_index].child;
         // We now perform garbage collection by recursively deleting
         // everything, but stopping at the new root.
@@ -383,7 +346,6 @@ impl<'a> Mcts<'a> {
         }
         delete(self, new_root, self.root);
         self.root = new_root;
-        //println!("GC'd {} nodes", pre_gc_size - self.nodes.len());
       }
       // Otherwise, we throw everything away.
       None => {
