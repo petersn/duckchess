@@ -19,8 +19,7 @@ pub const BUFFER_COUNT: usize = 2;
 //   One channel for an en passant square.
 //   One channel for the last move.
 //   One channel of all ones.
-const CHANNEL_COUNT: usize = 6 + 6 + 1 + 1 + 1 + 4 + 1 + 1 + 1;
-const SLOT_SIZE: usize = 64 * CHANNEL_COUNT;
+pub const CHANNEL_COUNT: usize = 6 + 6 + 1 + 1 + 1 + 4 + 1 + 1 + 1;
 
 #[derive(Clone)]
 pub struct ModelOutputs {
@@ -47,7 +46,7 @@ impl ModelOutputs {
   }
 }
 
-fn featurize_state<T: From<u8>>(state: &State, array: &mut [T; 64 * CHANNEL_COUNT]) {
+pub fn featurize_state<T: From<u8>>(state: &State, array: &mut [T; 64 * CHANNEL_COUNT]) {
   let mut layer_index = 0;
   let mut emit_bitboard = |bitboard: u64| {
     for i in 0..64 {
@@ -201,6 +200,7 @@ impl InferenceEngine {
       // Featurize.
       let array: &mut [f32] = unsafe {
         let input_tensor: *mut Tensor<f32> = self.input_tensors[slot_index / BATCH_SIZE].get();
+        const SLOT_SIZE: usize = 64 * CHANNEL_COUNT;
         let offset = (slot_index % BATCH_SIZE) * SLOT_SIZE;
         &mut input_tensor.as_mut().unwrap()[offset..offset + SLOT_SIZE]
       };

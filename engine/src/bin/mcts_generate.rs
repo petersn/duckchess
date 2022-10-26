@@ -84,7 +84,7 @@ async fn main() {
         {
           let mut file = output_file.lock().await;
           let obj = serde_json::json!({
-            "outcome": mcts.get_state().get_outcome().to_str(),
+            "outcome": mcts.get_state().get_outcome().to_option_str(),
             "moves": moves,
             "train_moves": train_moves,
             "was_large": was_large,
@@ -101,19 +101,10 @@ async fn main() {
           file.flush().unwrap();
         }
       }
-      //println!("Starting task {} (on thread: {:?})", task_id, std::thread::current().id());
-      //println!("[{task_id}] Completed init");
-      //for step in 0..1_000_000 {
-      //  //println!("Task {} step {} (on thread: {:?})", task_id, step, std::thread::current().id());
-      //  mcts.step().await;
-      //}
-      //println!("[{task_id}] Completed steps");
     }));
   }
   // Join all the tasks.
   for task in tasks {
     task.await.unwrap();
   }
-  //println!("Time elapsed in expensive_function() is: {:?}", elapsed);
-  //mcts.print_tree();
 }

@@ -29,7 +29,7 @@ fn work() {
         break;
       }
     }
-    let outcome = engine.get_outcome().to_str();
+    let outcome = engine.get_outcome().to_option_str();
     println!(
       "Game generated: moves={} outcome={:?}",
       moves.len(),

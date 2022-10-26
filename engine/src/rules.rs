@@ -92,7 +92,7 @@ pub enum GameOutcome {
 }
 
 impl GameOutcome {
-  pub fn to_str(&self) -> Option<&'static str> {
+  pub fn to_option_str(&self) -> Option<&'static str> {
     match self {
       GameOutcome::Ongoing => None,
       GameOutcome::Draw => Some("1/2-1/2"),
