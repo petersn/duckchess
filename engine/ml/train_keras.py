@@ -38,5 +38,3 @@ model.fit(
     batch_size=512,
     epochs=1000,
 )
-
-

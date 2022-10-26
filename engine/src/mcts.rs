@@ -5,13 +5,14 @@ use std::{
   rc::{Rc, Weak},
 };
 
-use crate::inference::InferenceEngine;
+use crate::inference::{InferenceEngine, ModelOutputs};
 use crate::rules::{GameOutcome, Move, State};
 
-const EXPLORATION_ALPHA: f32 = 5.0;
+const EXPLORATION_ALPHA: f32 = 1.0;
 const DIRICHLET_ALPHA: f32 = 0.15;
 const DIRICHLET_WEIGHT: f32 = 0.25;
 
+/*
 async fn evaluate_network(inference_engine: &InferenceEngine, state: &State, evals: &mut Evals) {
   let turn_flip = if state.white_turn { 1.0 } else { -1.0 };
   evals.outcome = state.get_outcome();
@@ -23,7 +24,7 @@ async fn evaluate_network(inference_engine: &InferenceEngine, state: &State, eva
   }
   state.move_gen::<false>(&mut evals.moves);
 
-  inference_engine.predict(state, &mut evals.policy, &mut evals.value).await;
+  //inference_engine.predict(state, &mut evals.policy, &mut evals.value).await;
 
   //// Make the posterior uniform over all legal moves.
   //let value = 1.0 / evals.moves.len() as f32;
@@ -36,21 +37,24 @@ async fn evaluate_network(inference_engine: &InferenceEngine, state: &State, eva
   //let delay = rand::random::<u64>() % 100;
   //tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
 }
+*/
 
 struct Evals {
   outcome: GameOutcome,
   moves:   Vec<Move>,
-  policy:  [f32; 64 * 64],
-  value:   f32,
+  outputs: ModelOutputs,
 }
 
 impl Evals {
-  fn new() -> Self {
+  async fn create(worker_id: usize, inference_engine: &InferenceEngine, state: &State) -> Self {
+    let outputs = inference_engine.predict(worker_id, state).await;
+    let mut moves = vec![];
+    state.move_gen::<false>(&mut moves);
+    // TODO: The rest of the stuff.
     Self {
-      outcome: GameOutcome::Ongoing,
-      moves:   vec![],
-      policy:  [0.0; 64 * 64],
-      value:   0.0,
+      outcome: state.get_outcome(),
+      moves,
+      outputs,
     }
   }
 
@@ -70,15 +74,15 @@ impl Evals {
     }
     // Mix policy with noise.
     for i in 0..noise.len() {
-      self.policy[i] = (1.0 - DIRICHLET_WEIGHT) * self.policy[i] + DIRICHLET_WEIGHT * noise[i];
+      self.outputs.policy[i] = (1.0 - DIRICHLET_WEIGHT) * self.outputs.policy[i] + DIRICHLET_WEIGHT * noise[i];
     }
     // Assert normalization.
-    let sum = self.policy.iter().sum::<f32>();
-    debug_assert!((sum - 1.0).abs() < 1e-4);
+    let sum = self.outputs.policy.iter().sum::<f32>();
+    debug_assert!((sum - 1.0).abs() < 1e-2);
   }
 
   fn posterior(&self, m: Move) -> f32 {
-    self.policy[(m.from % 64) as usize * 64 + m.to as usize]
+    self.outputs.policy[(m.from % 64) as usize * 64 + m.to as usize]
   }
 }
 
@@ -118,9 +122,8 @@ struct MctsNode {
 }
 
 impl MctsNode {
-  async fn create(inference_engine: &InferenceEngine, state: State) -> Self {
-    let mut evals = Evals::new();
-    evaluate_network(inference_engine, &state, &mut evals).await;
+  async fn create(worker_id: usize, inference_engine: &InferenceEngine, state: State) -> Self {
+    let mut evals = Evals::create(worker_id, inference_engine, &state).await;
     Self {
       state,
       evals,
@@ -165,19 +168,20 @@ impl MctsNode {
   }
 }
 
-pub struct Mcts {
-  inference_engine: InferenceEngine,
+pub struct Mcts<'a> {
+  worker_id: usize,
+  inference_engine: &'a InferenceEngine,
   root:             NodeIndex,
   nodes:            Vec<MctsNode>,
   edges:            Vec<MctsEdge>,
 }
 
-impl Mcts {
-  pub async fn create() -> Mcts {
-    let mut inference_engine = InferenceEngine::create().await;
-    let mut node = MctsNode::create(&mut inference_engine, State::starting_state()).await;
+impl<'a> Mcts<'a> {
+  pub async fn create(worker_id: usize, inference_engine: &'a InferenceEngine) -> Mcts<'a> {
+    let mut node = MctsNode::create(worker_id, inference_engine, State::starting_state()).await;
     node.evals.add_dirichlet_noise();
     Self {
+      worker_id,
       inference_engine,
       root: NodeIndex(0),
       nodes: vec![node],
@@ -193,6 +197,7 @@ impl Mcts {
     let mut node = &self.nodes[self.root.0];
     let mut edges = vec![];
     loop {
+      //println!("got here");
       let m: Option<Move> = match best {
         true => node
           .outgoing_edges
@@ -234,7 +239,7 @@ impl Mcts {
         let mut state = pv_leaf_node.state.clone();
         state.apply_move(m);
         pv_leaf_node.outgoing_edges.insert(m, edge_index);
-        self.nodes.push(MctsNode::create(&mut self.inference_engine, state).await);
+        self.nodes.push(MctsNode::create(self.worker_id, &mut self.inference_engine, state).await);
         self.edges.push(MctsEdge {
           visits: 0,
           total_score: 0.0,
@@ -244,7 +249,7 @@ impl Mcts {
         child
       }
     };
-    let mut value_score = (self.nodes[new_node.0].evals.value + 1.0) / 2.0;
+    let mut value_score = (self.nodes[new_node.0].evals.outputs.value + 1.0) / 2.0;
     for edge_index in pv_edges.iter().rev() {
       // Alternate the value score, since it's from the current player's perspective.
       value_score = 1.0 - value_score;
@@ -266,7 +271,7 @@ impl Mcts {
         self.nodes.clear();
         self.edges.clear();
         self.root = NodeIndex(0);
-        self.nodes.push(MctsNode::create(&mut self.inference_engine, new_state).await);
+        self.nodes.push(MctsNode::create(self.worker_id, &mut self.inference_engine, new_state).await);
       }
     }
     // We now need to add Dirichlet noise to the root node.

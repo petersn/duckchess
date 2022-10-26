@@ -1,3 +1,5 @@
+#![feature(sync_unsafe_cell)]
+
 pub mod inference;
 pub mod mcts;
 pub mod rules;
