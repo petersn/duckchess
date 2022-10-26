@@ -268,7 +268,7 @@ impl<'a> Mcts<'a> {
     use rand::Rng;
     let mut rng = rand::thread_rng();
     let mut total_visits: i32 = 0;
-    println!("-------- {}", self.nodes[self.root.0].outgoing_edges.len());
+    //println!("-------- {}", self.nodes[self.root.0].outgoing_edges.len());
     for (_, edge_index) in &self.nodes[self.root.0].outgoing_edges {
       total_visits += self.edges[edge_index.0].visits as i32;
     }

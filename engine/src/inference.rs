@@ -161,9 +161,9 @@ impl InferenceEngine {
     tokio::spawn(async move {
       let mut last_eval_count = 0;
       loop {
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         let eval_count = eval_count.load(std::sync::atomic::Ordering::Relaxed) * BATCH_SIZE;
-        println!("eval_count: {} ({} per second)", eval_count, eval_count - last_eval_count);
+        println!("eval_count: {} ({} per second)", eval_count, (eval_count - last_eval_count) / 3);
         last_eval_count = eval_count;
       }
     });
