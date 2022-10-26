@@ -209,6 +209,10 @@ impl Engine {
     &self.state
   }
 
+  pub fn get_state_mut(&mut self) -> &mut State {
+    &mut self.state
+  }
+
   pub fn set_state(&mut self, state: State) {
     self.state = state;
   }

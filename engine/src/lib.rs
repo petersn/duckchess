@@ -1,7 +1,5 @@
 #![feature(sync_unsafe_cell)]
 
-pub mod inference;
-pub mod mcts;
 pub mod rules;
 pub mod search;
 
@@ -10,3 +8,9 @@ pub mod web;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod python;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod inference;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod mcts;
