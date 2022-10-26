@@ -19,7 +19,6 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
-  // Parse command line arguments.
   let args = Args::parse();
 
   let inference_engine: &InferenceEngine =

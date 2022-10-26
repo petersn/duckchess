@@ -8,7 +8,7 @@ import engine
 
 def process_game_paths(paths):
     all_games = []
-    for path in tqdm(paths):
+    for path in tqdm(paths[6:8]):
         with open(path) as f:
             for line in f:
                 all_games.append(json.loads(line))
@@ -48,6 +48,12 @@ def process_game_paths(paths):
             if i >= len(game["moves"]):
                 continue
             move_str = json.dumps(game["moves"][i])
+            all_moves = [
+                (m["from"], m["to"])
+                for m in map(json.loads, e.get_moves())
+            ]
+            this_move = (move["from"], move["to"])
+            assert this_move in all_moves, f"Index = {i} Move {this_move} not in {all_moves}"
             if (version == 3 and game["was_rand"][i] is True) or (version == 101 and not game["was_large"][i]):
                 e.apply_move(move_str)
                 continue

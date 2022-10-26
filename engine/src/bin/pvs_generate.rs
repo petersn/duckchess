@@ -1,10 +1,18 @@
+use clap::Parser;
 use std::io::Write;
 
 use rand::seq::SliceRandom;
 
-fn work() {
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+  #[arg(short, long)]
+  output_dir: String,
+}
+
+fn work(output_dir: &str) {
   // Open a file for writing
-  let output_path = format!("games/games-{:016x}.json", rand::random::<u64>());
+  let output_path = format!("{}/games-{:016x}.json", output_dir, rand::random::<u64>());
   let mut output_file = std::fs::File::create(output_path).unwrap();
   let mut rng = rand::thread_rng();
   loop {
@@ -13,10 +21,7 @@ fn work() {
     let mut engine = engine::search::Engine::new(rand::random());
     for move_index in 0..300 {
       let r: f32 = rand::random();
-      let mut random_move: bool = if move_index < 6 { r < 0.5 } else { r < 0.01 };
-      if move_index == 0 {
-        random_move = true;
-      }
+      let random_move = move_index == 0 || if move_index < 6 { r < 0.5 } else { r < 0.01 };
       let p = match random_move {
         true => engine.get_moves().choose(&mut rng).map(|x| *x),
         false => engine.run(4).1 .0,
@@ -49,10 +54,14 @@ fn work() {
 }
 
 fn main() {
+  let args = Args::parse();
+  let output_dir: &'static str = Box::leak(String::into_boxed_str(args.output_dir));
+  println!("Writing to {}", output_dir);
+
   // Launch workers for every thread.
   let mut workers = vec![];
   for _ in 0..(num_cpus::get() - 3) {
-    workers.push(std::thread::spawn(work));
+    workers.push(std::thread::spawn(move || work(output_dir)));
   }
   // Wait for all workers to finish.
   for w in workers {
