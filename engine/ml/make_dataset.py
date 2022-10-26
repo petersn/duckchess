@@ -6,11 +6,9 @@ from tqdm import tqdm
 # Load up our duck chess engine
 import engine
 
-channel_count = engine.channel_count()
-
 def process_game_paths(paths):
     all_games = []
-    for path in paths:
+    for path in tqdm(paths):
         with open(path) as f:
             for line in f:
                 all_games.append(json.loads(line))
@@ -33,16 +31,16 @@ def process_game_paths(paths):
     print("Total games:", len(all_games))
     print("Total moves:", total_moves)
 
-    input_array = np.zeros((total_moves, 8, 8, channel_count), dtype=np.int8)
-    policy_array = np.zeros((total_moves,), dtype=np.int32)
-    value_array = np.zeros((total_moves,), dtype=np.int8)
-    b = input_array.nbytes + policy_array.nbytes + value_array.nbytes
+    features_array = np.zeros((total_moves, engine.channel_count(), 8, 8), dtype=np.int8)
+    policy_array = np.zeros((total_moves,), dtype=np.int64)
+    value_array = np.zeros((total_moves, 1), dtype=np.float32)
+    b = features_array.nbytes + policy_array.nbytes + value_array.nbytes
     print("Total storage:", b / 1024 / 1024, "MiB")
 
     entry = 0
     for game in tqdm(all_games):
         version = game.get("version", 1)
-        value = {"1-0": +1, "0-1": -1, None: 0}[game["outcome"]]
+        value_for_white = {"1-0": +1, "0-1": -1, None: 0}[game["outcome"]]
         e = engine.Engine(0)
 
         moves_list = game["train_moves"] if "train_moves" in game else game["moves"]
@@ -54,27 +52,27 @@ def process_game_paths(paths):
                 e.apply_move(move_str)
                 continue
             # Save a triple into our arrays.
-            features = input_array[entry]
-            e.get_state_into_array(features.nbytes, features.ctypes.data)
-            policy_array[entry] = (move["from"] % 64) * 64 + move["to"]
+            features_slice = features_array[entry]
+            e.get_state_into_array(features_slice.nbytes, features_slice.ctypes.data)
+            policy_array[entry] = engine.move_to_index(move_str)
             #engine.encode_move(move_str, policy.nbytes, policy.ctypes.data)
-            value_array[entry] = value
+            white_to_move = i % 4 < 2
+            value_array[entry, 0] = value_for_white if white_to_move else -value_for_white
             entry += 1
             # Apply the move.
             e.apply_move(move_str)
         assert e.get_outcome() == game["outcome"]
-    print("FINAL:", entry)
     assert entry == total_moves
 
-    return input_array, policy_array, value_array
+    return features_array, policy_array, value_array
 
 if __name__ == "__main__":
-    game_paths = "rl-games/games-*.json"
-    input_array, policy_array, value_array = process_game_paths(glob.glob(game_paths))
+    game_paths = "games/games-*.json"
+    features_array, policy_array, value_array = process_game_paths(glob.glob(game_paths))
     # Save the output as three numpy arrays packed into a single .npz file.
     np.savez_compressed(
         "train.npz",
-        input=input_array,
+        features=features_array,
         policy=policy_array,
         value=value_array,
     )

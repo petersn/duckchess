@@ -20,37 +20,39 @@ pub const BUFFER_COUNT: usize = 2;
 //   One channel for the last move.
 //   One channel of all ones.
 pub const CHANNEL_COUNT: usize = 6 + 6 + 1 + 1 + 1 + 4 + 1 + 1 + 1;
+pub const POLICY_LEN: usize = 64 * 64;
 
 #[derive(Clone)]
 pub struct ModelOutputs {
   // policy[64 * from + to] is a probability 0 to 1.
-  pub policy: [f32; 64 * 64],
+  pub policy: [f32; POLICY_LEN],
   // value is a valuation for the current player from -1 to +1.
   pub value:  f32,
 }
 
 impl ModelOutputs {
   pub fn renormalize(&mut self, moves: &[Move]) {
-    let mut temp = [0.0; 64 * 64];
+    let mut temp = [0.0; POLICY_LEN];
     let mut sum = 0.0;
     for m in moves {
-      let idx = (m.from % 64) as usize * 64 + m.to as usize;
+      let idx = m.to_index() as usize;
       let val = self.policy[idx];
       temp[idx] = val;
       sum += val;
     }
     let rescale = 1.0 / (1e-16 + sum);
-    for i in 0..64 * 64 {
+    for i in 0..POLICY_LEN {
       self.policy[i] = temp[i] * rescale;
     }
   }
 }
 
+/// Write out `state` into `array` in C, H, W order.
 pub fn featurize_state<T: From<u8>>(state: &State, array: &mut [T; 64 * CHANNEL_COUNT]) {
   let mut layer_index = 0;
   let mut emit_bitboard = |bitboard: u64| {
     for i in 0..64 {
-      array[22 * i + layer_index] = (((bitboard >> i) & 1) as u8).into();
+      array[64 * layer_index + i] = (((bitboard >> i) & 1) as u8).into();
     }
     layer_index += 1;
   };
@@ -252,7 +254,7 @@ impl InferenceEngine {
       for (i, channel) in relevant_return_channels.iter_mut().enumerate() {
         let tx = channel.take().unwrap();
         tx.send(ModelOutputs {
-          policy: policy_output[i..i + 64 * 64].try_into().unwrap(),
+          policy: policy_output[i * POLICY_LEN..(i + 1) * POLICY_LEN].try_into().unwrap(),
           value:  value_output[i],
         })
         .map_err(|_| ())

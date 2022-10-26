@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use slotmap::SlotMap;
 
-use crate::inference::{InferenceEngine, ModelOutputs};
+use crate::inference::{InferenceEngine, ModelOutputs, POLICY_LEN};
 use crate::rules::{GameOutcome, Move, State};
 
 const EXPLORATION_ALPHA: f32 = 1.0;
@@ -21,15 +21,15 @@ impl Evals {
     let mut outputs = match state.get_outcome() {
       GameOutcome::Ongoing => inference_engine.predict(state).await,
       GameOutcome::WhiteWin => ModelOutputs {
-        policy: [0.0; 64 * 64],
+        policy: [0.0; POLICY_LEN],
         value:  turn_flip,
       },
       GameOutcome::BlackWin => ModelOutputs {
-        policy: [0.0; 64 * 64],
+        policy: [0.0; POLICY_LEN],
         value:  -turn_flip,
       },
       GameOutcome::Draw => ModelOutputs {
-        policy: [0.0; 64 * 64],
+        policy: [0.0; POLICY_LEN],
         value:  0.0,
       },
     };
@@ -45,7 +45,7 @@ impl Evals {
     let mut thread_rng = rand::thread_rng();
     let dist = rand_distr::Gamma::new(DIRICHLET_ALPHA, 1.0).unwrap();
     // Generate noise.
-    let mut noise = [0.0; 64 * 64];
+    let mut noise = [0.0; POLICY_LEN];
     for i in 0..noise.len() {
       noise[i] = dist.sample(&mut thread_rng);
     }
@@ -65,7 +65,7 @@ impl Evals {
   }
 
   fn posterior(&self, m: Move) -> f32 {
-    self.outputs.policy[(m.from % 64) as usize * 64 + m.to as usize]
+    self.outputs.policy[m.to_index() as usize]
   }
 }
 
