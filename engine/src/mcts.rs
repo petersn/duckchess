@@ -6,7 +6,7 @@ use crate::inference::{InferenceEngine, ModelOutputs, POLICY_LEN};
 use crate::rules::{GameOutcome, Move, State};
 
 const EXPLORATION_ALPHA: f32 = 1.0;
-const DIRICHLET_ALPHA: f32 = 0.15;
+const DIRICHLET_ALPHA: f32 = 0.1;
 const DIRICHLET_WEIGHT: f32 = 0.25;
 
 #[derive(Clone)]
@@ -232,13 +232,18 @@ impl<'a> Mcts<'a> {
         child
       }
     };
-    let mut value_score = (self.nodes[new_node].evals.outputs.value + 1.0) / 2.0;
+    let value_score = (self.nodes[new_node].evals.outputs.value + 1.0) / 2.0;
+    let is_from_whites_perspective = self.nodes[new_node].state.white_turn;
     for edge_index in pv_edges.iter().rev() {
+      // FIXME: This is wrong! I should only flip every other other edge.
       // Alternate the value score, since it's from the current player's perspective.
-      value_score = 1.0 - value_score;
       let edge = &mut self.edges[*edge_index];
-      edge.adjust_edge_score(value_score);
       let parent = &mut self.nodes[edge.parent];
+      let player_perspective_score = match parent.state.white_turn == is_from_whites_perspective {
+        true => value_score,
+        false => 1.0 - value_score,
+      };
+      edge.adjust_edge_score(player_perspective_score);
       parent.all_edge_visits += 1;
     }
     // Assert that the root's edge visit count went up by one.

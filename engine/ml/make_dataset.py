@@ -23,9 +23,9 @@ def process_game_paths(paths):
             assert False
         elif version == 3:
             total_moves += sum(x is False for x in game["was_rand"])
-        elif version == 101:
-            # Version 101 is an MCTS game for RL, so we only take moves that got full searches.
-            total_moves += sum(wl and mov is not None for wl, mov in zip(game["was_large"], game["train_moves"]))
+        elif version == 102:
+            # Version 102 is an MCTS game for RL, so we only take moves that got full searches.
+            total_moves += sum(wl and mov is not None for wl, mov in zip(game["full_search"], game["train_moves"]))
         else:
             raise RuntimeError("Unknown game version: " + str(version))
 
@@ -70,7 +70,7 @@ def process_game_paths(paths):
                     show_game.render_state(state)
                     print(state["whiteTurn"])
                     raise RuntimeError
-            if (version == 3 and game["was_rand"][i] is True) or (version == 101 and not game["was_large"][i]):
+            if (version == 3 and game["was_rand"][i] is True) or (version == 102 and not game["full_search"][i]):
                 r = e.apply_move(move_str)
                 assert r is None, f"Index = {i} Move {move_str} failed: {r}"
                 continue
