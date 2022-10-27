@@ -6,9 +6,9 @@ use serde::{ser::SerializeSeq, Deserialize, Serialize};
 
 #[rustfmt::skip]
 const ALL_BUT_A_FILE:   u64 = 0xfefefefefefefefe;
-const ALL_BUT_H_FILE:   u64 = 0x7f7f7f7f7f7f7f7f;
+const ALL_BUT_H_FILE: u64 = 0x7f7f7f7f7f7f7f7f;
 const MIDDLE_SIX_RANKS: u64 = 0x00ffffffffffff00;
-const LAST_RANKS:       u64 = 0xff000000000000ff;
+const LAST_RANKS: u64 = 0xff000000000000ff;
 
 #[derive(Debug, Clone, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -80,8 +80,8 @@ type SquareDelta = u8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Move {
-  pub from:      Square,
-  pub to:        Square,
+  pub from: Square,
+  pub to:   Square,
   //pub promotion: Option<PromotablePiece>,
 }
 
@@ -257,8 +257,8 @@ impl State {
       while let Some(pos) = iter_bits(&mut duck_moves) {
         moves.push(Move {
           // Encode the initial duck placement as from == to.
-          from:      if self.ducks.0 == 0 { pos } else { duck_square },
-          to:        pos,
+          from: if self.ducks.0 == 0 { pos } else { duck_square },
+          to:   pos,
           //promotion: None,
         });
       }
@@ -275,8 +275,8 @@ impl State {
         };
         if occupied & movement_mask == 0 {
           moves.push(Move {
-            from:      get_square(our_king),
-            to:        get_square(our_king) + 2,
+            from: get_square(our_king),
+            to:   get_square(our_king) + 2,
             //promotion: None,
           });
         }
@@ -289,8 +289,8 @@ impl State {
         };
         if occupied & movement_mask == 0 {
           moves.push(Move {
-            from:      get_square(our_king),
-            to:        get_square(our_king) - 2,
+            from: get_square(our_king),
+            to:   get_square(our_king) - 2,
             //promotion: None,
           });
         }
@@ -328,8 +328,8 @@ impl State {
       ("plain", $bits:ident, $moves:ident, $delta:expr) => {
         while let Some(pos) = iter_bits(&mut $bits) {
           $moves.push(Move {
-            from:      pos,
-            to:        pos.wrapping_add($delta),
+            from: pos,
+            to:   pos.wrapping_add($delta),
             //promotion: None,
           });
         }
@@ -399,8 +399,8 @@ impl State {
           continue;
         }
         moves.push(Move {
-          from:      pos,
-          to:        knight_move,
+          from: pos,
+          to:   knight_move,
           //promotion: None,
         });
       }
@@ -416,8 +416,8 @@ impl State {
           continue;
         }
         moves.push(Move {
-          from:      pos,
-          to:        king_move,
+          from: pos,
+          to:   king_move,
           //promotion: None,
         });
       }
@@ -433,8 +433,8 @@ impl State {
           continue;
         }
         moves.push(Move {
-          from:      pos,
-          to:        rook_move,
+          from: pos,
+          to:   rook_move,
           //promotion: None,
         });
       }
@@ -450,8 +450,8 @@ impl State {
           continue;
         }
         moves.push(Move {
-          from:      pos,
-          to:        bishop_move,
+          from: pos,
+          to:   bishop_move,
           //promotion: None,
         });
       }
@@ -467,8 +467,8 @@ impl State {
           continue;
         }
         moves.push(Move {
-          from:      pos,
-          to:        queen_move,
+          from: pos,
+          to:   queen_move,
           //promotion: None,
         });
       }
@@ -562,18 +562,18 @@ impl State {
             // Check if we're promoting.
             //match &m.promotion {
             //  Some(promotion) => {
-                // Prevent promotions that aren't on the first or last rank.
-                // This allows our move encoding to be lazy, and just say every move is promoting to queen.
-                let promotion_mask = to_mask & LAST_RANKS;
-                // Remove the pawn, and setup the promotion.
-                us.0 &= !promotion_mask;
-                new_queens = promotion_mask;
-                //match promotion {
-                //  PromotablePiece::Queen => new_queens = promotion_mask,
-                //  PromotablePiece::Rook => new_rooks = promotion_mask,
-                //  PromotablePiece::Knight => new_knights = promotion_mask,
-                //  PromotablePiece::Bishop => new_bishops = promotion_mask,
-                //}
+            // Prevent promotions that aren't on the first or last rank.
+            // This allows our move encoding to be lazy, and just say every move is promoting to queen.
+            let promotion_mask = to_mask & LAST_RANKS;
+            // Remove the pawn, and setup the promotion.
+            us.0 &= !promotion_mask;
+            new_queens = promotion_mask;
+            //match promotion {
+            //  PromotablePiece::Queen => new_queens = promotion_mask,
+            //  PromotablePiece::Rook => new_rooks = promotion_mask,
+            //  PromotablePiece::Knight => new_knights = promotion_mask,
+            //  PromotablePiece::Bishop => new_bishops = promotion_mask,
+            //}
             //  }
             //  None => {}
             //}

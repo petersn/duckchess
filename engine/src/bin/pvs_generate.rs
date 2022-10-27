@@ -1,6 +1,6 @@
-use clap::Parser;
 use std::io::Write;
 
+use clap::Parser;
 use rand::seq::SliceRandom;
 
 #[derive(Parser, Debug)]

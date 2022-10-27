@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{rules::Move, search, inference};
+use crate::{inference, rules::Move, search};
 
 #[pyclass]
 struct Engine {

@@ -127,8 +127,7 @@ impl MctsNode {
         )
       }
     };
-    if self.evals.posterior(m) > 0.1 {
-    }
+    if self.evals.posterior(m) > 0.1 {}
     let u = EXPLORATION_ALPHA * self.evals.posterior(m) * u;
     q + u
   }
