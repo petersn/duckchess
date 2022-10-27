@@ -44,7 +44,7 @@ async fn main() {
         // This array tracks the moves that actually occur in the game.
         let mut moves: Vec<engine::rules::Move> = vec![];
         // This array contains the training targets for the policy head.
-        let mut train_dists: Vec<Vec<(engine::rules::Move, f32)>> = vec![];
+        let mut train_dists: Vec<Option<Vec<(engine::rules::Move, f32)>>> = vec![];
         // This array says if we attempted a full search to choose a training move.
         let mut full_search: Vec<bool> = vec![];
         // This array tracks how many steps were actually performed to compute this move.
@@ -72,8 +72,8 @@ async fn main() {
               //println!("[{task_id}] Generated a move: {:?}", m);
               full_search.push(do_full_search);
               train_dists.push(match do_full_search {
-                true => mcts.get_train_distribution(),
-                false => vec![],
+                true => Some(mcts.get_train_distribution()),
+                false => None,
               });
               steps_performed.push(steps);
               moves.push(game_move);

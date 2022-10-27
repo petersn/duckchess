@@ -329,8 +329,18 @@ impl<'a> Mcts<'a> {
     steps_taken
   }
 
+  fn get_sum_child_visits(&self, node_index: NodeIndex) -> i32 {
+    // Naively we could use node.visits - 1, but due to transpositions
+    // that might not actually be the right value.
+    self.nodes[node_index]
+      .outgoing_edges
+      .values()
+      .map(|child_index| self.nodes[*child_index].visits as i32)
+      .sum()
+  }
+
   pub fn get_train_distribution(&self) -> Vec<(Move, f32)> {
-    let sum_child_visits = (self.nodes[self.root].visits - 1) as f32;
+    let sum_child_visits = self.get_sum_child_visits(self.root) as f32;
     let mut distribution = Vec::new();
     for (m, child_index) in &self.nodes[self.root].outgoing_edges {
       let child_visits = self.nodes[*child_index].visits;
@@ -342,7 +352,7 @@ impl<'a> Mcts<'a> {
   pub fn sample_move_by_visit_count(&self) -> Option<Move> {
     use rand::Rng;
     let mut rng = rand::thread_rng();
-    let sum_child_visits = self.nodes[self.root].visits as i32 - 1;
+    let sum_child_visits = self.get_sum_child_visits(self.root);
     if sum_child_visits == 0 {
       return None;
     }

@@ -4,8 +4,7 @@ use tensorflow::{Graph, Operation, SavedModelBundle, SessionOptions, SessionRunA
 
 use crate::rules::{Move, State};
 
-//pub const BATCH_SIZE: usize = 128;
-pub const BATCH_SIZE: usize = 1;
+pub const BATCH_SIZE: usize = 128;
 
 // We double buffer, to improve performance.
 pub const BUFFER_COUNT: usize = 2;
