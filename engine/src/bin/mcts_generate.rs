@@ -3,7 +3,7 @@ use engine::inference::InferenceEngine;
 use engine::mcts::Mcts;
 
 const PLAYOUT_CAP_RANDOMIZATION_P: f32 = 0.25;
-const FULL_SEARCH_PLAYOUTS: u32 = 1600;
+const FULL_SEARCH_PLAYOUTS: u32 = 1000;
 const SMALL_SEARCH_PLAYOUTS: u32 = 200;
 const GAME_LEN_LIMIT: usize = 300;
 

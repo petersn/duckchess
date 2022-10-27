@@ -111,7 +111,7 @@ technically statistically biases the games slightly towards being shorter.)
         formatter_class=Formatter,
     )
     parser.add_argument("--prefix", metavar="PATH", default=".", help="Prefix directory. Make sure this directory contains games/ and models/ subdirectories.")
-    parser.add_argument("--game-count", metavar="N", type=int, default=2500, help="Minimum number of games to generate per iteration.")
+    parser.add_argument("--game-count", metavar="N", type=int, default=3000, help="Minimum number of games to generate per iteration.")
     parser.add_argument("--training-steps-const", metavar="N", type=int, default=500, help="Base number of training steps to perform per iteration.")
     parser.add_argument("--training-steps-linear", metavar="N", type=int, default=250, help="We also apply an additional N steps for each additional iteration included in the training window.")
     parser.add_argument("--training-window", metavar="N", type=int, default=10, help="When training include games from the past N iterations.")

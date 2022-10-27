@@ -187,6 +187,12 @@ impl MctsNode {
     }
     best_move
   }
+
+  fn new_child(&mut self, m: Move, child_index: NodeIndex) {
+    debug_assert!(!self.outgoing_edges.contains_key(&m));
+    self.outgoing_edges.insert(m, child_index);
+    self.policy_explored += self.evals.posterior(m);
+  }
 }
 
 fn get_transposition_table_key(state: &State, depth: u32) -> (u64, u32) {
@@ -279,7 +285,7 @@ impl<'a> Mcts<'a> {
         let new_depth = self.nodes[pv_leaf].depth + 1;
         let child_index = self.create_node(state, new_depth).await;
         // Append the new child to the PV.
-        self.nodes[pv_leaf].outgoing_edges.insert(m, child_index);
+        self.nodes[pv_leaf].new_child(m, child_index);
         pv_nodes.push(child_index);
         child_index
       }
