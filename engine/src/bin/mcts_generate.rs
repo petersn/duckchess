@@ -42,13 +42,13 @@ async fn main() {
       loop {
         let mut mcts = Mcts::create(inference_engine).await;
         // This array tracks the moves that actually occur in the game.
-        let mut moves = vec![];
-        // This array contains moves to actually train on. (Might be different from moves!)
-        let mut train_moves = vec![];
+        let mut moves: Vec<engine::rules::Move> = vec![];
+        // This array contains the training targets for the policy head.
+        let mut train_dists: Vec<Vec<(engine::rules::Move, f32)>> = vec![];
         // This array says if we attempted a full search to choose a training move.
-        let mut full_search = vec![];
+        let mut full_search: Vec<bool> = vec![];
         // This array tracks how many steps were actually performed to compute this move.
-        let mut steps_performed = vec![];
+        let mut steps_performed: Vec<u32> = vec![];
 
         for _ in 0..GAME_LEN_LIMIT {
           // Decide whether or not to perform a full search.
@@ -57,12 +57,13 @@ async fn main() {
             true => FULL_SEARCH_PLAYOUTS,
             false => SMALL_SEARCH_PLAYOUTS,
           };
-          // KataGo paper only adds noise on full searches
+          // KataGo paper only adds noise on full searches.
           if do_full_search {
             mcts.apply_noise_to_root();
           }
-          // Perform the actual tree search
-          let steps = mcts.step_until(playouts).await;
+          // Perform the actual tree search.
+          // We early out only if we're not doing a full search, to properly compute our training target.
+          let steps = mcts.step_until(playouts, !do_full_search).await;
           //println!("{}: tree={} steps={}", task_id, playouts, steps);
 
           match mcts.sample_move_by_visit_count() {
@@ -70,9 +71,9 @@ async fn main() {
             Some(game_move) => {
               //println!("[{task_id}] Generated a move: {:?}", m);
               full_search.push(do_full_search);
-              train_moves.push(match do_full_search {
-                true => mcts.select_train_move(),
-                false => None,
+              train_dists.push(match do_full_search {
+                true => mcts.get_train_distribution(),
+                false => vec![],
               });
               steps_performed.push(steps);
               moves.push(game_move);
@@ -88,7 +89,7 @@ async fn main() {
           total_steps as f32 / moves.len() as f32
         );
         // Guarantee that all lists are the same length.
-        assert_eq!(moves.len(), train_moves.len());
+        assert_eq!(moves.len(), train_dists.len());
         assert_eq!(moves.len(), full_search.len());
         assert_eq!(moves.len(), steps_performed.len());
         {
@@ -97,14 +98,14 @@ async fn main() {
             "outcome": mcts.get_state().get_outcome().to_option_str(),
             "final_state": mcts.get_state(),
             "moves": moves,
-            "train_moves": train_moves,
+            "train_dists": train_dists,
             "full_search": full_search,
             "steps_performed": steps_performed,
             "playout_cap_randomization_p": PLAYOUT_CAP_RANDOMIZATION_P,
             "full_search_playouts": FULL_SEARCH_PLAYOUTS,
             "small_search_playouts": SMALL_SEARCH_PLAYOUTS,
             "game_len_limit": GAME_LEN_LIMIT,
-            "version": 102,
+            "version": 103,
           });
           let s = serde_json::to_string(&obj).unwrap();
           file.write_all(s.as_bytes()).unwrap();

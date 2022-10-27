@@ -1,3 +1,4 @@
+use std::collections::hash_map::{DefaultHasher, Entry};
 use std::collections::HashMap;
 
 use slotmap::SlotMap;
@@ -6,13 +7,16 @@ use crate::inference::{InferenceEngine, ModelOutputs, POLICY_LEN};
 use crate::rules::{GameOutcome, Move, State};
 
 const EXPLORATION_ALPHA: f32 = 1.0;
+const FIRST_PLAY_URGENCY: f32 = 0.2;
+const ROOT_SOFTMAX_TEMP: f32 = 1.2;
 const DIRICHLET_ALPHA: f32 = 0.1;
 const DIRICHLET_WEIGHT: f32 = 0.25;
 
 #[derive(Clone)]
 struct Evals {
-  moves:   Vec<Move>,
-  outputs: ModelOutputs,
+  moves:             Vec<Move>,
+  outputs:           ModelOutputs,
+  dirichlet_applied: bool,
 }
 
 impl Evals {
@@ -37,10 +41,18 @@ impl Evals {
     state.move_gen::<false>(&mut moves);
     outputs.renormalize(&moves);
     // TODO: The rest of the stuff.
-    Self { moves, outputs }
+    Self {
+      moves,
+      outputs,
+      dirichlet_applied: false,
+    }
   }
 
   fn add_dirichlet_noise(&mut self) {
+    assert!(!self.dirichlet_applied);
+    self.dirichlet_applied = true;
+
+    // FIXME: Also apply softmax temperature here.
     use rand_distr::Distribution;
     let mut thread_rng = rand::thread_rng();
     let dist = rand_distr::Gamma::new(DIRICHLET_ALPHA, 1.0).unwrap();
@@ -72,17 +84,16 @@ impl Evals {
 // Create slotmap keys
 slotmap::new_key_type! {
   pub struct NodeIndex;
-  pub struct EdgeIndex;
+  //pub struct EdgeIndex;
 }
 
-#[derive(Clone)]
-struct MctsEdge {
-  visits:      u32,
-  total_score: f32,
-  parent:      NodeIndex,
-  child:       NodeIndex,
-}
+//#[derive(Clone)]
+//struct MctsEdge {
+//  parent:      NodeIndex,
+//  child:       NodeIndex,
+//}
 
+/*
 impl MctsEdge {
   fn get_edge_score(&self) -> f32 {
     match self.visits == 0 {
@@ -96,50 +107,76 @@ impl MctsEdge {
     self.total_score += score;
   }
 }
+*/
 
 #[derive(Clone)]
 struct MctsNode {
+  depth:           u32,
   state:           State,
   evals:           Evals,
-  all_edge_visits: u32,
-  outgoing_edges:  HashMap<Move, EdgeIndex>,
+  total_score:     f32,
+  visits:          u32,
+  policy_explored: f32,
+  outgoing_edges:  HashMap<Move, NodeIndex>,
+  gc_state:        u32,
 }
 
 impl MctsNode {
-  async fn create(inference_engine: &InferenceEngine, state: State) -> Self {
+  async fn create(depth: u32, inference_engine: &InferenceEngine, state: State) -> Self {
     let evals = Evals::create(inference_engine, &state).await;
     Self {
+      depth,
       state,
       evals,
-      all_edge_visits: 0,
+      total_score: 0.0,
+      visits: 0,
+      policy_explored: 0.0,
       outgoing_edges: HashMap::new(),
+      gc_state: 0,
     }
   }
 
-  fn total_action_score(&self, edges: &SlotMap<EdgeIndex, MctsEdge>, m: Move) -> f32 {
+  fn get_subtree_value(&self) -> f32 {
+    self.total_score / self.visits as f32
+  }
+
+  fn adjust_score(&mut self, score: f32) {
+    self.visits += 1;
+    self.total_score += score;
+  }
+
+  fn total_action_score(
+    &self,
+    sqrt_policy_explored: f32,
+    nodes: &SlotMap<NodeIndex, MctsNode>,
+    m: Move,
+  ) -> f32 {
     let (u, q) = match self.outgoing_edges.get(&m) {
-      None => ((1.0 + self.all_edge_visits as f32).sqrt(), 0.0),
-      Some(edge_index) => {
-        let edge = &edges[*edge_index];
+      None => (
+        (self.visits as f32).sqrt(),
+        (self.get_subtree_value() - FIRST_PLAY_URGENCY * sqrt_policy_explored).max(0.0),
+      ),
+      Some(child_index) => {
+        let child = &nodes[*child_index];
         (
-          (1.0 + self.all_edge_visits as f32).sqrt() / (1.0 + edge.visits as f32),
-          edge.get_edge_score(),
+          (self.visits as f32).sqrt() / (1.0 + child.visits as f32),
+          child.get_subtree_value(),
         )
       }
     };
-    if self.evals.posterior(m) > 0.1 {}
     let u = EXPLORATION_ALPHA * self.evals.posterior(m) * u;
     q + u
   }
 
-  fn select_action(&self, edges: &SlotMap<EdgeIndex, MctsEdge>) -> Option<Move> {
+  fn select_action(&self, nodes: &SlotMap<NodeIndex, MctsNode>) -> Option<Move> {
     if self.evals.moves.is_empty() {
       return None;
     }
+    let sqrt_policy_explored = self.policy_explored.sqrt();
     let mut best_score = -std::f32::INFINITY;
     let mut best_move = None;
     for m in &self.evals.moves {
-      let score = self.total_action_score(edges, *m);
+      let score = self.total_action_score(sqrt_policy_explored, nodes, *m);
       if score > best_score {
         best_score = score;
         best_move = Some(*m);
@@ -149,16 +186,26 @@ impl MctsNode {
   }
 }
 
+fn get_transposition_table_key(state: &State, depth: u32) -> (u64, u32) {
+  use std::hash::{Hash, Hasher};
+  let mut s = DefaultHasher::new();
+  state.hash(&mut s);
+  let state_hash: u64 = s.finish();
+  // We include the depth in the key to keep the tree a DAG.
+  // This misses some transposition opportunities, but is very cheap.
+  (state_hash, depth)
+}
+
 pub struct Mcts<'a> {
-  inference_engine: &'a InferenceEngine,
-  root:             NodeIndex,
-  nodes:            SlotMap<NodeIndex, MctsNode>,
-  edges:            SlotMap<EdgeIndex, MctsEdge>,
+  inference_engine:    &'a InferenceEngine,
+  root:                NodeIndex,
+  nodes:               SlotMap<NodeIndex, MctsNode>,
+  transposition_table: HashMap<(u64, u32), NodeIndex>,
 }
 
 impl<'a> Mcts<'a> {
   pub async fn create(inference_engine: &'a InferenceEngine) -> Mcts<'a> {
-    let mut node = MctsNode::create(inference_engine, State::starting_state()).await;
+    let mut node = MctsNode::create(0, inference_engine, State::starting_state()).await;
     node.evals.add_dirichlet_noise();
     let mut nodes = SlotMap::with_key();
     let root = nodes.insert(node);
@@ -166,38 +213,41 @@ impl<'a> Mcts<'a> {
       inference_engine,
       root,
       nodes,
-      edges: SlotMap::with_key(),
+      transposition_table: HashMap::new(),
     }
   }
 
   async fn select_principal_variation(
     &self,
     best: bool,
-  ) -> (NodeIndex, Vec<EdgeIndex>, Option<Move>) {
+  ) -> (NodeIndex, Vec<NodeIndex>, Option<Move>) {
     let mut node_index = self.root;
     let mut node = &self.nodes[self.root];
-    let mut edges = vec![];
+    let mut nodes = vec![self.root];
     loop {
       let m: Option<Move> = match best {
+        // If we're picking the best PV, just take the most visited.
         true => node
           .outgoing_edges
           .iter()
-          .max_by_key(|(_, edge_index)| self.edges[**edge_index].visits)
+          .max_by_key(|(_, node_index)| self.nodes[**node_index].visits)
           .map(|(m, _)| *m),
-        false => node.select_action(&self.edges),
+        // Otherwise select according to PUCT.
+        false => node.select_action(&self.nodes),
       };
       match m {
-        None => return (node_index, edges, None),
+        // None means we have no legal moves at the leaf (terminal).
+        None => return (node_index, nodes, None),
+        // Some means we have legal moves.
         Some(m) => {
           // Try to find this edge.
-          let edge_index = match node.outgoing_edges.get(&m) {
-            None => return (node_index, edges, Some(m)),
-            Some(edge_index) => edge_index,
+          let child = match node.outgoing_edges.get(&m) {
+            None => return (node_index, nodes, Some(m)),
+            Some(child) => *child,
           };
-          edges.push(*edge_index);
-          let edge = &self.edges[*edge_index];
-          node_index = edge.child;
-          node = &self.nodes[edge.child];
+          nodes.push(child);
+          node_index = child;
+          node = &self.nodes[child];
         }
       }
     }
@@ -207,116 +257,100 @@ impl<'a> Mcts<'a> {
     &self.nodes[self.root].state
   }
 
+  pub async fn create_node(&mut self, state: State, depth: u32) -> NodeIndex {
+    // Check our transposition table to see if this new state has already been reached.
+    let transposition_table_key = get_transposition_table_key(&state, depth);
+    match self.transposition_table.entry(transposition_table_key) {
+      // If we have a transposition, just use it.
+      Entry::Occupied(entry) => *entry.get(),
+      Entry::Vacant(entry) => *entry
+        .insert(self.nodes.insert(MctsNode::create(depth, &self.inference_engine, state).await)),
+    }
+  }
+
   pub async fn step(&mut self) {
-    let root_all_edge_visits = self.nodes[self.root].all_edge_visits;
-    let (pv_leaf, mut pv_edges, pv_move) = self.select_principal_variation(false).await;
-    let new_node = match pv_move {
-      None => {
-        // If the move is null then we have no legal moves, so just propagate the score again.
-        self.nodes[pv_leaf].all_edge_visits += 1;
-        pv_leaf
-      }
+    let root_visit_count = self.nodes[self.root].visits;
+    let (pv_leaf, mut pv_nodes, pv_move) = self.select_principal_variation(false).await;
+    let child_index = match pv_move {
+      // If the move is null then we have no legal moves, so just propagate the score again.
+      None => pv_leaf,
+      // If the move is non-null then expand once at the leaf in that direction.
       Some(m) => {
-        // If the move is non-null then expand once at the leaf.
+        // Create the new child state.
         let mut state = self.nodes[pv_leaf].state.clone();
         state.apply_move(m).unwrap();
-        let child = self.nodes.insert(MctsNode::create(&self.inference_engine, state).await);
-        let edge_index = self.edges.insert(MctsEdge {
-          visits: 0,
-          total_score: 0.0,
-          parent: pv_leaf,
-          child,
-        });
-        self.nodes[pv_leaf].outgoing_edges.insert(m, edge_index);
-        pv_edges.push(edge_index);
-        child
+        let new_depth = self.nodes[pv_leaf].depth + 1;
+        let child_index = self.create_node(state, new_depth).await;
+        self.nodes[pv_leaf].outgoing_edges.insert(m, child_index);
+        pv_nodes.push(child_index);
+        child_index
       }
     };
-    let value_score = (self.nodes[new_node].evals.outputs.value + 1.0) / 2.0;
-    let is_from_whites_perspective = self.nodes[new_node].state.white_turn;
-    for edge_index in pv_edges.iter().rev() {
-      // FIXME: This is wrong! I should only flip every other other edge.
-      // Alternate the value score, since it's from the current player's perspective.
-      let edge = &mut self.edges[*edge_index];
-      let parent = &mut self.nodes[edge.parent];
-      let player_perspective_score = match parent.state.white_turn == is_from_whites_perspective {
+    let value_score = (self.nodes[child_index].evals.outputs.value + 1.0) / 2.0;
+    let is_from_whites_perspective = self.nodes[child_index].state.white_turn;
+    for node_index in pv_nodes {
+      let node = &mut self.nodes[node_index];
+      let player_perspective_score = match node.state.white_turn == is_from_whites_perspective {
         true => value_score,
         false => 1.0 - value_score,
       };
-      edge.adjust_edge_score(player_perspective_score);
-      parent.all_edge_visits += 1;
+      node.adjust_score(player_perspective_score);
     }
     // Assert that the root's edge visit count went up by one.
-    assert_eq!(
-      self.nodes[self.root].all_edge_visits,
-      root_all_edge_visits + 1
-    );
+    assert_eq!(self.nodes[self.root].visits, root_visit_count + 1);
   }
 
-  pub async fn step_until(&mut self, tree_size: u32) -> u32 {
+  pub async fn step_until(&mut self, tree_size: u32, early_out: bool) -> u32 {
     let mut steps_taken = 0;
     loop {
-      // Find the most and second most visited edge counts at the root.
-      let mut best_edge_visits = 0;
-      let mut second_best_edge_visits = 0;
-      for (_, edge_index) in &self.nodes[self.root].outgoing_edges {
-        let edge = &self.edges[*edge_index];
-        if edge.visits > best_edge_visits {
-          second_best_edge_visits = best_edge_visits;
-          best_edge_visits = edge.visits;
-        } else if edge.visits > second_best_edge_visits {
-          second_best_edge_visits = edge.visits;
+      // Find the most and second most visited children at the root.
+      let mut best_child_visits = 0;
+      let mut second_best_child_visits = 0;
+      for (_, child_index) in &self.nodes[self.root].outgoing_edges {
+        let child_visits = self.nodes[*child_index].visits;
+        if child_visits > best_child_visits {
+          second_best_child_visits = best_child_visits;
+          best_child_visits = child_visits;
+        } else if child_visits > second_best_child_visits {
+          second_best_child_visits = child_visits;
         }
       }
       // Compute the greatest possible number of additional steps we might take.
-      let maximum_steps = tree_size as i64 - self.nodes[self.root].all_edge_visits as i64;
-      if maximum_steps > 2000 {
-        panic!("maximum_steps={}", maximum_steps);
-      }
+      let maximum_steps = tree_size as i64 - self.nodes[self.root].visits as i64;
       if maximum_steps <= 0 {
         break;
       }
       // Check if there are enough steps left for the second best to surpass the best.
-      if second_best_edge_visits as i64 + maximum_steps < best_edge_visits as i64 {
+      if early_out && second_best_child_visits as i64 + maximum_steps < best_child_visits as i64 {
         break;
       }
       // Step.
       self.step().await;
       steps_taken += 1;
-      if steps_taken > 2000 {
-        panic!("steps_taken={}", steps_taken);
-      }
     }
     steps_taken
   }
 
-  pub fn select_train_move(&self) -> Option<Move> {
-    // Pick the most viisted move.
-    let mut best_visits = 0;
-    let mut best_move = None;
-    for (m, edge_index) in &self.nodes[self.root].outgoing_edges {
-      let edge = &self.edges[*edge_index];
-      if edge.visits > best_visits {
-        best_visits = edge.visits;
-        best_move = Some(*m);
-      }
+  pub fn get_train_distribution(&self) -> Vec<(Move, f32)> {
+    let sum_child_visits = (self.nodes[self.root].visits - 1) as f32;
+    let mut distribution = Vec::new();
+    for (m, child_index) in &self.nodes[self.root].outgoing_edges {
+      let child_visits = self.nodes[*child_index].visits;
+      distribution.push((*m, child_visits as f32 / sum_child_visits));
     }
-    best_move
+    distribution
   }
 
   pub fn sample_move_by_visit_count(&self) -> Option<Move> {
     use rand::Rng;
     let mut rng = rand::thread_rng();
-    let mut total_visits: i32 = 0;
-    for (_, edge_index) in &self.nodes[self.root].outgoing_edges {
-      total_visits += self.edges[*edge_index].visits as i32;
-    }
-    if total_visits == 0 {
+    let sum_child_visits = self.nodes[self.root].visits as i32 - 1;
+    if sum_child_visits == 0 {
       return None;
     }
-    let mut visit_count = rng.gen_range(0..total_visits);
-    for (m, edge_index) in &self.nodes[self.root].outgoing_edges {
-      visit_count -= self.edges[*edge_index].visits as i32;
+    let mut visit_count = rng.gen_range(0..sum_child_visits);
+    for (m, child_index) in &self.nodes[self.root].outgoing_edges {
+      visit_count -= self.nodes[*child_index].visits as i32;
       if visit_count < 0 {
         return Some(*m);
       }
@@ -329,38 +363,31 @@ impl<'a> Mcts<'a> {
   }
 
   pub async fn apply_move(&mut self, m: Move) {
-    match self.nodes[self.root].outgoing_edges.get(&m) {
+    let root = &self.nodes[self.root];
+    match root.outgoing_edges.get(&m) {
       // If we already have a node for this move, then just make it the new root.
-      Some(edge_index) => {
-        let new_root = self.edges[*edge_index].child;
-        // We now perform garbage collection by recursively deleting
-        // everything, but stopping at the new root.
-        fn delete(this: &mut Mcts, new_root: NodeIndex, node_index: NodeIndex) {
-          if node_index == new_root {
-            return;
-          }
-          let edges_to_delete =
-            this.nodes[node_index].outgoing_edges.values().copied().collect::<Vec<_>>();
-          for delete_edge_index in edges_to_delete {
-            let edge = &this.edges[delete_edge_index];
-            delete(this, new_root, edge.child);
-            this.edges.remove(delete_edge_index);
-          }
-          this.nodes.remove(node_index);
-        }
-        delete(self, new_root, self.root);
-        self.root = new_root;
-      }
-      // Otherwise, we throw everything away.
+      Some(child_index) => self.root = *child_index,
+      // Otherwise, we create a new node.
       None => {
-        let mut new_state = self.nodes[self.root].state.clone();
+        let mut new_state = root.state.clone();
         new_state.apply_move(m).unwrap();
-        self.nodes.clear();
-        self.edges.clear();
-        self.root =
-          self.nodes.insert(MctsNode::create(&mut self.inference_engine, new_state).await);
+        self.root = self.create_node(new_state, root.depth + 1).await;
       }
     }
+    // Next we garbage collect.
+    // This `mark_state` value need only be unique.
+    let mark_state = 100 + self.nodes[self.root].depth;
+    let mut stack = vec![self.root];
+    while let Some(node_index) = stack.pop() {
+      let node = &mut self.nodes[node_index];
+      if node.gc_state != mark_state {
+        for child_index in node.outgoing_edges.values() {
+          stack.push(*child_index);
+        }
+      }
+      node.gc_state = mark_state;
+    }
+    self.nodes.retain(|_, node| node.gc_state == mark_state);
   }
 
   pub fn print_tree(&self) {
@@ -368,18 +395,17 @@ impl<'a> Mcts<'a> {
     while !queue.is_empty() {
       let (node_index, depth) = queue.pop().unwrap();
       let node = &self.nodes[node_index];
-      println!("{}node{:?}", "  ".repeat(depth), node_index);
-      for (m, edge_index) in &node.outgoing_edges {
-        let edge = &self.edges[*edge_index];
-        println!(
-          "{}edge={:?} move={:?} visits={} score={}",
-          "  ".repeat(depth + 1),
-          edge_index.0,
-          m,
-          edge.visits,
-          edge.total_score / (edge.visits as f32 + 1e-6),
-        );
-        queue.push((edge.child, depth + 1));
+      println!(
+        "{}node{:?} (visits={} value={} mean={})",
+        "  ".repeat(depth),
+        node_index,
+        node.visits,
+        node.evals.outputs.value,
+        node.get_subtree_value()
+      );
+      for (m, child_index) in &node.outgoing_edges {
+        println!("{}{:?}: {:?}", "  ".repeat(depth + 1), m, child_index);
+        queue.push((*child_index, depth + 1));
       }
     }
   }
