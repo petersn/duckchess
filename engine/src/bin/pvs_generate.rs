@@ -12,7 +12,7 @@ struct Args {
 
 fn work(output_dir: &str) {
   // Open a file for writing
-  let output_path = format!("{}/games-{:016x}.json", output_dir, rand::random::<u64>());
+  let output_path = format!("{}/games-pvs-{:016x}.json", output_dir, rand::random::<u64>());
   let mut output_file = std::fs::File::create(output_path).unwrap();
   let mut rng = rand::thread_rng();
   loop {
@@ -44,7 +44,7 @@ fn work(output_dir: &str) {
       "outcome": outcome,
       "moves": moves,
       "was_rand": was_rand,
-      "version": 4,
+      "version": "pvs-1",
     });
     let s = serde_json::to_string(&obj).unwrap();
     output_file.write_all(s.as_bytes()).unwrap();

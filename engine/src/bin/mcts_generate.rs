@@ -25,7 +25,7 @@ async fn main() {
     Box::leak(Box::new(InferenceEngine::create(&args.model_dir).await));
 
   let output_path = format!(
-    "{}/games-{:016x}.json",
+    "{}/games-mcts-{:016x}.json",
     args.output_dir,
     rand::random::<u64>()
   );
@@ -105,7 +105,7 @@ async fn main() {
             "full_search_playouts": FULL_SEARCH_PLAYOUTS,
             "small_search_playouts": SMALL_SEARCH_PLAYOUTS,
             "game_len_limit": GAME_LEN_LIMIT,
-            "version": 103,
+            "version": "mcts-1",
           });
           let s = serde_json::to_string(&obj).unwrap();
           file.write_all(s.as_bytes()).unwrap();

@@ -32,23 +32,52 @@ if __name__ == "__main__":
         print("Loading data from:", args.data_file)
         data = np.load(args.data_file)
         train_features = data["features"]
-        train_policy = data["policy"]
+        train_policy_indices = data["policy_indices"]
+        train_policy_probs = data["policy_probs"]
         train_value = data["value"]
     else:
-        train_features, train_policy, train_value = make_dataset.process_game_paths(args.games)
+        train_features, train_policy_indices, train_policy_probs, train_value = \
+            make_dataset.process_game_paths(args.games)
 
     train_features = torch.tensor(train_features)
-    train_policy = torch.tensor(train_policy)
+    train_policy_indices = torch.tensor(train_policy_indices)
+    train_policy_probs = torch.tensor(train_policy_probs)
     train_value = torch.tensor(train_value)
 
-    print("Got data:", train_features.shape, train_policy.shape, train_value.shape)
+    print("Got data:", train_features.shape, train_policy_indices.shape, train_policy_probs.shape, train_value.shape)
 
     def make_batch(batch_size):
+        MOVE_COUNT = 64 * 64
         indices = np.random.randint(0, len(train_features), size=batch_size)
+        # We now unpack our sparse representation of the policy.
+        policy_block = torch.zeros(batch_size * MOVE_COUNT, dtype=torch.float32)
+        # Both idx and probs have shape (batch, policy_truncation).
+        orig_idx = train_policy_indices[indices]
+        probs = train_policy_probs[indices]
+        assert orig_idx.shape == probs.shape == (batch_size, 32)
+        # Remap -1 in orig_idx to 0.
+        idx = torch.where(orig_idx == -1, 0, orig_idx)
+        policy_block.index_add_(
+            dim=0,
+            index=(idx + MOVE_COUNT * torch.arange(batch_size).unsqueeze(-1)).flatten(),
+            source=probs.flatten(),
+        )
+        policy_block = policy_block.reshape((batch_size, MOVE_COUNT))
+        row_normalization = torch.sum(policy_block, dim=1)
+        policy_block /= row_normalization.unsqueeze(-1)
+        #print("Unpacked into:", policy_block.shape)
+        bs, trunc = orig_idx.shape
+        #assert bs == batch_size and trunc == 32
+        #for b in range(bs):
+        #    for m in range(trunc):
+        #        this_index = orig_idx[b, m]
+        #        if this_index != -1:
+        #            assert policy_block[b, this_index] == probs[b, m]
+        #            print("b=%d m=%d idx=%d: %f" % (b, m, this_index, policy_block[b, this_index]))
         return (
             # We convert the features array after indexing, to reduce memory consumption.
             train_features[indices].cuda().to(torch.float32),
-            train_policy[indices].cuda(),
+            policy_block.cuda(),
             train_value[indices].cuda(),
         )
 
