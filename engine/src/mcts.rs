@@ -52,28 +52,32 @@ impl Evals {
     assert!(!self.dirichlet_applied);
     self.dirichlet_applied = true;
 
-    // FIXME: Also apply softmax temperature here.
     use rand_distr::Distribution;
     let mut thread_rng = rand::thread_rng();
     let dist = rand_distr::Gamma::new(DIRICHLET_ALPHA, 1.0).unwrap();
     // Generate noise.
     let mut noise = [0.0; POLICY_LEN];
-    for i in 0..noise.len() {
-      noise[i] = dist.sample(&mut thread_rng);
-    }
-    // Normalize noise.
-    let sum = noise.iter().sum::<f32>();
-    for i in 0..noise.len() {
-      noise[i] /= sum;
+    let mut noise_sum = 0.0;
+    let mut policy_sum = 0.0;
+    for m in &self.moves {
+      let idx = m.to_index() as usize;
+      // Generate a gamma-distributed noise value.
+      let new_noise = dist.sample(&mut thread_rng);
+      noise[idx] = new_noise;
+      noise_sum += new_noise;
+      // Apply the new policy softmax temperature.
+      let new_policy = self.outputs.policy[idx].powf(1.0 / ROOT_SOFTMAX_TEMP);
+      self.outputs.policy[idx] = new_policy;
+      policy_sum += new_policy;
     }
     // Mix policy with noise.
     for i in 0..noise.len() {
       self.outputs.policy[i] =
-        (1.0 - DIRICHLET_WEIGHT) * self.outputs.policy[i] + DIRICHLET_WEIGHT * noise[i];
+        (1.0 - DIRICHLET_WEIGHT) * self.outputs.policy[i] / policy_sum + DIRICHLET_WEIGHT * noise[i] / noise_sum;
     }
     // Assert normalization.
     let sum = self.outputs.policy.iter().sum::<f32>();
-    debug_assert!((sum - 1.0).abs() < 1e-2);
+    debug_assert!((sum - 1.0).abs() < 1e-3);
   }
 
   fn posterior(&self, m: Move) -> f32 {
@@ -205,10 +209,8 @@ pub struct Mcts<'a> {
 
 impl<'a> Mcts<'a> {
   pub async fn create(inference_engine: &'a InferenceEngine) -> Mcts<'a> {
-    let mut node = MctsNode::create(0, inference_engine, State::starting_state()).await;
-    node.evals.add_dirichlet_noise();
     let mut nodes = SlotMap::with_key();
-    let root = nodes.insert(node);
+    let root = nodes.insert(MctsNode::create(0, inference_engine, State::starting_state()).await);
     Self {
       inference_engine,
       root,
@@ -281,6 +283,7 @@ impl<'a> Mcts<'a> {
         state.apply_move(m).unwrap();
         let new_depth = self.nodes[pv_leaf].depth + 1;
         let child_index = self.create_node(state, new_depth).await;
+        // Append the new child to the PV.
         self.nodes[pv_leaf].outgoing_edges.insert(m, child_index);
         pv_nodes.push(child_index);
         child_index
@@ -364,16 +367,16 @@ impl<'a> Mcts<'a> {
 
   pub async fn apply_move(&mut self, m: Move) {
     let root = &self.nodes[self.root];
-    match root.outgoing_edges.get(&m) {
+    self.root = match root.outgoing_edges.get(&m) {
       // If we already have a node for this move, then just make it the new root.
-      Some(child_index) => self.root = *child_index,
+      Some(child_index) => *child_index,
       // Otherwise, we create a new node.
       None => {
         let mut new_state = root.state.clone();
         new_state.apply_move(m).unwrap();
-        self.root = self.create_node(new_state, root.depth + 1).await;
+        self.create_node(new_state, root.depth + 1).await
       }
-    }
+    };
     // Next we garbage collect.
     // This `mark_state` value need only be unique.
     let mark_state = 100 + self.nodes[self.root].depth;
@@ -387,6 +390,7 @@ impl<'a> Mcts<'a> {
       }
       node.gc_state = mark_state;
     }
+    //self.print_tree();
     self.nodes.retain(|_, node| node.gc_state == mark_state);
   }
 
