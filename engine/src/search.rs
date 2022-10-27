@@ -280,9 +280,7 @@ impl Engine {
     assert!(!moves.is_empty());
 
     // Reorder based on our move order table.
-    let mut s = DefaultHasher::new();
-    state.hash(&mut s);
-    let state_hash: u64 = s.finish();
+    let state_hash: u64 = state.get_transposition_table_hash();
 
     let mot_move = match QUIESCENCE {
       false => self.move_order_table.get(&state_hash),

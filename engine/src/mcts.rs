@@ -1,4 +1,4 @@
-use std::collections::hash_map::{DefaultHasher, Entry};
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
 use slotmap::SlotMap;
@@ -40,7 +40,6 @@ impl Evals {
     let mut moves = vec![];
     state.move_gen::<false>(&mut moves);
     outputs.renormalize(&moves);
-    // TODO: The rest of the stuff.
     Self {
       moves,
       outputs,
@@ -72,8 +71,8 @@ impl Evals {
     }
     // Mix policy with noise.
     for i in 0..noise.len() {
-      self.outputs.policy[i] =
-        (1.0 - DIRICHLET_WEIGHT) * self.outputs.policy[i] / policy_sum + DIRICHLET_WEIGHT * noise[i] / noise_sum;
+      self.outputs.policy[i] = (1.0 - DIRICHLET_WEIGHT) * self.outputs.policy[i] / policy_sum
+        + DIRICHLET_WEIGHT * noise[i] / noise_sum;
     }
     // Assert normalization.
     let sum = self.outputs.policy.iter().sum::<f32>();
@@ -191,13 +190,9 @@ impl MctsNode {
 }
 
 fn get_transposition_table_key(state: &State, depth: u32) -> (u64, u32) {
-  use std::hash::{Hash, Hasher};
-  let mut s = DefaultHasher::new();
-  state.hash(&mut s);
-  let state_hash: u64 = s.finish();
   // We include the depth in the key to keep the tree a DAG.
   // This misses some transposition opportunities, but is very cheap.
-  (state_hash, depth)
+  (state.get_transposition_table_hash(), depth)
 }
 
 pub struct Mcts<'a> {
@@ -390,29 +385,44 @@ impl<'a> Mcts<'a> {
       }
       node.gc_state = mark_state;
     }
-    //self.print_tree();
     self.nodes.retain(|_, node| node.gc_state == mark_state);
+    // Finally, we clear out the transposition table, because it may
+    // still contain references to freed nodes.
+    self.transposition_table.clear();
   }
 
-  pub fn print_tree(&self) {
-    let mut stack = vec![(None, self.root, 0)];
+  pub fn print_tree(&self, root: NodeIndex, desired_state: u32) {
+    let mut already_printed_set = std::collections::HashSet::new();
+    let mut stack = vec![(None, root, 0)];
     while !stack.is_empty() {
       let (m, node_index, depth) = stack.pop().unwrap();
       let node = &self.nodes[node_index];
+      let already_printed = already_printed_set.contains(&node_index);
+      already_printed_set.insert(node_index);
       println!(
-        "{}{}node{:?} (visits={} value={} mean={})",
+        "{}{}{}node{:?} (visits={} value={} mean={}){}\x1b[0m",
         "  ".repeat(depth),
         match m {
           Some(m) => format!("{:?} -> ", m),
           None => "".to_string(),
         },
+        match node.gc_state == desired_state {
+          true => "\x1b[91m",
+          false => "\x1b[92m",
+        },
         node_index,
         node.visits,
         node.evals.outputs.value,
-        node.get_subtree_value()
+        node.get_subtree_value(),
+        match already_printed {
+          true => " (already printed)",
+          false => "",
+        },
       );
-      for (m, child_index) in &node.outgoing_edges {
-        stack.push((Some(*m), *child_index, depth + 1));
+      if !already_printed {
+        for (m, child_index) in &node.outgoing_edges {
+          stack.push((Some(*m), *child_index, depth + 1));
+        }
       }
     }
   }

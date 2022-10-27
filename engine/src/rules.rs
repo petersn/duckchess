@@ -1,7 +1,5 @@
 include!(concat!(env!("OUT_DIR"), "/tables.rs"));
 
-use std::hash::Hash;
-
 use serde::{ser::SerializeSeq, Deserialize, Serialize};
 
 #[rustfmt::skip]
@@ -48,7 +46,7 @@ impl<'de> Deserialize<'de> for BitBoard {
   }
 }
 
-#[derive(Debug, Clone, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct State {
   pub pawns:           [BitBoard; 2],
@@ -200,6 +198,42 @@ impl State {
       white_turn:      true,
       is_duck_move:    false,
     }
+  }
+
+  pub fn get_transposition_table_hash(&self) -> u64 {
+    const MULT: u64 = 0x243f6a8885a308d3;
+    let mut x = 0;
+    macro_rules! hash_u64 {
+      ($x:expr, $value:expr) => {{
+        $x ^= $value;
+        let y = ($x as u128).wrapping_mul(MULT as u128);
+        $x = (y >> 64) as u64 ^ y as u64;
+      }};
+    }
+    macro_rules! hash_piece {
+      ($x:ident, $piece:expr) => {{
+        for i in [0, 1] {
+          hash_u64!($x, $piece[i].0);
+        }
+      }};
+    }
+    hash_piece!(x, self.pawns);
+    hash_piece!(x, self.knights);
+    hash_piece!(x, self.bishops);
+    hash_piece!(x, self.rooks);
+    hash_piece!(x, self.queens);
+    hash_piece!(x, self.kings);
+    hash_u64!(x, self.ducks.0);
+    hash_u64!(x, self.en_passant.0);
+    // Intentionally skip highlight.
+    let bits = (self.castling_rights[0].king_side as u64)
+      ^ (self.castling_rights[0].queen_side as u64) << 8
+      ^ (self.castling_rights[1].king_side as u64) << 16
+      ^ (self.castling_rights[1].queen_side as u64) << 24
+      ^ (self.white_turn as u64) << 32
+      ^ (self.is_duck_move as u64) << 40;
+    hash_u64!(x, bits);
+    x
   }
 
   // TODO: Implement stalemate.
