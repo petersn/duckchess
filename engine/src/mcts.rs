@@ -395,21 +395,24 @@ impl<'a> Mcts<'a> {
   }
 
   pub fn print_tree(&self) {
-    let mut queue = vec![(self.root, 0)];
-    while !queue.is_empty() {
-      let (node_index, depth) = queue.pop().unwrap();
+    let mut stack = vec![(None, self.root, 0)];
+    while !stack.is_empty() {
+      let (m, node_index, depth) = stack.pop().unwrap();
       let node = &self.nodes[node_index];
       println!(
-        "{}node{:?} (visits={} value={} mean={})",
+        "{}{}node{:?} (visits={} value={} mean={})",
         "  ".repeat(depth),
+        match m {
+          Some(m) => format!("{:?} -> ", m),
+          None => "".to_string(),
+        },
         node_index,
         node.visits,
         node.evals.outputs.value,
         node.get_subtree_value()
       );
       for (m, child_index) in &node.outgoing_edges {
-        println!("{}{:?}: {:?}", "  ".repeat(depth + 1), m, child_index);
-        queue.push((*child_index, depth + 1));
+        stack.push((Some(*m), *child_index, depth + 1));
       }
     }
   }
