@@ -1,14 +1,15 @@
 import json
 import glob
 import numpy as np
+import random
 from tqdm import tqdm
 
-# Load up our duck chess engine
+import show_game
 import engine
 
 def process_game_paths(paths):
     all_games = []
-    for path in tqdm(paths[6:8]):
+    for path in tqdm(paths):
         with open(path) as f:
             for line in f:
                 all_games.append(json.loads(line))
@@ -45,17 +46,33 @@ def process_game_paths(paths):
 
         moves_list = game["train_moves"] if "train_moves" in game else game["moves"]
         for i, move in enumerate(moves_list):
+            if e.get_outcome() is not None:
+                continue
             if i >= len(game["moves"]):
                 continue
-            move_str = json.dumps(game["moves"][i])
-            all_moves = [
-                (m["from"], m["to"])
-                for m in map(json.loads, e.get_moves())
-            ]
-            this_move = (move["from"], move["to"])
-            assert this_move in all_moves, f"Index = {i} Move {this_move} not in {all_moves}"
+            move = game["moves"][i]
+            # Remap moves that encode the from square as 64.
+            if move["from"] == 64:
+                assert i == 1, "Only the duck placement move can be from 64!"
+                move["from"] = move["to"]
+            move_str = json.dumps(move)
+            careful_check = random.random() < 0.02
+            if careful_check:
+                all_moves = [
+                    (m["from"], m["to"])
+                    for m in map(json.loads, e.get_moves())
+                ]
+                this_move = (move["from"], move["to"])
+                if this_move not in all_moves:
+                    print(f"Index = {i} move {this_move} not in {all_moves}")
+                    state = json.loads(e.get_state())
+                    print(state)
+                    show_game.render_state(state)
+                    print(state["whiteTurn"])
+                    raise RuntimeError
             if (version == 3 and game["was_rand"][i] is True) or (version == 101 and not game["was_large"][i]):
-                e.apply_move(move_str)
+                r = e.apply_move(move_str)
+                assert r is None, f"Index = {i} Move {move_str} failed: {r}"
                 continue
             # Save a triple into our arrays.
             features_slice = features_array[entry]
@@ -66,7 +83,8 @@ def process_game_paths(paths):
             value_array[entry, 0] = value_for_white if white_to_move else -value_for_white
             entry += 1
             # Apply the move.
-            e.apply_move(move_str)
+            r = e.apply_move(move_str)
+            assert r is None, f"Index = {i} Move {move_str} failed: {r}"
         assert e.get_outcome() == game["outcome"]
     assert entry == total_moves
 

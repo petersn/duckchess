@@ -29,7 +29,7 @@ fn work(output_dir: &str) {
       if let Some(m) = p {
         was_rand.push(random_move);
         moves.push(m);
-        engine.apply_move(m);
+        engine.apply_move(m).unwrap();
       } else {
         break;
       }

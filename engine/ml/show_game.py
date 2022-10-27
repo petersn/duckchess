@@ -4,15 +4,6 @@ import json
 
 import engine
 
-games = []
-for path in sys.argv[1:]:
-    with open(path) as f:
-        for line in f:
-            games.append(json.loads(line))
-print("Games:", len(games))
-
-game = random.choice(games)
-
 def render_state(state):
     piece_kinds = ["pawns", "knights", "bishops", "rooks", "queens", "kings"]
     board = [["."] * 8 for _ in range(8)]
@@ -38,9 +29,19 @@ def render_state(state):
                 board[rank][i] = "#"
     print("\n".join(" ".join(row) for row in board[::-1]))
 
-e = engine.Engine(0)
-for move in game["moves"]:
-    e.apply_move(json.dumps(move))
-    state = json.loads(e.get_state())
-    render_state(state)
-    input("> ")
+if __name__ == "__main__":
+    games = []
+    for path in sys.argv[1:]:
+        with open(path) as f:
+            for line in f:
+                games.append(json.loads(line))
+    print("Games:", len(games))
+
+    game = random.choice(games)
+
+    e = engine.Engine(0)
+    for move in game["moves"]:
+        e.apply_move(json.dumps(move))
+        state = json.loads(e.get_state())
+        render_state(state)
+        input("> ")

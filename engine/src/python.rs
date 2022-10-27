@@ -37,9 +37,9 @@ impl Engine {
     (score, serialized)
   }
 
-  fn apply_move(&mut self, m: &str) {
+  fn apply_move(&mut self, m: &str) -> Option<&'static str> {
     let m: Move = serde_json::from_str(m).unwrap();
-    self.engine.apply_move(m);
+    self.engine.apply_move(m).err()
   }
 
   fn get_outcome(&self) -> Option<&'static str> {

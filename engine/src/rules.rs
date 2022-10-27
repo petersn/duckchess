@@ -253,9 +253,11 @@ impl State {
     // Handle the duck move part of the turn.
     if self.is_duck_move {
       let mut duck_moves = !occupied;
+      let duck_square = get_square(self.ducks.0);
       while let Some(pos) = iter_bits(&mut duck_moves) {
         moves.push(Move {
-          from:      get_square(self.ducks.0),
+          // Encode the initial duck placement as from == to.
+          from:      if self.ducks.0 == 0 { pos } else { duck_square },
           to:        pos,
           //promotion: None,
         });
@@ -296,7 +298,7 @@ impl State {
     }
 
     // Find all moves for pawns.
-    let (second_rank, seventh_rank) = if IS_WHITE {
+    let (second_rank, seventh_rank): (u64, u64) = if IS_WHITE {
       (0x000000000000ff00, 0x00ff000000000000)
     } else {
       (0x00ff000000000000, 0x000000000000ff00)
@@ -315,10 +317,12 @@ impl State {
     //let mut promote_double_pawn_pushes = double_pawn_pushes & seventh_rank;
     //let mut promote_pawn_capture_left = pawn_capture_left & seventh_rank;
     //let mut promote_pawn_capture_right = pawn_capture_right & seventh_rank;
-    single_pawn_pushes &= !seventh_rank;
-    double_pawn_pushes &= !seventh_rank;
-    pawn_capture_left &= !seventh_rank;
-    pawn_capture_right &= !seventh_rank;
+
+    // TODO: I should disable movement from the seventh rank again once I separate out promotions.
+    //single_pawn_pushes &= !seventh_rank;
+    //double_pawn_pushes &= !seventh_rank;
+    //pawn_capture_left &= !seventh_rank;
+    //pawn_capture_right &= !seventh_rank;
 
     macro_rules! add_pawn_moves {
       ("plain", $bits:ident, $moves:ident, $delta:expr) => {
@@ -481,7 +485,11 @@ impl State {
     }
   }
 
-  pub fn apply_move(&mut self, m: Move) -> bool {
+  pub fn apply_move(&mut self, m: Move) -> Result<(), &'static str> {
+    if m.from > 63 || m.to > 63 {
+      return Err("from/to out of range");
+    }
+
     let from_mask = 1 << m.from;
     let to_mask = 1 << m.to;
     if !self.is_duck_move {
@@ -490,14 +498,14 @@ impl State {
     self.highlight.0 |= from_mask | to_mask;
     // Handle duck moves.
     if self.is_duck_move {
-      if self.ducks.0 & from_mask != 0 {
+      if self.ducks.0 & from_mask != 0 || (self.ducks.0 == 0 && m.from == m.to) {
         self.ducks.0 &= !from_mask;
         self.ducks.0 |= to_mask;
         self.is_duck_move = false;
         self.white_turn = !self.white_turn;
-        return true;
+        return Ok(());
       }
-      return false;
+      return Err("no duck at from position");
     }
 
     let moving_en_passant = self.en_passant.0 & to_mask != 0;
@@ -607,6 +615,6 @@ impl State {
 
     //self.white_turn = !self.white_turn;
     self.is_duck_move = true;
-    true
+    Ok(())
   }
 }

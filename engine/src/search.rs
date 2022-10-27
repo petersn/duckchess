@@ -217,8 +217,8 @@ impl Engine {
     self.state = state;
   }
 
-  pub fn apply_move(&mut self, m: Move) {
-    self.state.apply_move(m);
+  pub fn apply_move(&mut self, m: Move) -> Result<(), &'static str> {
+    self.state.apply_move(m)
   }
 
   pub fn get_moves(&self) -> Vec<Move> {
@@ -335,7 +335,7 @@ impl Engine {
     let mut first = true;
     for m in moves {
       let mut new_state = state.clone();
-      new_state.apply_move(m);
+      new_state.apply_move(m).unwrap();
 
       let mut score;
       let mut next_pair;

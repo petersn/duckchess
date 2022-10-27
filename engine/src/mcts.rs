@@ -220,7 +220,7 @@ impl<'a> Mcts<'a> {
       Some(m) => {
         // If the move is non-null then expand once at the leaf.
         let mut state = self.nodes[pv_leaf].state.clone();
-        state.apply_move(m);
+        state.apply_move(m).unwrap();
         let child = self.nodes.insert(MctsNode::create(&self.inference_engine, state).await);
         let edge_index = self.edges.insert(MctsEdge {
           visits: 0,
@@ -350,7 +350,7 @@ impl<'a> Mcts<'a> {
       // Otherwise, we throw everything away.
       None => {
         let mut new_state = self.nodes[self.root].state.clone();
-        new_state.apply_move(m);
+        new_state.apply_move(m).unwrap();
         self.nodes.clear();
         self.edges.clear();
         self.root =

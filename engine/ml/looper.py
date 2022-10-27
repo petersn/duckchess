@@ -32,12 +32,15 @@ def generate_games(model_number):
 
     # Launch the games generation.
     games_processes = [
-        subprocess.Popen([
-            #"python", "accelerated_generate_games.py",
-            "cargo", "run", "--release", "--bin", "mcts_generate", "--",
-                "--model-dir", index_to_keras_model_path(model_number),
-                "--output-dir", index_to_games_dir(model_number),
-        ], close_fds=True)
+        subprocess.Popen(
+            [
+                "cargo", "run", "--release", "--bin", "mcts_generate", "--",
+                    "--model-dir", index_to_keras_model_path(model_number),
+                    "--output-dir", index_to_games_dir(model_number),
+            ],
+            close_fds=True,
+            env=dict(os.environ, TF_FORCE_GPU_ALLOW_GROWTH="true"),
+        )
         for _ in range(args.parallel_games_processes)
     ]
     # If our process dies take the games generation down with us.
