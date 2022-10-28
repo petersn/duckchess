@@ -43,6 +43,8 @@ async fn main() {
         let mut mcts = Mcts::create(inference_engine).await;
         // This array tracks the moves that actually occur in the game.
         let mut moves: Vec<engine::rules::Move> = vec![];
+        // This array says if the game move was uniformly random, or based on our tree search.
+        let mut was_rand: Vec<bool> = vec![];
         // This array contains the training targets for the policy head.
         let mut train_dists: Vec<Option<Vec<(engine::rules::Move, f32)>>> = vec![];
         // This array says if we attempted a full search to choose a training move.
@@ -50,7 +52,7 @@ async fn main() {
         // This array tracks how many steps were actually performed to compute this move.
         let mut steps_performed: Vec<u32> = vec![];
 
-        for _ in 0..GAME_LEN_LIMIT {
+        for move_number in 0..GAME_LEN_LIMIT {
           // Decide whether or not to perform a full search.
           let do_full_search = rand::random::<f32>() < PLAYOUT_CAP_RANDOMIZATION_P;
           let playouts = match do_full_search {
@@ -66,10 +68,25 @@ async fn main() {
           let steps = mcts.step_until(playouts, !do_full_search).await;
           //println!("{}: tree={} steps={}", task_id, playouts, steps);
 
-          match mcts.sample_move_by_visit_count() {
+          // We pick a uniformly random move for 10% of opening moves
+          // for each player, then 5% of second moves for each player.
+          let uniformly_random_move_prob = 0.10 - (0.05 * (move_number / 4) as f32);
+          let pick_randomly = rand::random::<f32>() < uniformly_random_move_prob;
+          let game_move = match pick_randomly {
+            true => {
+              use rand::seq::SliceRandom;
+              let mut moves = vec![];
+              mcts.get_state().move_gen::<false>(&mut moves);
+              moves.choose(&mut rand::thread_rng()).map(|m| *m)
+            }
+            false => mcts.sample_move_by_visit_count(),
+          };
+
+          match game_move {
             None => break,
             Some(game_move) => {
               //println!("[{task_id}] Generated a move: {:?}", m);
+              was_rand.push(pick_randomly);
               full_search.push(do_full_search);
               train_dists.push(match do_full_search {
                 true => Some(mcts.get_train_distribution()),
@@ -89,6 +106,7 @@ async fn main() {
           total_steps as f32 / moves.len() as f32
         );
         // Guarantee that all lists are the same length.
+        assert_eq!(moves.len(), was_rand.len());
         assert_eq!(moves.len(), train_dists.len());
         assert_eq!(moves.len(), full_search.len());
         assert_eq!(moves.len(), steps_performed.len());
@@ -98,6 +116,7 @@ async fn main() {
             "outcome": mcts.get_state().get_outcome().to_option_str(),
             "final_state": mcts.get_state(),
             "moves": moves,
+            "was_rand": was_rand,
             "train_dists": train_dists,
             "full_search": full_search,
             "steps_performed": steps_performed,
