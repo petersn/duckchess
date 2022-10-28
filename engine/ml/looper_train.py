@@ -56,7 +56,7 @@ if __name__ == "__main__":
         probs = train_policy_probs[indices]
         assert orig_idx.shape == probs.shape == (batch_size, 32)
         # Remap -1 in orig_idx to 0.
-        idx = torch.where(orig_idx == -1, 0, orig_idx)
+        idx = torch.where(orig_idx == -1, torch.tensor(0, dtype=torch.int16), orig_idx)
         policy_block.index_add_(
             dim=0,
             index=(idx + MOVE_COUNT * torch.arange(batch_size).unsqueeze(-1)).flatten(),

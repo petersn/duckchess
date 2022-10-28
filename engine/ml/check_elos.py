@@ -32,6 +32,8 @@ def generate_games(output_dir, model_a, model_b, game_count):
     while game_count:
         l = proc.stdout.readline()
         print("\x1b[92m[%i] LINE:\x1b[0m" % game_count, l)
+        if not l:
+            raise ValueError("Empty read from process")
         if b"Generated a game" in l:
             game_count -= 1
     time.sleep(3)
