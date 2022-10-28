@@ -2,7 +2,7 @@ use std::cell::SyncUnsafeCell;
 
 use tensorflow::{Graph, Operation, SavedModelBundle, SessionOptions, SessionRunArgs, Tensor};
 
-use crate::rules::{Move, State};
+use crate::rules::{Move, State, Player};
 
 pub const BATCH_SIZE: usize = 128;
 
@@ -21,6 +21,12 @@ pub const BUFFER_COUNT: usize = 2;
 //   One channel of all ones.
 pub const CHANNEL_COUNT: usize = 6 + 6 + 1 + 1 + 1 + 4 + 1 + 1 + 1;
 pub const POLICY_LEN: usize = 64 * 64;
+
+
+pub struct Valuation {
+  score: f32,
+  perspective: Player,
+}
 
 #[derive(Clone)]
 pub struct ModelOutputs {

@@ -1,0 +1,31 @@
+<html>
+    <head>
+        <title>Duck Chess Zero Training</title>
+        <!-- Create a style sheet -->
+        <style>
+body {
+    background-color: #f0f0f0;
+    font-family: sans-serif;
+    padding: 50px;
+    text-align: center;
+}
+td {
+    width: 30px;
+    height: 30px;
+    border: 1px solid black;
+}
+        </style>
+    </head>
+    <body>
+        <div style="display: flex; flex-direction: column; justify-content: center; align-items: center;">
+            <h1>Duck Chess Zero Training</h1>
+            <p>
+                (Last updated at %(last_updated)s)
+            </p>
+            <img src="ratings.png" alt="plot" />
+        </div>
+        <div style="display: inline-block; 2margin: 20px;">
+            %(table)s
+        </div>
+    </body>
+</html>
