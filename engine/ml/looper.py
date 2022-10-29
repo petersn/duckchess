@@ -39,7 +39,7 @@ def generate_games(model_number):
                     "--output-dir", index_to_games_dir(model_number),
             ],
             close_fds=True,
-            env=dict(os.environ, TF_FORCE_GPU_ALLOW_GROWTH="true"),
+            env=dict(os.environ, TF_FORCE_GPU_ALLOW_GROWTH="true", LD_LIBRARY_PATH="/usr/lib/python3/dist-packages/tensorflow/"),
         )
         for _ in range(args.parallel_games_processes)
     ]

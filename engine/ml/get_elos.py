@@ -52,12 +52,13 @@ print(output.replace("ResultSet-EloRating>", "ResultSet-EloRating>\n"))
 # Extract all of the elos.
 ratings = {}
 for line in output.split("\n"):
-    if line.startswith("   "):
+    if line.startswith("  "):
         _, name, rating, *_ = line.split()
         rating = int(rating)
         ratings[name] = rating
 min_rating = min(ratings.values())
 ratings = {name: rating - min_rating for name, rating in ratings.items()}
+print("Ratings:", ratings)
 
 def get_step(name):
     return int(re.search(r"step-(\d+)", name).group(1))
