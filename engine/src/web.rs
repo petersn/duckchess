@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 
-use crate::{rules::Move, search};
+use crate::{rules::Move, search, mcts};
 
 #[wasm_bindgen]
 extern "C" {
@@ -9,8 +9,9 @@ extern "C" {
 }
 
 #[wasm_bindgen]
-struct Engine {
+pub struct Engine {
   engine: search::Engine,
+  mcts: mcts::Mcts,
 }
 
 #[wasm_bindgen]
@@ -44,7 +45,13 @@ impl Engine {
       log(&format!("Failed to deserialize move: {}", e));
       panic!("Failed to deserialize move: {}", e);
     });
-    self.engine.get_state_mut().apply_move(m)
+    match self.engine.get_state_mut().apply_move(m) {
+      Ok(()) => true,
+      Err(msg) => {
+        log(&format!("Failed to apply move: {}", msg));
+        false
+      }
+    }
   }
 
   pub fn run(&mut self, depth: u16) -> JsValue {
@@ -53,5 +60,20 @@ impl Engine {
       log(&format!("Failed to serialize score: {}", e));
       JsValue::NULL
     })
+  }
+}
+
+#[wasm_bindgen]
+pub fn new_engine(seed: u64) -> Engine {
+  Engine {
+    engine: search::Engine::new(seed),
+    mcts: mcts::Mcts::new(),
+  }
+}
+
+#[wasm_bindgen]
+pub fn modify_array(x: &mut [f32]) {
+  for i in 0..x.len() {
+    x[i] = i as f32;
   }
 }

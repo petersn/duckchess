@@ -1,64 +1,96 @@
 import React from 'react';
 import './App.css';
-import init, { new_engine, Engine } from 'engine';
-import * as tf from '@tensorflow/tfjs';
+import { MessageFromEngineWorker } from './EngineWorkerMessages';
 
-async function createConvModel(): Promise<tf.LayersModel> {
-  const model = await tf.loadLayersModel('/duck-chess-engine/model.json');
-  return model;
-  //const model = tf.sequential();
-  //model.add(tf.layers.conv2d({
-  //  inputShape: [28, 28, 1],
-  //  kernelSize: 3,
-  //  filters: 16,
-  //  activation: 'relu'
-  //}));
-  //model.add(tf.layers.maxPooling2d({poolSize: 2, strides: 2}));
-  //model.add(tf.layers.conv2d({kernelSize: 3, filters: 32, activation: 'relu'}));
-  //model.add(tf.layers.maxPooling2d({poolSize: 2, strides: 2}));
-  //model.add(tf.layers.conv2d({kernelSize: 3, filters: 32, activation: 'relu'}));
-  //model.add(tf.layers.flatten({}));
-  //model.add(tf.layers.dense({units: 64, activation: 'relu'}));
-  //model.add(tf.layers.dense({units: 10, activation: 'softmax'}));
-  //model.loadWeights('http://localhost:8000/model.json');
-  //return model;
+class EngineWorker {
+  worker: Worker;
+  initCallback: (ew: EngineWorker) => void;
+  boardState: any;
+  moves: any[];
+  forceUpdateCallback: () => void;
+
+  constructor(initCallback: () => void) {
+    this.worker = new Worker(new URL('./EngineWorker.ts', import.meta.url));
+    this.worker.onmessage = this.onMessage;
+    this.initCallback = initCallback;
+    this.worker.postMessage({ type: 'init' });
+    this.boardState = null;
+    this.moves = [];
+    this.forceUpdateCallback = () => {};
+  }
+
+  onMessage = (e: MessageEvent<MessageFromEngineWorker>) => {
+    console.log('Main thread got:', e.data);
+    switch (e.data.type) {
+      case 'initted':
+        this.initCallback(this);
+        break;
+      case 'board':
+        this.boardState = e.data.board;
+        this.moves = e.data.moves;
+        break;
+      case 'evaluation':
+        break;
+    }
+    this.forceUpdateCallback();
+  }
+
+  getState() {
+    return this.boardState;
+  }
+
+  getMoves(): any[] {
+    return this.moves;
+  }
+
+  applyMove(move: any) {
+    this.worker.postMessage({ type: 'applyMove', move });
+  }
 }
 
-function AppWithComputation(props: { computation: Computation }) {
+function AppWithEngineWorker(props: { engineWorker: EngineWorker }) {
   const [selectedSquare, setSelectedSquare] = React.useState<[number, number] | null>(null);
   const [forceUpdateCounter, setForceUpdateCounter] = React.useState(0);
   const [pair, setPair] = React.useState<any>(null);
 
-  const { engine, tfjsModel } = props.computation;
-  const state = engine.get_state();
-  const moves: any[] = engine.get_moves();
   React.useEffect(() => {
-    for (let i = 0; i < 100; i++) {
-      const start = performance.now();
-      const tfjsResult = tfjsModel.predict(tf.ones([64, 8, 8, 22])) as tf.Tensor[];
-      tfjsResult[0].data()
-      const end = performance.now();
-      console.log('tfjs prediction took', end - start, 'ms');
-    }
-    //console.log(tfjsResult[0], tfjsResult[1]);
-    let pair = engine.run(4);
-    setPair(pair);
-    setTimeout(() => {
-      if (pair && pair[1][0]) {
-        engine.apply_move(pair[1][0]);
-        setForceUpdateCounter(forceUpdateCounter + 1);
-      }
-    }, 1000000);
-  }, [forceUpdateCounter]);
+    engineWorker.forceUpdateCallback = () => {
+      setForceUpdateCounter(forceUpdateCounter + 1);
+    };
+  }, []);
 
-  console.log('Pair:', pair);
+  const { engineWorker } = props;
+  const state = engineWorker.getState();
+  const moves: any[] = engineWorker.getMoves();
+  //React.useEffect(() => {
+  //  //for (let i = 0; i < 100; i++) {
+  //  //  const start = performance.now();
+  //  //  const tfjsResult = tfjsModel.predict(tf.ones([64, 8, 8, 22])) as tf.Tensor[];
+  //  //  tfjsResult[0].data()
+  //  //  const end = performance.now();
+  //  //  console.log('tfjs prediction took', end - start, 'ms');
+  //  //}
+  //  //console.log(tfjsResult[0], tfjsResult[1]);
+  //  let pair = engineWorker.run(4);
+  //  setPair(pair);
+  //  setTimeout(() => {
+  //    if (pair && pair[1][0]) {
+  //      engine.apply_move(pair[1][0]);
+  //      setForceUpdateCounter(forceUpdateCounter + 1);
+  //    }
+  //  }, 1000000);
+  //}, [forceUpdateCounter]);
+
+  if (state === null) {
+    return <div>Loading...</div>;
+  }
 
   function clickOn(x: number, y: number) {
     if (selectedSquare === null) {
       // Check if this is the initial duck placement.
       const m = moves.find(m => m.from === 64 && m.to === x + (7 - y) * 8);
       if (m) {
-        engine.apply_move(m);
+        engineWorker.applyMove(m);
         setSelectedSquare(null);
         setForceUpdateCounter(forceUpdateCounter + 1);
       } else {
@@ -73,7 +105,7 @@ function AppWithComputation(props: { computation: Computation }) {
       // Find the first move that matches the selected square and the clicked square.
       const m = moves.find((m: any) => m.from === encodedFrom && m.to === encodedTo);
       if (m) {
-        engine.apply_move(m);
+        engineWorker.applyMove(m);
         setForceUpdateCounter(forceUpdateCounter + 1);
       }
       setSelectedSquare(null);
@@ -221,27 +253,19 @@ function AppWithComputation(props: { computation: Computation }) {
   );
 }
 
-interface Computation {
-  engine: Engine;
-  tfjsModel: tf.LayersModel;
-}
-
-function OldApp() {
-  const [computation, setComputation] = React.useState<Computation | null>(null);
+function App() {
+  const [engineWorker, setEngineWorker] = React.useState<EngineWorker | null>(null);
   React.useEffect(() => {
-    console.log('Initializing wasm...');
-    const seed = Math.floor(Math.random() * 1e9);
-    init()
-      .then(() => createConvModel()
-        .then((tfjsModel) => setComputation({
-          engine: new_engine(BigInt(seed)),
-          tfjsModel,
-        }))
-      ).catch(console.error);
+    console.log('Initializing worker...');
+    const worker = new EngineWorker(() => {
+      console.log('Worker initialized!');
+      setEngineWorker(worker);
+    });
   }, []);
-  return computation ? <AppWithComputation computation={computation} /> : <div>Loading WASM...</div>;
+  return engineWorker ? <AppWithEngineWorker engineWorker={engineWorker} /> : <div>Loading engine...</div>;
 }
 
+/*
 let globalBatchSize = 16;
 
 function App() {
@@ -251,14 +275,22 @@ function App() {
   const [fut2Latency, setFut2Latency] = React.useState(1000);
 
   React.useEffect(() => {
+    const myWorker = new Worker(new URL('./worker.tsx', import.meta.url));
+    myWorker.onmessage = (e) => {
+      console.log('Message received from worker');
+    };
+    myWorker.postMessage({ type: 'init' });
+
     console.log('Initializing tfjs...');
     createConvModel()
       .then((model) => {
         setModel(model);
         // Start a loop of evaluating the model.
         const loop = async () => {
-          let inp1 = tf.randomUniform([globalBatchSize, 8, 8, 22]);
-          let inp2 = tf.randomUniform([globalBatchSize, 8, 8, 22]);
+          (window as any).tensor = tf.randomUniform([1, 8, 8, 12]);
+          return;
+          let inp1 = tf.randomUniform([globalBatchSize, 22, 8, 8]);
+          let inp2 = tf.randomUniform([globalBatchSize, 22, 8, 8]);
           let fut1LaunchTime = performance.now();
           let fut1 = model.predict(inp1) as tf.Tensor[];
           let fut2LaunchTime = performance.now();
@@ -275,7 +307,7 @@ function App() {
             fut2[1].dispose();
             fut2LaunchTime = performance.now();
             fut2 = model.predict(inp2) as tf.Tensor[];
-            await fut1[0].data();
+            const d = await fut1[0].data();
             await fut1[1].data();
             const fut1FinishTime = performance.now();
             setFut1Latency(fut1FinishTime - fut1LaunchTime);
@@ -285,8 +317,8 @@ function App() {
               console.log('Resizing inputs to:', globalBatchSize);
               inp1.dispose();
               inp2.dispose();
-              inp1 = tf.randomUniform([globalBatchSize, 8, 8, 22]);
-              inp2 = tf.randomUniform([globalBatchSize, 8, 8, 22]);
+              inp1 = tf.randomUniform([globalBatchSize, 22, 8, 8]);
+              inp2 = tf.randomUniform([globalBatchSize, 22, 8, 8]);
             }
           }
         }
@@ -327,5 +359,6 @@ function App() {
     </div>
   );
 }
+*/
 
 export default App;
