@@ -12,7 +12,11 @@ struct Args {
 
 fn work(output_dir: &str) {
   // Open a file for writing
-  let output_path = format!("{}/games-pvs-{:016x}.json", output_dir, rand::random::<u64>());
+  let output_path = format!(
+    "{}/games-pvs-{:016x}.json",
+    output_dir,
+    rand::random::<u64>()
+  );
   let mut output_file = std::fs::File::create(output_path).unwrap();
   let mut rng = rand::thread_rng();
   loop {

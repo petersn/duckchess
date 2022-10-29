@@ -41,7 +41,9 @@ async fn main() {
     Box::leak(Box::new(InferenceEngine::create(model1_dir).await));
   let inference_engine2: Option<&InferenceEngine> = match model2_dir == "@pvs" {
     true => None,
-    false => Some(Box::leak(Box::new(InferenceEngine::create(model2_dir).await))),
+    false => Some(Box::leak(Box::new(
+      InferenceEngine::create(model2_dir).await,
+    ))),
   };
 
   let output_path = format!(
