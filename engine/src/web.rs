@@ -1,17 +1,17 @@
 use wasm_bindgen::prelude::*;
 
-use crate::{rules::Move, search, mcts};
+use crate::{mcts, rules::Move, search, web_inference};
 
 #[wasm_bindgen]
 extern "C" {
   #[wasm_bindgen(js_namespace = console)]
-  fn log(s: &str);
+  pub fn log(s: &str);
 }
 
 #[wasm_bindgen]
 pub struct Engine {
   engine: search::Engine,
-  mcts: mcts::Mcts,
+  mcts:   mcts::Mcts<'static, web_inference::TensorFlowJsEngine>,
 }
 
 #[wasm_bindgen]
@@ -54,6 +54,15 @@ impl Engine {
     }
   }
 
+  //pub async fn step_until_inference_batch(&mut self, array: js_sys::Float32Array) {
+  //  self.mcts.step_until_inference_batch().await;
+  //}
+
+  //pub async fn step(&mut self) {
+  //  self.mcts.step().await;
+  //  log(&format!("MCTS step done"));
+  //}
+
   pub fn run(&mut self, depth: u16) -> JsValue {
     let p = self.engine.run(depth);
     serde_wasm_bindgen::to_value(&p).unwrap_or_else(|e| {
@@ -64,10 +73,12 @@ impl Engine {
 }
 
 #[wasm_bindgen]
-pub fn new_engine(seed: u64) -> Engine {
+pub async fn new_engine(seed: u64) -> Engine {
+  let tfjs_inference_engine = Box::leak(Box::new(web_inference::TensorFlowJsEngine::new()));
+  log(&format!("Created inference engine"));
   Engine {
     engine: search::Engine::new(seed),
-    mcts: mcts::Mcts::new(),
+    mcts:   mcts::Mcts::create(seed, tfjs_inference_engine).await,
   }
 }
 

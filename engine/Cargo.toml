@@ -8,20 +8,20 @@ name = "engine"
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
+async-trait = "0.1.58"
 serde = { version = "1.0.145", features = ["derive"] }
+slotmap = "1.0.6"
 
 [target.'cfg(target_arch="wasm32")'.dependencies]
-serde-wasm-bindgen = "0.4.5"
+js-sys = "0.3.60"
 wasm-bindgen = "0.2.83"
+wasm-bindgen-futures = "0.4.33"
+serde-wasm-bindgen = "0.4.5"
 
 [target.'cfg(not(target_arch="wasm32"))'.dependencies]
-rand = "0.8.5"
-rand_distr = "0.4.3"
 serde_json = "1.0.87"
 num_cpus = "1.13.1"
 pyo3 = { version = "0.17.2", features = ["extension-module"] }
 tensorflow = { version = "0.19.1", features = ["tensorflow_gpu"] }
-tokio = { version = "1.21.2", features = ["full"] }
-slotmap = "1.0.6"
 clap = { version = "4.0.18", features = ["derive"] }
-#onnxruntime = "0.0.14"
+tokio = { version = "1.21.2", features = ["full"] }

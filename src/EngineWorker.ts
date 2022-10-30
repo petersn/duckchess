@@ -4,20 +4,23 @@ import { MessageToEngineWorker } from './EngineWorkerMessages';
 
 let model: tf.LayersModel;
 let engine: Engine;
+let array: Float32Array;
 
 function sendBoardState() {
   postMessage({ type: 'board', board: engine.get_state(), moves: engine.get_moves() });
 }
 
 async function workLoop() {
-  setTimeout(workLoop, 100);
-  const board = engine.get_state();
+  setTimeout(workLoop, 500);
+  // FIXME: Why do I need as any here?
+  await (engine as any).step(array);
 }
 
 async function initWorker() {
+  array = new Float32Array(8 * 8 * 12);
   await init();
   const seed = Math.floor(Math.random() * 1e9);
-  engine = new_engine(BigInt(seed));
+  engine = await new_engine(BigInt(seed));
   model = await tf.loadLayersModel('/duck-chess-engine/model.json')
   postMessage({ type: 'initted' });
   sendBoardState();

@@ -17,6 +17,7 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "build:wasm": "cd engine && wasm-pack build --target web --out-dir pkg",
+    "build:wasm-debug": "cd engine && wasm-pack build --debug --target web --out-dir pkg",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },

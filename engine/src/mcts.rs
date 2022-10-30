@@ -2,15 +2,49 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
 use slotmap::SlotMap;
+use async_trait::async_trait;
 
-use crate::inference::{InferenceEngine, ModelOutputs, POLICY_LEN};
+//use crate::inference::{ModelOutputs, POLICY_LEN};
 use crate::rules::{GameOutcome, Move, State};
+use crate::rng::Rng;
 
 const EXPLORATION_ALPHA: f32 = 1.0;
 const FIRST_PLAY_URGENCY: f32 = 0.2;
 const ROOT_SOFTMAX_TEMP: f32 = 1.2;
 const DIRICHLET_ALPHA: f32 = 0.1;
 const DIRICHLET_WEIGHT: f32 = 0.25;
+
+pub const POLICY_LEN: usize = 64 * 64;
+
+#[derive(Clone)]
+pub struct ModelOutputs {
+  // policy[64 * from + to] is a probability 0 to 1.
+  pub policy: [f32; POLICY_LEN],
+  // value is a valuation for the current player from -1 to +1.
+  pub value:  f32,
+}
+
+impl ModelOutputs {
+  pub fn renormalize(&mut self, moves: &[Move]) {
+    let mut temp = [0.0; POLICY_LEN];
+    let mut sum = 0.0;
+    for m in moves {
+      let idx = m.to_index() as usize;
+      let val = self.policy[idx];
+      temp[idx] = val;
+      sum += val;
+    }
+    let rescale = 1.0 / (1e-16 + sum);
+    for i in 0..POLICY_LEN {
+      self.policy[i] = temp[i] * rescale;
+    }
+  }
+}
+
+#[async_trait]
+pub trait InferenceEngine {
+  async fn predict(&self, state: &State) -> ModelOutputs;
+}
 
 #[derive(Clone)]
 struct Evals {
@@ -20,7 +54,7 @@ struct Evals {
 }
 
 impl Evals {
-  async fn create(inference_engine: &InferenceEngine, state: &State) -> Self {
+  async fn create<Infer: InferenceEngine>(inference_engine: &Infer, state: &State) -> Self {
     let turn_flip = if state.white_turn { 1.0 } else { -1.0 };
     let mut outputs = match state.get_outcome() {
       GameOutcome::Ongoing => inference_engine.predict(state).await,
@@ -47,13 +81,13 @@ impl Evals {
     }
   }
 
-  fn add_dirichlet_noise(&mut self) {
+  fn add_dirichlet_noise(&mut self, rng: &mut Rng) {
     assert!(!self.dirichlet_applied);
     self.dirichlet_applied = true;
 
-    use rand_distr::Distribution;
-    let mut thread_rng = rand::thread_rng();
-    let dist = rand_distr::Gamma::new(DIRICHLET_ALPHA, 1.0).unwrap();
+    //use rand_distr::Distribution;
+    //let mut thread_rng = rand::thread_rng();
+    //let dist = rand_distr::Gamma::new(DIRICHLET_ALPHA, 1.0).unwrap();
     // Generate noise.
     let mut noise = [0.0; POLICY_LEN];
     let mut noise_sum = 0.0;
@@ -61,7 +95,7 @@ impl Evals {
     for m in &self.moves {
       let idx = m.to_index() as usize;
       // Generate a gamma-distributed noise value.
-      let new_noise = dist.sample(&mut thread_rng);
+      let new_noise = rng.generate_gamma_variate(DIRICHLET_ALPHA);
       noise[idx] = new_noise;
       noise_sum += new_noise;
       // Apply the new policy softmax temperature.
@@ -119,13 +153,14 @@ struct MctsNode {
   evals:           Evals,
   total_score:     f32,
   visits:          u32,
+  in_flight:       u32,
   policy_explored: f32,
   outgoing_edges:  HashMap<Move, NodeIndex>,
   gc_state:        u32,
 }
 
 impl MctsNode {
-  async fn create(depth: u32, inference_engine: &InferenceEngine, state: State) -> Self {
+  async fn create<Infer: InferenceEngine>(depth: u32, inference_engine: &Infer, state: State) -> Self {
     let evals = Evals::create(inference_engine, &state).await;
     Self {
       depth,
@@ -133,6 +168,7 @@ impl MctsNode {
       evals,
       total_score: 0.0,
       visits: 0,
+      in_flight: 0,
       policy_explored: 0.0,
       outgoing_edges: HashMap::new(),
       gc_state: 0,
@@ -140,7 +176,9 @@ impl MctsNode {
   }
 
   fn get_subtree_value(&self) -> f32 {
-    self.total_score / self.visits as f32
+    // Implement so called "virtual losses" -- we pretend each in flight evaluation
+    // will evaluate to the worst possible outcome, to encourage diversity of paths.
+    self.total_score / (self.visits + self.in_flight) as f32
   }
 
   fn adjust_score(&mut self, score: f32) {
@@ -201,18 +239,22 @@ fn get_transposition_table_key(state: &State, depth: u32) -> (u64, u32) {
   (state.get_transposition_table_hash(), depth)
 }
 
-pub struct Mcts<'a> {
-  inference_engine:    &'a InferenceEngine,
+pub struct Mcts<'a, Infer: InferenceEngine> {
+  rng:                 Rng,
+  inference_engine:    &'a Infer,
   root:                NodeIndex,
   nodes:               SlotMap<NodeIndex, MctsNode>,
   transposition_table: HashMap<(u64, u32), NodeIndex>,
 }
 
-impl<'a> Mcts<'a> {
-  pub async fn create(inference_engine: &'a InferenceEngine) -> Mcts<'a> {
+// TODO: Implement speculatively finding good candidate states to evaluate and cache.
+
+impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
+  pub async fn create(seed: u64, inference_engine: &'a Infer) -> Mcts<'a, Infer> {
     let mut nodes = SlotMap::with_key();
     let root = nodes.insert(MctsNode::create(0, inference_engine, State::starting_state()).await);
     Self {
+      rng: Rng::new(seed),
       inference_engine,
       root,
       nodes,
@@ -267,7 +309,7 @@ impl<'a> Mcts<'a> {
       // If we have a transposition, just use it.
       Entry::Occupied(entry) => *entry.get(),
       Entry::Vacant(entry) => *entry
-        .insert(self.nodes.insert(MctsNode::create(depth, &self.inference_engine, state).await)),
+        .insert(self.nodes.insert(MctsNode::create(depth, self.inference_engine, state).await)),
     }
   }
 
@@ -356,13 +398,11 @@ impl<'a> Mcts<'a> {
   }
 
   pub fn sample_move_by_visit_count(&self) -> Option<Move> {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
     let sum_child_visits = self.get_sum_child_visits(self.root);
     if sum_child_visits == 0 {
       return None;
     }
-    let mut visit_count = rng.gen_range(0..sum_child_visits);
+    let mut visit_count = self.rng.generate_range(sum_child_visits as u32) as i32;
     for (m, child_index) in &self.nodes[self.root].outgoing_edges {
       visit_count -= self.nodes[*child_index].visits as i32;
       if visit_count < 0 {
@@ -373,7 +413,7 @@ impl<'a> Mcts<'a> {
   }
 
   pub fn apply_noise_to_root(&mut self) {
-    self.nodes[self.root].evals.add_dirichlet_noise();
+    self.nodes[self.root].evals.add_dirichlet_noise(&mut self.rng);
   }
 
   pub async fn apply_move(&mut self, m: Move) {

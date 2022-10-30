@@ -3,6 +3,7 @@ use std::cell::SyncUnsafeCell;
 use tensorflow::{Graph, Operation, SavedModelBundle, SessionOptions, SessionRunArgs, Tensor};
 
 use crate::rules::{Move, Player, State};
+use crate::mcts::POLICY_LEN;
 
 pub const BATCH_SIZE: usize = 128;
 
@@ -20,36 +21,10 @@ pub const BUFFER_COUNT: usize = 2;
 //   One channel for the last move.
 //   One channel of all ones.
 pub const CHANNEL_COUNT: usize = 6 + 6 + 1 + 1 + 1 + 4 + 1 + 1 + 1;
-pub const POLICY_LEN: usize = 64 * 64;
 
 pub struct Valuation {
   score:       f32,
   perspective: Player,
-}
-
-#[derive(Clone)]
-pub struct ModelOutputs {
-  // policy[64 * from + to] is a probability 0 to 1.
-  pub policy: [f32; POLICY_LEN],
-  // value is a valuation for the current player from -1 to +1.
-  pub value:  f32,
-}
-
-impl ModelOutputs {
-  pub fn renormalize(&mut self, moves: &[Move]) {
-    let mut temp = [0.0; POLICY_LEN];
-    let mut sum = 0.0;
-    for m in moves {
-      let idx = m.to_index() as usize;
-      let val = self.policy[idx];
-      temp[idx] = val;
-      sum += val;
-    }
-    let rescale = 1.0 / (1e-16 + sum);
-    for i in 0..POLICY_LEN {
-      self.policy[i] = temp[i] * rescale;
-    }
-  }
 }
 
 /// Write out `state` into `array` in C, H, W order.
@@ -101,7 +76,7 @@ struct ReturnChannels {
   channels:    [Option<tokio::sync::oneshot::Sender<ModelOutputs>>; BUFFER_COUNT * BATCH_SIZE],
 }
 
-pub struct InferenceEngine {
+pub struct TensorFlowEngine {
   bundle:          &'static SavedModelBundle,
   input_op:        Operation,
   policy_op:       Operation,
@@ -111,8 +86,9 @@ pub struct InferenceEngine {
   eval_count:      &'static std::sync::atomic::AtomicUsize,
 }
 
-impl InferenceEngine {
-  pub async fn create(model_dir: &str) -> InferenceEngine {
+#[async_trait]
+impl TensorFlowEngine {
+  pub async fn create(model_dir: &str) -> TensorFlowEngine {
     // Initialize model_dir, input tensor, and an empty graph
     let input_tensors = (0..BUFFER_COUNT)
       .map(|_| {
@@ -176,7 +152,7 @@ impl InferenceEngine {
       }
     });
 
-    InferenceEngine {
+    TensorFlowEngine {
       bundle,
       input_op,
       policy_op,
@@ -195,8 +171,12 @@ impl InferenceEngine {
       eval_count,
     }
   }
+}
 
-  pub async fn predict(&self, state: &State) -> ModelOutputs {
+impl mcts::InferenceEngine for TensorFlowEngine {
+  type Cookie = ();
+
+  async fn predict(&self, cookie: Self::Cookie, state: &State) -> ModelOutputs {
     // Allocate a slot.
     let (rx, work) = {
       let mut guard = self.return_channels.lock().await;

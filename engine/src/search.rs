@@ -2,6 +2,7 @@ use std::collections::{hash_map::DefaultHasher, HashMap};
 use std::hash::{Hash, Hasher};
 
 use crate::rules::{iter_bits, GameOutcome, Move, State};
+use crate::rng::Rng;
 
 type Evaluation = i32;
 
@@ -178,7 +179,7 @@ fn make_terminal_scores_much_less_extreme<T>(p: (Evaluation, T)) -> (Evaluation,
 
 pub struct Engine {
   nodes_searched:   u64,
-  seed:             u64,
+  rng:              Rng,
   state:            State,
   move_order_table: HashMap<u64, Move>,
   killer_moves:     [Option<Move>; 100],
@@ -188,21 +189,11 @@ impl Engine {
   pub fn new(seed: u64) -> Self {
     Self {
       nodes_searched: 0,
-      seed,
+      rng: Rng::new(seed),
       state: State::starting_state(),
       move_order_table: HashMap::new(),
       killer_moves: [None; 100],
     }
-  }
-
-  fn next_random(&mut self) -> u64 {
-    self.seed = self.seed.wrapping_add(1);
-    let mut x = self.seed.wrapping_mul(0x243f6a8885a308d3);
-    for _ in 0..4 {
-      x ^= x >> 37;
-      x = x.wrapping_mul(0x243f6a8885a308d3);
-    }
-    x
   }
 
   pub fn get_state(&self) -> &State {
@@ -255,7 +246,7 @@ impl Engine {
   ) -> (Evaluation, (Option<Move>, Option<Move>)) {
     self.nodes_searched += 1;
     let game_over = state.is_game_over();
-    let random_bonus = (self.next_random() & 0xf) as Evaluation;
+    let random_bonus = (self.rng.next_random() & 0xf) as Evaluation;
     match (game_over, depth, QUIESCENCE) {
       (true, _, _) => return (evaluate_state(state) + random_bonus, (None, None)),
       (_, 0, true) => return (evaluate_state(state) + random_bonus, (None, None)),
