@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 
-use crate::{mcts, rules::Move, search, web_inference};
+use crate::{inference_web, mcts, rules::Move, search};
 
 #[wasm_bindgen]
 extern "C" {
@@ -11,7 +11,7 @@ extern "C" {
 #[wasm_bindgen]
 pub struct Engine {
   engine: search::Engine,
-  mcts:   mcts::Mcts<'static, web_inference::TensorFlowJsEngine>,
+  mcts:   mcts::Mcts,
 }
 
 #[wasm_bindgen]
@@ -73,12 +73,12 @@ impl Engine {
 }
 
 #[wasm_bindgen]
-pub async fn new_engine(seed: u64) -> Engine {
-  let tfjs_inference_engine = Box::leak(Box::new(web_inference::TensorFlowJsEngine::new()));
+pub fn new_engine(seed: u64) -> Engine {
+  let tfjs_inference_engine = Box::leak(Box::new(inference_web::TensorFlowJsEngine::new()));
   log(&format!("Created inference engine"));
   Engine {
     engine: search::Engine::new(seed),
-    mcts:   mcts::Mcts::create(seed, tfjs_inference_engine).await,
+    mcts:   mcts::Mcts::new(seed),
   }
 }
 

@@ -8,7 +8,9 @@ pub struct Rng {
 
 impl Rng {
   pub fn new(seed: u64) -> Rng {
-    Rng { state: Cell::new(seed) }
+    Rng {
+      state: Cell::new(seed),
+    }
   }
 
   /// Generate a uniformly random u64.
@@ -37,7 +39,7 @@ impl Rng {
     let bits64 = self.next_random();
     let bits_lo = bits64 as u32;
     let bits_hi = (bits64 >> 32) as u32;
-    let one: u32  = 0b0_01111111_00000000000000000000000;
+    let one: u32 = 0b0_01111111_00000000000000000000000;
     let mask: u32 = 0b0_00000000_11111111111111111111111;
     (
       unsafe { std::mem::transmute::<u32, f32>(one | (mask & bits_lo)) } - 1.0,

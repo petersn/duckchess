@@ -1,4 +1,4 @@
-use engine::inference::InferenceEngine;
+use engine::desktop_inference::InferenceEngine;
 
 #[tokio::main]
 async fn main() {

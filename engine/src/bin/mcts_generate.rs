@@ -1,5 +1,5 @@
 use clap::Parser;
-use engine::inference::InferenceEngine;
+use engine::desktop_inference::InferenceEngine;
 use engine::mcts::Mcts;
 
 const PLAYOUT_CAP_RANDOMIZATION_P: f32 = 0.25;
@@ -36,7 +36,7 @@ async fn main() {
 
   // Spawn several tasks to run MCTS in parallel.
   let mut tasks = Vec::new();
-  for task_id in 0..2 * engine::inference::BATCH_SIZE - 1 {
+  for task_id in 0..2 * engine::desktop_inference::BATCH_SIZE - 1 {
     tasks.push(tokio::spawn(async move {
       use std::io::Write;
       loop {

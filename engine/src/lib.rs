@@ -1,18 +1,23 @@
 #![feature(sync_unsafe_cell)]
 
+pub mod inference;
 pub mod mcts;
+pub mod rng;
 pub mod rules;
 pub mod search;
-pub mod rng;
+
+// Build bindings depending on whether we're targeting web or desktop.
 
 #[cfg(target_arch = "wasm32")]
 pub mod web;
 
+//#[cfg(not(target_arch = "wasm32"))]
+//pub mod python;
+
+// Build an inference engine depending on whether we're targeting web or desktop.
+
 #[cfg(target_arch = "wasm32")]
-pub mod web_inference;
+pub mod inference_web;
 
-#[cfg(not(target_arch = "wasm32"))]
-pub mod python;
-
-#[cfg(not(target_arch = "wasm32"))]
-pub mod inference;
+//#[cfg(not(target_arch = "wasm32"))]
+//pub mod inference_desktop;

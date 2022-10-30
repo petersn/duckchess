@@ -1,8 +1,8 @@
 use std::collections::{hash_map::DefaultHasher, HashMap};
 use std::hash::{Hash, Hasher};
 
-use crate::rules::{iter_bits, GameOutcome, Move, State};
 use crate::rng::Rng;
+use crate::rules::{iter_bits, GameOutcome, Move, State};
 
 type Evaluation = i32;
 
@@ -188,11 +188,11 @@ pub struct Engine {
 impl Engine {
   pub fn new(seed: u64) -> Self {
     Self {
-      nodes_searched: 0,
-      rng: Rng::new(seed),
-      state: State::starting_state(),
+      nodes_searched:   0,
+      rng:              Rng::new(seed),
+      state:            State::starting_state(),
       move_order_table: HashMap::new(),
-      killer_moves: [None; 100],
+      killer_moves:     [None; 100],
     }
   }
 

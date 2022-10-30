@@ -8,11 +8,6 @@ const ALL_BUT_H_FILE: u64 = 0x7f7f7f7f7f7f7f7f;
 const MIDDLE_SIX_RANKS: u64 = 0x00ffffffffffff00;
 const LAST_RANKS: u64 = 0xff000000000000ff;
 
-pub enum Player {
-  White,
-  Black,
-}
-
 #[derive(Debug, Clone, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CastlingRights {
