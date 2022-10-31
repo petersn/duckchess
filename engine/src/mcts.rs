@@ -212,6 +212,27 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
     &self.nodes[self.root].state
   }
 
+  // FIXME: These names here are so bad.
+  pub fn get_pv(&self) -> Vec<Move> {
+    let mut pv = vec![];
+    let mut node_index = self.root;
+    loop {
+      let node = &self.nodes[node_index];
+      let best_move = match node
+        .outgoing_edges
+        .iter()
+        .max_by_key(|(_, node_index)| self.nodes[**node_index].visits)
+        .map(|(m, _)| *m)
+      {
+        Some(m) => m,
+        None => break,
+      };
+      pv.push(best_move);
+      node_index = node.outgoing_edges[&best_move];
+    }
+    pv
+  }
+
   fn select_principal_variation(&self, best: bool) -> (Vec<NodeIndex>, Option<Move>) {
     let mut node = &self.nodes[self.root];
     let mut nodes = vec![self.root];
@@ -313,6 +334,7 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
             let node = &mut self.nodes[*node_index];
             node.needs_eval = false;
             node.outputs = inference_results.get(i);
+            //crate::web::log(&format!("Outputs: {:?}", node.outputs.value));
             //node.outputs.renormalize(&node.moves);
             self.adjust_scores_on_path::<true>(pending_path.path, "inference");
           }
@@ -345,7 +367,11 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
     );
   }
 
-  pub fn adjust_scores_on_path<const DECREMENT_IN_FLIGHT: bool>(&mut self, path: Vec<NodeIndex>, cause: &str) {
+  pub fn adjust_scores_on_path<const DECREMENT_IN_FLIGHT: bool>(
+    &mut self,
+    path: Vec<NodeIndex>,
+    cause: &str,
+  ) {
     //crate::web::log(&format!("Adjusting scores on path: {:?}", path));
     if path.is_empty() {
       crate::web::log("WARNING: Got empty path.");
@@ -493,6 +519,7 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
     // Finally, we clear out the transposition table, because it may
     // still contain references to freed nodes.
     self.transposition_table.clear();
+    self.pending_paths.clear();
   }
 
   pub fn print_tree_root(&self) {

@@ -1,3 +1,4 @@
+import { engine } from '@tensorflow/tfjs';
 import React from 'react';
 import './App.css';
 import { MessageFromEngineWorker } from './EngineWorkerMessages';
@@ -7,6 +8,8 @@ class EngineWorker {
   initCallback: (ew: EngineWorker) => void;
   boardState: any;
   moves: any[];
+  pv: any[] = [];
+  evaluation: number = 0;
   forceUpdateCallback: () => void;
 
   constructor(initCallback: () => void) {
@@ -30,6 +33,8 @@ class EngineWorker {
         this.moves = e.data.moves;
         break;
       case 'evaluation':
+        this.evaluation = e.data.evaluation;
+        this.pv = e.data.pv;
         break;
     }
     this.forceUpdateCallback();
@@ -163,7 +168,8 @@ function AppWithEngineWorker(props: { engineWorker: EngineWorker }) {
     }
   }
 
-  let showMoves: any[] = (pair && pair[1][0]) ? pair[1] : [];
+  //let showMoves: any[] = (pair && pair[1][0]) ? pair[1] : [];
+  let showMoves: any[] = engineWorker.pv;
   if ((state.isDuckMove || true) && showMoves) {
     showMoves = showMoves.slice(0, 1);
   }
@@ -218,37 +224,40 @@ function AppWithEngineWorker(props: { engineWorker: EngineWorker }) {
         {arrows}
       </svg>
 
-      <table style={{ position: 'absolute', borderCollapse: 'collapse', border: '1px solid black' }}>
-        <tbody>
-          {board.map((row, y) => (
-            <tr key={y}>
-              {row.map((piece, x) => {
-                const isSelected = selectedSquare !== null && selectedSquare[0] === x && selectedSquare[1] === y;
-                let backgroundColor = (x + y) % 2 === 0 ? '#eca' : '#b97';
-                if (state.highlight[7 - y] & (1 << x))
-                  backgroundColor = (x + y) % 2 === 0 ? '#dd9' : '#aa6';
-                if (isSelected)
-                  backgroundColor = '#7f7';
-                return <td key={x} style={{ margin: 0, padding: 0 }}>
-                  <div
-                    style={{
-                      width: 50,
-                      maxWidth: 50,
-                      height: 50,
-                      maxHeight: 50,
-                      backgroundColor,
-                      textAlign: 'center',
-                    }}
-                    onClick={() => clickOn(x, y)}
-                  >
-                    {piece}
-                  </div>
-                </td>;
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div style={{ position: 'absolute' }}>
+        <table style={{ borderCollapse: 'collapse', border: '1px solid black' }}>
+          <tbody>
+            {board.map((row, y) => (
+              <tr key={y}>
+                {row.map((piece, x) => {
+                  const isSelected = selectedSquare !== null && selectedSquare[0] === x && selectedSquare[1] === y;
+                  let backgroundColor = (x + y) % 2 === 0 ? '#eca' : '#b97';
+                  if (state.highlight[7 - y] & (1 << x))
+                    backgroundColor = (x + y) % 2 === 0 ? '#dd9' : '#aa6';
+                  if (isSelected)
+                    backgroundColor = '#7f7';
+                  return <td key={x} style={{ margin: 0, padding: 0 }}>
+                    <div
+                      style={{
+                        width: 50,
+                        maxWidth: 50,
+                        height: 50,
+                        maxHeight: 50,
+                        backgroundColor,
+                        textAlign: 'center',
+                      }}
+                      onClick={() => clickOn(x, y)}
+                    >
+                      {piece}
+                    </div>
+                  </td>;
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {JSON.stringify(engineWorker.pv)}
+      </div>
     </div>
   );
 }

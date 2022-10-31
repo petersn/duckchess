@@ -10,7 +10,7 @@ function sendBoardState() {
 }
 
 function workLoop() {
-  setTimeout(workLoop, 1);
+  setTimeout(workLoop, 2000);
   let inputArray = new Float32Array(max_batch_size() * channel_count() * 8 * 8);
   const batchSize = engine.step_until_batch(inputArray);
   //const batchSize = 1 as any;
@@ -18,6 +18,14 @@ function workLoop() {
     return;
   }
   inputArray = inputArray.slice(0, batchSize * channel_count() * 8 * 8);
+  // Compute how many entries in this array are nonzero.
+  let nonZeroCount = 0;
+  for (let i = 0; i < inputArray.length; i++) {
+    if (inputArray[i] !== 0) {
+      nonZeroCount++;
+    }
+  }
+  console.log('Nonzero', nonZeroCount, 'of', inputArray.length);
   //console.log('batchSize', batchSize);
   const inp = tf.tensor4d(inputArray, [batchSize, channel_count(), 8, 8]);
   const [policy, value] = model.predict(inp) as [tf.Tensor, tf.Tensor];
@@ -31,6 +39,9 @@ function workLoop() {
   inp.dispose();
   policy.dispose();
   value.dispose();
+  const evaluation = 0.37;
+  const pv = engine.get_principal_variation();
+  postMessage({ type: 'evaluation', evaluation, pv });
   // FIXME: Why do I need as any here?
   //await (engine as any).step(array);
 }

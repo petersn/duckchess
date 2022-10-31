@@ -15,8 +15,8 @@ export type MessageFromEngineWorker = {
 } | {
   type: 'evaluation';
   evaluation: number;
-  bestMove: {
+  pv: {
     from: number;
     to: number;
-  };
-} 
+  }[];
+}

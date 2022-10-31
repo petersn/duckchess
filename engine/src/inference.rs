@@ -89,19 +89,20 @@ slotmap::new_key_type! {
 }
 
 pub struct InputBlock<const BATCH_SIZE: usize>
-where [f32; BATCH_SIZE * FEATURES_SIZE]: Sized
+where
+  [f32; BATCH_SIZE * FEATURES_SIZE]: Sized,
 {
   pub cookies: Vec<PendingIndex>,
   pub data:    Box<[f32; BATCH_SIZE * FEATURES_SIZE]>,
 }
 
-pub fn add_to_input_blocks<const BATCH_SIZE: usize>
-(
+pub fn add_to_input_blocks<const BATCH_SIZE: usize>(
   input_blocks: &mut Vec<InputBlock<BATCH_SIZE>>,
   state: &State,
   cookie: PendingIndex,
 ) -> usize
-where [f32; BATCH_SIZE * FEATURES_SIZE]: Sized
+where
+  [f32; BATCH_SIZE * FEATURES_SIZE]: Sized,
 {
   // Create a new input block if we have none, or the last one is full.
   let do_create_new_block = match input_blocks.last() {
@@ -117,7 +118,9 @@ where [f32; BATCH_SIZE * FEATURES_SIZE]: Sized
   // Add an entry to the last input block.
   let block = input_blocks.last_mut().unwrap();
   let range = block.cookies.len() * FEATURES_SIZE..(block.cookies.len() + 1) * FEATURES_SIZE;
-  featurize_state(state, &mut block.data[range].try_into().unwrap());
+  //let r = ;
+  //let rr = r.try_into().unwrap();
+  featurize_state(state, (&mut block.data[range]).try_into().unwrap());
   block.cookies.push(cookie);
   // Return the fullness of the input block.
   block.cookies.len()
