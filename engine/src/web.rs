@@ -74,8 +74,9 @@ impl Engine {
 
 #[wasm_bindgen]
 pub fn new_engine(seed: u64) -> Engine {
+  log(&format!("Creating new engine with seed {}", seed));
   let tfjs_inference_engine = Box::leak(Box::new(inference_web::TensorFlowJsEngine::new()));
-  log(&format!("Created inference engine"));
+  log(&format!("Created (1) inference engine"));
   Engine {
     engine: search::Engine::new(seed),
     mcts:   mcts::Mcts::new(seed, tfjs_inference_engine),
