@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 
 use crate::{inference, mcts, rules::State, web};
+use crate::inference::{PendingIndex, InferenceResults};
 
 pub struct TensorFlowJsEngine {
   array: [f32; 361],
@@ -19,17 +20,17 @@ impl TensorFlowJsEngine {
 }
 
 impl inference::InferenceEngine for TensorFlowJsEngine {
-  fn add_work(&mut self, state: &crate::rules::State) -> inference::Fullness {
-    //web::state_to_array(state, &mut self.array);
-    inference::Fullness::Full
+  const DESIRED_BATCH_SIZE: usize = 32;
+
+  fn add_work(&self, state: &crate::rules::State, cookie: PendingIndex) -> usize {
+    todo!()
   }
 
-  fn predict(&self, mut outputs: &mut [&mut inference::ModelOutputs]) {
-    for output in outputs {
-      output.value = 0.0;
-      for i in 0..inference::POLICY_LEN {
-        output.policy[i] = 0.0;
-      }
-    }
+  fn predict(&self, use_outputs: impl FnOnce(InferenceResults)) -> usize {
+    todo!()
+  }
+
+  fn clear(&self) {
+    todo!()
   }
 }

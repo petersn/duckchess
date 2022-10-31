@@ -22,8 +22,7 @@ impl Engine {
 
   fn get_state_into_array(&self, array_len: usize, array: usize) {
     assert_eq!(array_len, 64 * inference::CHANNEL_COUNT);
-    let array: &mut [u8; 64 * inference::CHANNEL_COUNT] =
-      unsafe { &mut *(array as *mut _) };
+    let array: &mut [u8; 64 * inference::CHANNEL_COUNT] = unsafe { &mut *(array as *mut _) };
     inference::featurize_state(self.engine.get_state(), array);
   }
 

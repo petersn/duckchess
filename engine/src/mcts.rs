@@ -4,7 +4,7 @@ use std::future::Pending;
 
 use slotmap::SlotMap;
 
-use crate::inference::{ModelOutputs, POLICY_LEN};
+use crate::inference::{ModelOutputs, POLICY_LEN, InferenceEngine, PendingIndex};
 use crate::rng::Rng;
 //use crate::inference::{ModelOutputs, POLICY_LEN};
 use crate::rules::{GameOutcome, Move, State};
@@ -44,7 +44,7 @@ impl MctsNode {
     let outcome = state.get_outcome();
     let mut outputs = ModelOutputs {
       policy: [1.0; POLICY_LEN],
-      value: match outcome {
+      value:  match outcome {
         GameOutcome::Ongoing => 0.0,
         GameOutcome::WhiteWin => turn_flip,
         GameOutcome::BlackWin => -turn_flip,
@@ -60,7 +60,7 @@ impl MctsNode {
       moves,
       outputs,
       dirichlet_applied: false,
-      needs_eval:        outcome == GameOutcome::Ongoing,
+      needs_eval: outcome == GameOutcome::Ongoing,
       total_score: 0.0,
       visits: 0,
       in_flight: 0,
@@ -116,7 +116,12 @@ impl MctsNode {
     let mut best_move = None;
     for m in &self.moves {
       let score = self.total_action_score(sqrt_policy_explored, nodes, *m);
-      println!("    score: {:?} for move: {:?}  (posterior: {})", score, m, self.posterior(*m));
+      println!(
+        "    score: {:?} for move: {:?}  (posterior: {})",
+        score,
+        m,
+        self.posterior(*m)
+      );
       if score > best_score {
         best_score = score;
         best_move = Some(*m);
@@ -178,24 +183,26 @@ struct PendingPath {
   path: Vec<NodeIndex>,
 }
 
-pub struct Mcts {
+pub struct Mcts<'a, Infer: InferenceEngine> {
+  inference_engine: &'a Infer,              
   rng:                 Rng,
   root:                NodeIndex,
   nodes:               SlotMap<NodeIndex, MctsNode>,
   transposition_table: HashMap<(u64, u32), NodeIndex>,
-  pending_paths:       Vec<PendingPath>,
+  pending_paths:       SlotMap<PendingIndex, PendingPath>,
 }
 
 // TODO: Implement speculatively finding good candidate states to evaluate and cache.
 
-impl Mcts {
-  pub fn new(seed: u64) -> Mcts {
+impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
+  pub fn new(seed: u64, inference_engine: &'a Infer) -> Mcts<Infer> {
     let mut this = Self {
+      inference_engine,
       rng:                 Rng::new(seed),
       root:                NodeIndex::default(),
       nodes:               SlotMap::with_key(),
       transposition_table: HashMap::new(),
-      pending_paths:       Vec::new(),
+      pending_paths:       SlotMap::with_key(),
     };
     this.root = this.add_child_and_adjust_scores(vec![], None, State::starting_state(), 0);
     this
@@ -236,18 +243,24 @@ impl Mcts {
     }
   }
 
-        /*
-                // Add virtual visits to everyone along the path.
-        for node_index in pv_nodes {
-          self.nodes[node_index].in_flight += 1;
-        }
-                // Append the new child to the PV.
-        leaf_node.new_child(m, child_index);
-        pv_nodes.push(child_index);
-        self.pending_paths.push(PendingPath { path: pv_nodes });
-         */
+  /*
+          // Add virtual visits to everyone along the path.
+  for node_index in pv_nodes {
+    self.nodes[node_index].in_flight += 1;
+  }
+          // Append the new child to the PV.
+  leaf_node.new_child(m, child_index);
+  pv_nodes.push(child_index);
+  self.pending_paths.push(PendingPath { path: pv_nodes });
+   */
 
-  fn add_child_and_adjust_scores(&mut self, mut path: Vec<NodeIndex>, m: Option<Move>, state: State, depth: u32) -> NodeIndex {
+  fn add_child_and_adjust_scores(
+    &mut self,
+    mut path: Vec<NodeIndex>,
+    m: Option<Move>,
+    state: State,
+    depth: u32,
+  ) -> NodeIndex {
     println!("Adding child at depth {} (path={:?}).", depth, path);
     // Check our transposition table to see if this new state has already been reached.
     let transposition_table_key = get_transposition_table_key(&state, depth);
@@ -259,7 +272,7 @@ impl Mcts {
         let node = MctsNode::new(state, depth);
         let new_node_index = self.nodes.insert(node);
         match (path.last(), m) {
-          (None, None) => {},
+          (None, None) => {}
           (Some(parent_node_index), Some(m)) => {
             let parent_node = &mut self.nodes[*parent_node_index];
             parent_node.new_child(m, new_node_index);
@@ -278,9 +291,34 @@ impl Mcts {
       for node_index in &path {
         self.nodes[*node_index].in_flight += 1;
       }
-      self.pending_paths.push(PendingPath { path });
+      self.inference_engine.add_work(
+        &self.nodes[last_node_index].state,
+        self.pending_paths.insert(PendingPath { path }),
+      );
     }
     last_node_index
+  }
+
+  pub fn predict_now(&mut self) {
+    self.inference_engine.predict(|inference_results| {
+      for i in 0..inference_results.length {
+        match self.pending_paths.remove(inference_results.cookies[i]) {
+          None => {
+            println!("WARNING: Got inference result for unknown cookie.");
+            continue;
+          }
+          Some(pending_path) => {
+            println!("Got inference result for path: {:?}.", pending_path.path);
+            let node_index = pending_path.path.last().unwrap();
+            let node = &mut self.nodes[*node_index];
+            node.needs_eval = false;
+            node.outputs = inference_results.get(i);
+            //node.outputs.renormalize(&node.moves);
+            self.adjust_scores_on_path::<true>(pending_path.path);
+          }
+        }
+      }
+    });
   }
 
   pub fn step(&mut self) {

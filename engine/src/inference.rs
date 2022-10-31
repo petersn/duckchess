@@ -14,8 +14,10 @@ pub const CHANNEL_COUNT: usize = 6 + 6 + 1 + 1 + 1 + 4 + 1 + 1 + 1;
 
 pub const POLICY_LEN: usize = 64 * 64;
 
+pub const FEATURES_SIZE: usize = 64 * CHANNEL_COUNT;
+
 /// Write out `state` into `array` in C, H, W order.
-pub fn featurize_state<T: From<u8>>(state: &State, array: &mut [T; 64 * CHANNEL_COUNT]) {
+pub fn featurize_state<T: From<u8>>(state: &State, array: &mut [T; FEATURES_SIZE]) {
   let mut layer_index = 0;
   let mut emit_bitboard = |bitboard: u64| {
     for i in 0..64 {
@@ -82,12 +84,47 @@ impl ModelOutputs {
   }
 }
 
-pub enum Fullness {
-  NotFullYet,
-  Full,
+slotmap::new_key_type! {
+  pub struct PendingIndex;
+}
+
+pub struct InferenceResults<'a> {
+  pub length:   usize,
+  pub cookies:  &'a [PendingIndex],
+  pub policies: &'a [&'a [f32; POLICY_LEN]],
+  pub values:   &'a [f32],
+}
+
+impl<'a> InferenceResults<'a> {
+  pub fn new(
+    cookies: &'a [PendingIndex],
+    policies: &'a [&'a [f32; POLICY_LEN]],
+    values: &'a [f32],
+  ) -> InferenceResults<'a> {
+    assert_eq!(cookies.len(), policies.len());
+    assert_eq!(policies.len(), values.len());
+    InferenceResults {
+      length: cookies.len(),
+      cookies,
+      policies,
+      values,
+    }
+  }
+
+  pub fn get(&self, index: usize) -> ModelOutputs {
+    ModelOutputs {
+      policy: *self.policies[index],
+      value:  self.values[index],
+    }
+  }
 }
 
 pub trait InferenceEngine {
-  fn add_work(&mut self, state: &crate::rules::State) -> Fullness;
-  fn predict(&self, outputs: &mut [&mut ModelOutputs]);
+  const DESIRED_BATCH_SIZE: usize;
+
+  /// Returns the nummber of entries queued up after adding `state`.
+  fn add_work(&self, state: &crate::rules::State, cookie: PendingIndex) -> usize;
+  /// Returns the number of entries processed.
+  fn predict(&self, use_outputs: impl FnOnce(InferenceResults)) -> usize;
+  fn clear(&self);
 }

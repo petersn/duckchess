@@ -11,7 +11,7 @@ extern "C" {
 #[wasm_bindgen]
 pub struct Engine {
   engine: search::Engine,
-  mcts:   mcts::Mcts,
+  mcts:   mcts::Mcts<'static, inference_web::TensorFlowJsEngine>,
 }
 
 #[wasm_bindgen]
@@ -78,7 +78,7 @@ pub fn new_engine(seed: u64) -> Engine {
   log(&format!("Created inference engine"));
   Engine {
     engine: search::Engine::new(seed),
-    mcts:   mcts::Mcts::new(seed),
+    mcts:   mcts::Mcts::new(seed, tfjs_inference_engine),
   }
 }
 
