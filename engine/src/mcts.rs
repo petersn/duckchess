@@ -4,7 +4,7 @@ use std::future::Pending;
 
 use slotmap::SlotMap;
 
-use crate::inference::{ModelOutputs, POLICY_LEN, InferenceEngine, PendingIndex};
+use crate::inference::{InferenceEngine, ModelOutputs, PendingIndex, POLICY_LEN};
 use crate::rng::Rng;
 //use crate::inference::{ModelOutputs, POLICY_LEN};
 use crate::rules::{GameOutcome, Move, State};
@@ -184,7 +184,7 @@ struct PendingPath {
 }
 
 pub struct Mcts<'a, Infer: InferenceEngine> {
-  inference_engine: &'a Infer,              
+  inference_engine:    &'a Infer,
   rng:                 Rng,
   root:                NodeIndex,
   nodes:               SlotMap<NodeIndex, MctsNode>,
@@ -198,11 +198,11 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
   pub fn new(seed: u64, inference_engine: &'a Infer) -> Mcts<Infer> {
     let mut this = Self {
       inference_engine,
-      rng:                 Rng::new(seed),
-      root:                NodeIndex::default(),
-      nodes:               SlotMap::with_key(),
+      rng: Rng::new(seed),
+      root: NodeIndex::default(),
+      nodes: SlotMap::with_key(),
       transposition_table: HashMap::new(),
-      pending_paths:       SlotMap::with_key(),
+      pending_paths: SlotMap::with_key(),
     };
     this.root = this.add_child_and_adjust_scores(vec![], None, State::starting_state(), 0);
     this
@@ -285,7 +285,7 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
     path.push(last_node_index);
     // If the node is terminal then we can adjust scores immediately.
     if !self.nodes[last_node_index].needs_eval {
-      self.adjust_scores_on_path::<false>(path);
+      self.adjust_scores_on_path::<false>(path, "terminal");
     } else {
       // Otherwise we need to queue it up as a pending path.
       for node_index in &path {
@@ -314,7 +314,7 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
             node.needs_eval = false;
             node.outputs = inference_results.get(i);
             //node.outputs.renormalize(&node.moves);
-            self.adjust_scores_on_path::<true>(pending_path.path);
+            self.adjust_scores_on_path::<true>(pending_path.path, "inference");
           }
         }
       }
@@ -326,7 +326,7 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
     let (pv_nodes, pv_move) = self.select_principal_variation(false);
     match pv_move {
       // If the move is null then we have no legal moves, so just propagate the score again.
-      None => self.adjust_scores_on_path::<false>(pv_nodes),
+      None => self.adjust_scores_on_path::<false>(pv_nodes, "reprop"),
       // If the move is non-null then expand once at the leaf in that direction.
       Some(m) => {
         // Create the new child state.
@@ -345,18 +345,40 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
     );
   }
 
-  pub fn adjust_scores_on_path<const DECREMENT_IN_FLIGHT: bool>(&mut self, path: Vec<NodeIndex>) {
+  pub fn adjust_scores_on_path<const DECREMENT_IN_FLIGHT: bool>(&mut self, path: Vec<NodeIndex>, cause: &str) {
+    //crate::web::log(&format!("Adjusting scores on path: {:?}", path));
+    if path.is_empty() {
+      crate::web::log("WARNING: Got empty path.");
+      crate::web::log(&format!("Cause: {}", cause));
+    }
     let last_node_index = *path.last().unwrap();
     {
+      //crate::web::log(&format!("Last node: {:?}", self.nodes.contains_key(last_node_index)));
+      if !self.nodes.contains_key(last_node_index) {
+        crate::web::log("WARNING: Got path with unknown tail.");
+        crate::web::log(&format!("Cause: {}", cause));
+      }
       let last_node = &mut self.nodes[last_node_index];
+      if last_node.needs_eval {
+        crate::web::log("WARNING: Got path with un-evaluated tail.");
+        crate::web::log(&format!("Cause: {}", cause));
+      }
+      //if last_node.propagated && !last_node.state.is_game_over() {
+      //  crate::web::log("WARNING: Got path with already propagated non-terminal tail.");
+      //  crate::web::log(&format!("Cause: {}", cause));
+      //}
       assert!(!last_node.needs_eval);
-      assert!(!last_node.propagated);
+      //assert!(!last_node.propagated || last_node.state.is_game_over());
       last_node.propagated = true;
     }
     let value_score = (self.nodes[last_node_index].outputs.value + 1.0) / 2.0;
     let is_from_whites_perspective = self.nodes[last_node_index].state.white_turn;
     // Adjust every node along the path, including the final node itself.
     for node_index in path {
+      if !self.nodes.contains_key(node_index) {
+        crate::web::log("WARNING: Got path with unknown node.");
+        crate::web::log(&format!("Cause: {}", cause));
+      }
       let node = &mut self.nodes[node_index];
       let player_perspective_score = match node.state.white_turn == is_from_whites_perspective {
         true => value_score,

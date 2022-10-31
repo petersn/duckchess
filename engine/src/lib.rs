@@ -1,4 +1,4 @@
-#![feature(sync_unsafe_cell)]
+#![feature(generic_const_exprs)]
 
 pub mod inference;
 pub mod mcts;

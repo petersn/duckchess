@@ -5,7 +5,7 @@ use tensorflow::{Graph, Operation, SavedModelBundle, SessionOptions, SessionRunA
 
 use crate::inference::{self, PendingIndex};
 use crate::inference::{
-  featurize_state, InferenceResults, CHANNEL_COUNT, FEATURES_SIZE, POLICY_LEN,
+  featurize_state, InferenceResults, InputBlock, CHANNEL_COUNT, FEATURES_SIZE, POLICY_LEN,
 };
 use crate::mcts;
 use crate::rules::{Move, State};
@@ -18,17 +18,12 @@ pub const MAX_BATCH_SIZE: usize = 128;
 //  channels:    [Option<tokio::sync::oneshot::Sender<ModelOutputs>>; BUFFER_COUNT * BATCH_SIZE],
 //}
 
-struct InputBlock {
-  cookies: Vec<PendingIndex>,
-  data:    Box<[f32; MAX_BATCH_SIZE * FEATURES_SIZE]>,
-}
-
 pub struct TensorFlowEngine {
   bundle:       SavedModelBundle,
   input_op:     Operation,
   policy_op:    Operation,
   value_op:     Operation,
-  input_blocks: Mutex<Vec<InputBlock>>,
+  input_blocks: Mutex<Vec<InputBlock<MAX_BATCH_SIZE>>>,
   //input_tensors:   [&'static SyncUnsafeCell<Tensor<f32>>; BUFFER_COUNT],
   //return_channels: tokio::sync::Mutex<ReturnChannels>,
   eval_count:   std::sync::atomic::AtomicUsize,
@@ -109,24 +104,7 @@ impl inference::InferenceEngine for TensorFlowEngine {
   fn add_work(&self, state: &crate::rules::State, cookie: PendingIndex) -> usize {
     println!("\x1b[93mAdding work...\x1b[0m");
     let mut input_blocks = self.input_blocks.lock().unwrap();
-    // Create a new input block if we have none, or the last one is full.
-    let do_create_new_block = match input_blocks.last() {
-      Some(input_block) => input_block.cookies.len() >= MAX_BATCH_SIZE,
-      None => true,
-    };
-    if do_create_new_block {
-      input_blocks.push(InputBlock {
-        cookies: vec![],
-        data:    Box::new([0.0; MAX_BATCH_SIZE * FEATURES_SIZE]),
-      })
-    }
-    // Add an entry to the last input block.
-    let block = input_blocks.last_mut().unwrap();
-    let range = block.cookies.len() * FEATURES_SIZE..(block.cookies.len() + 1) * FEATURES_SIZE;
-    featurize_state(state, &mut block.data[range].try_into().unwrap());
-    block.cookies.push(cookie);
-    // Return the fullness of the input block.
-    block.cookies.len()
+    inference::add_to_input_blocks(&mut input_blocks, state, cookie)
     /*
     // Allocate a slot.
     let (rx, work) = {

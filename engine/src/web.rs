@@ -1,6 +1,10 @@
 use wasm_bindgen::prelude::*;
 
-use crate::{inference_web, mcts, rules::Move, search};
+use crate::{inference, inference_web, mcts, rules::Move, search};
+use crate::inference_web::MAX_BATCH_SIZE;
+use crate::inference::{FEATURES_SIZE, POLICY_LEN};
+
+const MAX_STEPS_BEFORE_INFERENCE: usize = 4 * MAX_BATCH_SIZE;
 
 #[wasm_bindgen]
 extern "C" {
@@ -10,8 +14,12 @@ extern "C" {
 
 #[wasm_bindgen]
 pub struct Engine {
+  inference_engine: &'static inference_web::TensorFlowJsEngine,
   engine: search::Engine,
   mcts:   mcts::Mcts<'static, inference_web::TensorFlowJsEngine>,
+  //input_array: Box<[f32; MAX_BATCH_SIZE * FEATURES_SIZE]>,
+  //policy_array: Box<[f32; MAX_BATCH_SIZE * POLICY_LEN]>,
+  //value_array: Box<[f32; MAX_BATCH_SIZE]>,
 }
 
 #[wasm_bindgen]
@@ -54,38 +62,61 @@ impl Engine {
     }
   }
 
-  //pub async fn step_until_inference_batch(&mut self, array: js_sys::Float32Array) {
-  //  self.mcts.step_until_inference_batch().await;
-  //}
-
-  //pub async fn step(&mut self) {
-  //  self.mcts.step().await;
-  //  log(&format!("MCTS step done"));
-  //}
-
-  pub fn run(&mut self, depth: u16) -> JsValue {
-    let p = self.engine.run(depth);
-    serde_wasm_bindgen::to_value(&p).unwrap_or_else(|e| {
-      log(&format!("Failed to serialize score: {}", e));
-      JsValue::NULL
-    })
+  pub fn step_until_batch(&mut self, features_array: &js_sys::Float32Array) -> usize {
+    for i in 0..MAX_STEPS_BEFORE_INFERENCE {
+      self.mcts.step();
+      if self.inference_engine.has_batch() {
+        break;
+      }
+    }
+    log(&format!("Inference engine has batch: {}", self.inference_engine.has_batch()));
+    self.inference_engine.fetch_work(features_array)
   }
+
+  pub fn give_answers(&mut self, policy_array: &js_sys::Float32Array, value_array: &js_sys::Float32Array) {
+    self.inference_engine.give_answers(policy_array, value_array);
+    self.mcts.predict_now();
+    //self.inference_engine.give_answers(&self.policy_array, &self.value_array);
+  }
+
+  //pub fn step(&mut self) {
+  //  log(&format!("MCTS step done"));
+  //  self.mcts.step().await;
+  //
+  //}
+
+  //pub fn run(&mut self, depth: u16) -> JsValue {
+  //  let p = self.engine.run(depth);
+  //  serde_wasm_bindgen::to_value(&p).unwrap_or_else(|e| {
+  //    log(&format!("Failed to serialize score: {}", e));
+  //    JsValue::NULL
+  //  })
+  //}
 }
 
 #[wasm_bindgen]
-pub fn new_engine(seed: u64) -> Engine {
+pub fn new_engine(
+  seed: u64,
+) -> Engine {
   log(&format!("Creating new engine with seed {}", seed));
   let tfjs_inference_engine = Box::leak(Box::new(inference_web::TensorFlowJsEngine::new()));
   log(&format!("Created (1) inference engine"));
   Engine {
+    inference_engine: tfjs_inference_engine,
     engine: search::Engine::new(seed),
     mcts:   mcts::Mcts::new(seed, tfjs_inference_engine),
+    //input_array: Box::new([0.0; MAX_BATCH_SIZE * FEATURES_SIZE]),
+    //policy_array: Box::new([0.0; MAX_BATCH_SIZE * POLICY_LEN]),
+    //value_array: Box::new([0.0; MAX_BATCH_SIZE]),
   }
 }
 
 #[wasm_bindgen]
-pub fn modify_array(x: &mut [f32]) {
-  for i in 0..x.len() {
-    x[i] = i as f32;
-  }
+pub fn max_batch_size() -> usize {
+  MAX_BATCH_SIZE
+}
+
+#[wasm_bindgen]
+pub fn channel_count() -> usize {
+  inference::CHANNEL_COUNT
 }

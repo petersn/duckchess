@@ -1,26 +1,46 @@
-import init, { new_engine, modify_array, Engine } from 'engine';
+import init, { new_engine, max_batch_size, channel_count, Engine } from 'engine';
 import * as tf from '@tensorflow/tfjs';
 import { MessageToEngineWorker } from './EngineWorkerMessages';
 
 let model: tf.LayersModel;
 let engine: Engine;
-let array: Float32Array;
 
 function sendBoardState() {
   postMessage({ type: 'board', board: engine.get_state(), moves: engine.get_moves() });
 }
 
-async function workLoop() {
-  setTimeout(workLoop, 500);
+function workLoop() {
+  setTimeout(workLoop, 1);
+  let inputArray = new Float32Array(max_batch_size() * channel_count() * 8 * 8);
+  const batchSize = engine.step_until_batch(inputArray);
+  //const batchSize = 1 as any;
+  if (batchSize === 0) {
+    return;
+  }
+  inputArray = inputArray.slice(0, batchSize * channel_count() * 8 * 8);
+  //console.log('batchSize', batchSize);
+  const inp = tf.tensor4d(inputArray, [batchSize, channel_count(), 8, 8]);
+  const [policy, value] = model.predict(inp) as [tf.Tensor, tf.Tensor];
+  const policyData = policy.dataSync() as Float32Array;
+  const valueData = value.dataSync() as Float32Array;
+  // memcpy into policy_array and value_array
+  //policyArray.set(policyData);
+  //valueArray.set(valueData);
+  engine.give_answers(policyData, valueData);
+  // Delete the inputs.
+  inp.dispose();
+  policy.dispose();
+  value.dispose();
   // FIXME: Why do I need as any here?
-  await (engine as any).step(array);
+  //await (engine as any).step(array);
 }
 
 async function initWorker() {
-  array = new Float32Array(8 * 8 * 12);
   await init();
+
   const seed = Math.floor(Math.random() * 1e9);
-  engine = await new_engine(BigInt(seed));
+  engine = new_engine(BigInt(seed));
+
   model = await tf.loadLayersModel('/duck-chess-engine/model.json')
   postMessage({ type: 'initted' });
   sendBoardState();
