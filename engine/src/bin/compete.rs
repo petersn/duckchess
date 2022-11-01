@@ -1,5 +1,5 @@
 use clap::Parser;
-use engine::desktop_inference::InferenceEngine;
+use engine::inference_desktop::TensorFlowEngine;
 use engine::mcts::Mcts;
 
 const GAME_LEN_LIMIT: usize = 300;
@@ -30,19 +30,18 @@ struct Args {
   output_dir: String,
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
   let args = Args::parse();
 
   let model1_dir: &'static str = Box::leak(String::into_boxed_str(args.model1_dir));
   let model2_dir: &'static str = Box::leak(String::into_boxed_str(args.model2_dir));
 
-  let inference_engine1: &InferenceEngine =
-    Box::leak(Box::new(InferenceEngine::create(model1_dir).await));
-  let inference_engine2: Option<&InferenceEngine> = match model2_dir == "@pvs" {
+  let inference_engine1: &TensorFlowEngine =
+    Box::leak(Box::new(TensorFlowEngine::create(model1_dir).await));
+  let inference_engine2: Option<&TensorFlowEngine> = match model2_dir == "@pvs" {
     true => None,
     false => Some(Box::leak(Box::new(
-      InferenceEngine::create(model2_dir).await,
+      TensorFlowEngine::new(model2_dir),
     ))),
   };
 
@@ -58,7 +57,7 @@ async fn main() {
 
   // Spawn several tasks to run MCTS in parallel.
   let mut tasks = Vec::new();
-  for task_id in 0..2 * engine::desktop_inference::BATCH_SIZE - 1 {
+  for task_id in 0..2 * engine::inference_desktop::BATCH_SIZE - 1 {
     tasks.push(tokio::spawn(async move {
       use std::io::Write;
       let mut engine1_is_white = rand::random::<bool>();

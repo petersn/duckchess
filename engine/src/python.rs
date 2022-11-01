@@ -21,8 +21,8 @@ impl Engine {
   }
 
   fn get_state_into_array(&self, array_len: usize, array: usize) {
-    assert_eq!(array_len, 64 * inference::CHANNEL_COUNT);
-    let array: &mut [u8; 64 * inference::CHANNEL_COUNT] = unsafe { &mut *(array as *mut _) };
+    assert_eq!(array_len, inference::CHANNEL_COUNT * 8 * 8);
+    let array: &mut [u8; inference::CHANNEL_COUNT * 8 * 8] = unsafe { &mut *(array as *mut _) };
     inference::featurize_state(self.engine.get_state(), array);
   }
 
@@ -42,8 +42,12 @@ impl Engine {
     self.engine.apply_move(m).err()
   }
 
+  fn sanity_check(&self) -> Option<&'static str> {
+    self.engine.get_state().sanity_check().err()
+  }
+
   fn get_outcome(&self) -> Option<&'static str> {
-    self.engine.get_outcome().to_option_str()
+    self.engine.get_outcome().map(|o| o.to_str())
   }
 }
 

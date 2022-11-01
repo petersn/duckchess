@@ -4,9 +4,8 @@ def make_model(
     blocks=12,
     feature_count=128,
     final_features=32,
-    input_channels=22,
-    policy_outputs=64 * 64,
-    value_outputs=1,
+    input_channels=29,
+    policy_channels=64,
 ):
     input_node = tf.keras.Input(shape=(input_channels, 8, 8), name="inp_features")
     x = tf.keras.layers.Conv2D(
@@ -14,12 +13,16 @@ def make_model(
     )(input_node)
     for _ in range(blocks):
         skip_connection = x
-        x = tf.keras.layers.Conv2D(feature_count, 3, padding="same", activation="relu", data_format="channels_first")(x)
-        x = tf.keras.layers.Conv2D(feature_count, 3, padding="same", activation="relu", data_format="channels_first")(x)
+        x = tf.keras.layers.Activation("gelu")(x)
+        x = tf.keras.layers.Conv2D(feature_count, 3, padding="same", data_format="channels_first")(x)
+        x = tf.keras.layers.Activation("gelu")(x)
+        x = tf.keras.layers.Conv2D(feature_count, 3, padding="same", data_format="channels_first")(x)
         x = tf.keras.layers.Add()([skip_connection, x])
-    x = tf.keras.layers.Conv2D(final_features, 3, padding="same", activation="relu", data_format="channels_first")(x)
-    x = tf.keras.layers.Flatten()(x)
-    policy = tf.keras.layers.Dense(policy_outputs, activation="softmax", name="out_policy")(x)
-    value = tf.keras.layers.Dense(value_outputs, activation="tanh", name="out_value")(x)
-    model = tf.keras.Model(inputs={"features": input_node}, outputs={"policy": policy, "value": value})
+    policy = tf.keras.layers.Conv2D(policy_channels, 3, padding="same", data_format="channels_first")(x)
+    policy = tf.keras.layers.Flatten()(policy)
+    policy = tf.keras.layers.Softmax(name="out_policy")(policy)
+    value = tf.keras.layers.Conv2D(1, 3, padding="same", data_format="channels_first")(x)
+    value = tf.keras.layers.Flatten()(value)
+    value = tf.keras.layers.Dense(1, activation="tanh", name="out_value")(value)
+    model = tf.keras.Model(inputs=[input_node], outputs=[policy, value])
     return model

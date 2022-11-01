@@ -2,13 +2,31 @@ include!(concat!(env!("OUT_DIR"), "/tables.rs"));
 
 use serde::{ser::SerializeSeq, Deserialize, Serialize};
 
+pub const MOVE_HISTORY_LEN: usize = 4;
+
 #[rustfmt::skip]
 const ALL_BUT_A_FILE:   u64 = 0xfefefefefefefefe;
 const ALL_BUT_H_FILE: u64 = 0x7f7f7f7f7f7f7f7f;
 const MIDDLE_SIX_RANKS: u64 = 0x00ffffffffffff00;
 const LAST_RANKS: u64 = 0xff000000000000ff;
 
-#[derive(Debug, Clone, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Player {
+  Black = 0,
+  White = 1,
+}
+
+impl Player {
+  pub fn other_player(self) -> Player {
+    match self {
+      Player::White => Player::Black,
+      Player::Black => Player::White,
+    }
+  }
+}
+
+#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CastlingRights {
   pub king_side:  bool,
@@ -17,6 +35,12 @@ pub struct CastlingRights {
 
 #[derive(Debug, Clone, Hash)]
 pub struct BitBoard(pub u64);
+
+impl BitBoard {
+  pub fn vertically_mirror(self) -> BitBoard {
+    BitBoard(self.0.swap_bytes())
+  }
+}
 
 impl Serialize for BitBoard {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -46,7 +70,7 @@ impl<'de> Deserialize<'de> for BitBoard {
   }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct State {
   pub pawns:           [BitBoard; 2],
@@ -57,13 +81,13 @@ pub struct State {
   pub kings:           [BitBoard; 2],
   pub ducks:           BitBoard,
   pub en_passant:      BitBoard,
-  pub highlight:       BitBoard,
   pub castling_rights: [CastlingRights; 2],
-  pub white_turn:      bool,
+  pub turn:            Player,
   pub is_duck_move:    bool,
+  pub move_history:    [Option<Move>; MOVE_HISTORY_LEN],
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PromotablePiece {
   // Ordered here based on likelihood of promotion.
@@ -76,7 +100,7 @@ pub enum PromotablePiece {
 type Square = u8;
 type SquareDelta = u8;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Move {
   pub from: Square,
   pub to:   Square,
@@ -99,19 +123,16 @@ impl Move {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum GameOutcome {
-  Ongoing,
+  Win(Player),
   Draw,
-  WhiteWin,
-  BlackWin,
 }
 
 impl GameOutcome {
-  pub fn to_option_str(&self) -> Option<&'static str> {
+  pub fn to_str(&self) -> &'static str {
     match self {
-      GameOutcome::Ongoing => None,
-      GameOutcome::Draw => Some("1/2-1/2"),
-      GameOutcome::WhiteWin => Some("1-0"),
-      GameOutcome::BlackWin => Some("0-1"),
+      GameOutcome::Win(Player::White) => "1-0",
+      GameOutcome::Win(Player::Black) => "0-1",
+      GameOutcome::Draw => "1/2-1/2",
     }
   }
 }
@@ -184,7 +205,6 @@ impl State {
       kings:           [BitBoard(0x1000000000000000), BitBoard(0x0000000000000010)],
       ducks:           BitBoard(0),
       en_passant:      BitBoard(0),
-      highlight:       BitBoard(0),
       castling_rights: [
         CastlingRights {
           king_side:  true,
@@ -195,8 +215,9 @@ impl State {
           queen_side: true,
         },
       ],
-      white_turn:      true,
+      turn:            Player::White,
       is_duck_move:    false,
+      move_history:    [None; MOVE_HISTORY_LEN],
     }
   }
 
@@ -206,8 +227,8 @@ impl State {
     macro_rules! hash_u64 {
       ($x:expr, $value:expr) => {{
         $x ^= $value;
-        let y = ($x as u128).wrapping_mul(MULT as u128);
-        $x = (y >> 64) as u64 ^ y as u64;
+        let x = x.wrapping_mul(MULT);
+        $x = x ^ (x >> 37);
       }};
     }
     macro_rules! hash_piece {
@@ -225,28 +246,23 @@ impl State {
     hash_piece!(x, self.kings);
     hash_u64!(x, self.ducks.0);
     hash_u64!(x, self.en_passant.0);
-    // Intentionally skip highlight.
+    // Intentionally skip move history.
     let bits = (self.castling_rights[0].king_side as u64)
       ^ (self.castling_rights[0].queen_side as u64) << 8
       ^ (self.castling_rights[1].king_side as u64) << 16
       ^ (self.castling_rights[1].queen_side as u64) << 24
-      ^ (self.white_turn as u64) << 32
+      ^ (self.turn as u64) << 32
       ^ (self.is_duck_move as u64) << 40;
     hash_u64!(x, bits);
     x
   }
 
   // TODO: Implement stalemate.
-  pub fn is_game_over(&self) -> bool {
-    self.kings[0].0 == 0 || self.kings[1].0 == 0
-  }
-
-  // TODO: Implement stalemate.
-  pub fn get_outcome(&self) -> GameOutcome {
-    match (self.kings[0].0 == 0, self.kings[1].0 == 0) {
-      (false, false) => GameOutcome::Ongoing,
-      (true, false) => GameOutcome::WhiteWin,
-      (false, true) => GameOutcome::BlackWin,
+  pub fn get_outcome(&self) -> Option<GameOutcome> {
+    match (self.kings[Player::Black as usize].0 == 0, self.kings[Player::White as usize].0 == 0) {
+      (false, false) => None,
+      (true, false) => Some(GameOutcome::Win(Player::White)),
+      (false, true) => Some(GameOutcome::Win(Player::Black)),
       (true, true) => {
         // Print out the entire state.
         println!("{:?}", self);
@@ -510,12 +526,12 @@ impl State {
   }
 
   pub fn move_gen<const QUIESCENCE: bool>(&self, moves: &mut Vec<Move>) {
-    if self.is_game_over() {
+    if self.get_outcome().is_some() {
       return;
     }
-    match self.white_turn {
-      true => self.move_gen_for_color::<QUIESCENCE, true>(moves),
-      false => self.move_gen_for_color::<QUIESCENCE, false>(moves),
+    match self.turn {
+      Player::White => self.move_gen_for_color::<QUIESCENCE, true>(moves),
+      Player::Black => self.move_gen_for_color::<QUIESCENCE, false>(moves),
     }
   }
 
@@ -524,19 +540,25 @@ impl State {
       return Err("from/to out of range");
     }
 
+    // Advance the move history by one position.
+    for i in (1..MOVE_HISTORY_LEN).rev() {
+      self.move_history[i] = self.move_history[i - 1];
+    }
+    self.move_history[0] = Some(m);
+
     let from_mask = 1 << m.from;
     let to_mask = 1 << m.to;
-    if !self.is_duck_move {
-      self.highlight.0 = 0;
-    }
-    self.highlight.0 |= from_mask | to_mask;
+    //if !self.is_duck_move {
+    //  self.highlight.0 = 0;
+    //}
+    //self.highlight.0 |= from_mask | to_mask;
     // Handle duck moves.
     if self.is_duck_move {
       if self.ducks.0 & from_mask != 0 || (self.ducks.0 == 0 && m.from == m.to) {
         self.ducks.0 &= !from_mask;
         self.ducks.0 |= to_mask;
         self.is_duck_move = false;
-        self.white_turn = !self.white_turn;
+        self.turn = self.turn.other_player();
         return Ok(());
       }
       return Err("no duck at from position");
@@ -550,29 +572,34 @@ impl State {
     //let mut new_bishops = 0;
     //let mut new_knights = 0;
 
+    #[derive(Debug)]
     enum PieceKind {
       Pawn,
       King,
       Rook,
-      Other,
+      Knight,
+      Bishop,
+      Queen,
     }
+    let mut piece_moved = false;
     for (piece_kind, piece_array) in [
       (PieceKind::Pawn, &mut self.pawns),
-      (PieceKind::Other, &mut self.knights),
-      (PieceKind::Other, &mut self.bishops),
+      (PieceKind::Knight, &mut self.knights),
+      (PieceKind::Bishop, &mut self.bishops),
       (PieceKind::Rook, &mut self.rooks),
-      (PieceKind::Other, &mut self.queens),
+      (PieceKind::Queen, &mut self.queens),
       (PieceKind::King, &mut self.kings),
     ] {
       let (a, b) = piece_array.split_at_mut(1);
-      let (us, them) = match self.white_turn {
-        true => (&mut b[0], &mut a[0]),
-        false => (&mut a[0], &mut b[0]),
+      let (us, them) = match self.turn {
+        Player::White => (&mut b[0], &mut a[0]),
+        Player::Black => (&mut a[0], &mut b[0]),
       };
       // Capture pieces on the target square.
       them.0 &= !to_mask;
       // Check if this is the kind of piece we're moving.
       if us.0 & from_mask != 0 {
+        piece_moved = true;
         // Move our piece.
         us.0 &= !from_mask;
         us.0 |= to_mask;
@@ -581,16 +608,16 @@ impl State {
           (PieceKind::Pawn, _) => {
             // Check if we're taking en passant.
             if moving_en_passant {
-              match self.white_turn {
-                true => them.0 &= !(1 << (m.to - 8)),
-                false => them.0 &= !(1 << (m.to + 8)),
+              match self.turn {
+                Player::White => them.0 &= !(1 << (m.to - 8)),
+                Player::Black => them.0 &= !(1 << (m.to + 8)),
               }
             }
             // Setup the en passant state.
             let is_double_move = (m.from as i8 - m.to as i8).abs() == 16;
-            match (is_double_move, self.white_turn) {
-              (true, true) => self.en_passant.0 = to_mask >> 8,
-              (true, false) => self.en_passant.0 = to_mask << 8,
+            match (is_double_move, self.turn) {
+              (true, Player::White) => self.en_passant.0 = to_mask >> 8,
+              (true, Player::Black) => self.en_passant.0 = to_mask << 8,
               (false, _) => {}
             }
             // Check if we're promoting.
@@ -613,7 +640,7 @@ impl State {
             //}
           }
           (PieceKind::King, _) => {
-            self.castling_rights[self.white_turn as usize] = CastlingRights {
+            self.castling_rights[self.turn as usize] = CastlingRights {
               king_side:  false,
               queen_side: false,
             };
@@ -631,24 +658,49 @@ impl State {
             }
           }
           (PieceKind::Rook, 0) | (PieceKind::Rook, 56) => {
-            self.castling_rights[self.white_turn as usize].queen_side = false
+            self.castling_rights[self.turn as usize].queen_side = false
           }
           (PieceKind::Rook, 7) | (PieceKind::Rook, 63) => {
-            self.castling_rights[self.white_turn as usize].king_side = false
+            self.castling_rights[self.turn as usize].king_side = false
           }
           (PieceKind::Rook, _) => {}
-          (PieceKind::Other, _) => {}
+          (PieceKind::Knight, _) => {}
+          (PieceKind::Bishop, _) => {}
+          (PieceKind::Queen, _) => {}
         }
       }
     }
-    self.rooks[self.white_turn as usize].0 &= !remove_rooks;
-    //self.knights[self.white_turn as usize].0 |= new_knights;
-    //self.bishops[self.white_turn as usize].0 |= new_bishops;
-    self.rooks[self.white_turn as usize].0 |= new_rooks;
-    self.queens[self.white_turn as usize].0 |= new_queens;
+    if !piece_moved {
+      return Err("no piece at from position");
+    }
+    self.rooks[self.turn as usize].0 &= !remove_rooks;
+    //self.knights[self.turn as usize].0 |= new_knights;
+    //self.bishops[self.turn as usize].0 |= new_bishops;
+    self.rooks[self.turn as usize].0 |= new_rooks;
+    self.queens[self.turn as usize].0 |= new_queens;
 
-    //self.white_turn = !self.white_turn;
+    //self.turn = self.turn.other_player();
     self.is_duck_move = true;
+    Ok(())
+  }
+
+  pub fn sanity_check(&self) -> Result<(), &'static str> {
+    let mut all_pieces = self.ducks.0;
+    for player in [Player::Black, Player::White] {
+      for pieces in [
+        &self.pawns[player as usize],
+        &self.knights[player as usize],
+        &self.bishops[player as usize],
+        &self.rooks[player as usize],
+        &self.queens[player as usize],
+        &self.kings[player as usize],
+      ] {
+        if all_pieces & pieces.0 != 0 {
+          return Err("pieces overlap");
+        }
+        all_pieces |= pieces.0;
+      }
+    }
     Ok(())
   }
 }

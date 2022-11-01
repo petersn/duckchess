@@ -38,7 +38,7 @@ fn work(output_dir: &str) {
         break;
       }
     }
-    let outcome = engine.get_outcome().to_option_str();
+    let outcome = engine.get_outcome().map(|o| o.to_str());
     println!(
       "Game generated: moves={} outcome={:?}",
       moves.len(),

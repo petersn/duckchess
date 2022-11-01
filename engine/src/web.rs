@@ -80,11 +80,7 @@ impl Engine {
     self.inference_engine.fetch_work(features_array)
   }
 
-  pub fn give_answers(
-    &mut self,
-    policy_array: &[f32],
-    value_array: &[f32],
-  ) {
+  pub fn give_answers(&mut self, policy_array: &[f32], value_array: &[f32]) {
     self.inference_engine.give_answers(policy_array, value_array);
     self.mcts.predict_now();
     //self.inference_engine.give_answers(&self.policy_array, &self.value_array);

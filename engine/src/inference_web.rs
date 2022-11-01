@@ -44,7 +44,11 @@ impl TensorFlowJsEngine {
     match inner.input_blocks.pop() {
       Some(block) => {
         let batch_length = block.cookies.len();
-        web::log(&format!("Fetched batch of length {} -> {}", batch_length, array.len()));
+        web::log(&format!(
+          "Fetched batch of length {} -> {}",
+          batch_length,
+          array.len()
+        ));
         // Avoid the call to .subarray if we don't need it.
         if batch_length == MAX_BATCH_SIZE {
           array.copy_from_slice(&block.data[..batch_length * FEATURES_SIZE]);
@@ -62,11 +66,7 @@ impl TensorFlowJsEngine {
   }
 
   //pub fn give_answers(&self, policy_array: &[f32], value_array: &[f32]) {
-  pub fn give_answers(
-    &self,
-    policy_array: &[f32],
-    value_array: &[f32],
-  ) {
+  pub fn give_answers(&self, policy_array: &[f32], value_array: &[f32]) {
     let mut inner = self.inner.borrow_mut();
     let pending_cookies = inner.pending_cookies.take().unwrap();
     let batch_length = pending_cookies.len();

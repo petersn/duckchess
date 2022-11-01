@@ -1,9 +1,13 @@
-use engine::desktop_inference::InferenceEngine;
+use engine::{inference_desktop::TensorFlowEngine, inference::InferenceEngine};
 
-#[tokio::main]
-async fn main() {
-  let inference_engine = InferenceEngine::create("/tmp/keras").await;
+fn main() {
+  let inference_engine = TensorFlowEngine::new("/tmp/keras");
   let state = engine::rules::State::starting_state();
-  let model_outputs = inference_engine.predict(&state).await;
-  println!("Value: {}", model_outputs.value);
+
+  let mut sm = slotmap::SlotMap::with_key();
+  let cookie = sm.insert(0);
+  inference_engine.add_work(&state, cookie);
+  inference_engine.predict(|outputs| {
+    println!("cookies: {:?}", outputs.cookies);
+  });
 }

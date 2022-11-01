@@ -1,25 +1,63 @@
-use crate::rules::State;
+use crate::rules::{State, Player, MOVE_HISTORY_LEN, GameOutcome};
+
+#[derive(Debug, Clone, Copy)]
+pub struct Evaluation {
+  /// A value [0, 1] giving the expected score, loss = 0, draw = 0.5, win = 1.
+  pub expected_score: f32,
+  /// Whose perspective the score is from.
+  pub perspective_player: Player,
+}
+
+impl Evaluation {
+  pub const EVEN_EVAL: Self = Self {
+    expected_score: 0.5,
+    perspective_player: Player::White,
+  };
+
+  /// If a state is terminal, return the evaluation of the state.
+  pub fn from_terminal_state(state: &State) -> Option<Self> {
+    state.get_outcome().map(|outcome| match outcome {
+      GameOutcome::Draw => Self::EVEN_EVAL,
+      GameOutcome::Win(player) => Self {
+        expected_score: 1.0,
+        perspective_player: player,
+      },
+    })
+  }
+
+  pub fn expected_score_for_player(&self, player: Player) -> f32 {
+    match player == self.perspective_player {
+      true => self.expected_score,
+      false => 1.0 - self.expected_score,
+    }
+  }
+}
 
 // We have:
-//   Six channels for white pieces: pawns, knights, bishops, rooks, queens, kings
-//   Six channels for black pieces.
+//   Six channels for our pieces: pawns, knights, bishops, rooks, queens, kings
+//   Six channels for their pieces.
 //   One channel for ducks.
-//   One channel for whose turn it is.
+//   One channel that's all ones if it's white to move, zeros otherwise.
 //   One channel for if it's the duck subturn.
-//   Four channels for castling rights.
+//   Two channels for our castling rights: king side, queen side
+//   Two channels for their castling rights.
 //   One channel for an en passant square.
-//   One channel for the last move.
+//   Pairs of (from, to) channels for the history of moves.
 //   One channel of all ones.
-pub const CHANNEL_COUNT: usize = 6 + 6 + 1 + 1 + 1 + 4 + 1 + 1 + 1;
-
-pub const POLICY_LEN: usize = 64 * 64;
-
-pub const FEATURES_SIZE: usize = 64 * CHANNEL_COUNT;
+pub const CHANNEL_COUNT: usize = 6 + 6 + 1 + 1 + 1 + 2 + 2 + 1 + (2 * MOVE_HISTORY_LEN) + 1;
+// We have one policy plane for each possible from square.
+pub const POLICY_PLANE_COUNT: usize = 64;
+pub const POLICY_LEN: usize = POLICY_PLANE_COUNT * 64;
+pub const FEATURES_SIZE: usize = CHANNEL_COUNT * 64;
 
 /// Write out `state` into `array` in C, H, W order.
 pub fn featurize_state<T: From<u8>>(state: &State, array: &mut [T; FEATURES_SIZE]) {
   let mut layer_index = 0;
   let mut emit_bitboard = |bitboard: u64| {
+    let bitboard = match state.turn {
+      Player::White => bitboard,
+      Player::Black => bitboard.swap_bytes(),
+    };
     for i in 0..64 {
       array[64 * layer_index + i] = (((bitboard >> i) & 1) as u8).into();
     }
@@ -27,7 +65,11 @@ pub fn featurize_state<T: From<u8>>(state: &State, array: &mut [T; FEATURES_SIZE
   };
   let bool_board = |b: bool| if b { u64::MAX } else { 0 };
   // Encode the pieces.
-  for player in [1, 0] {
+  let player_order = match state.turn {
+    Player::White => [Player::White, Player::Black],
+    Player::Black => [Player::Black, Player::White],
+  };
+  for player in player_order {
     for piece_array in [
       &state.pawns,
       &state.knights,
@@ -36,24 +78,33 @@ pub fn featurize_state<T: From<u8>>(state: &State, array: &mut [T; FEATURES_SIZE
       &state.queens,
       &state.kings,
     ] {
-      emit_bitboard(piece_array[player].0);
+      emit_bitboard(piece_array[player as usize].0);
     }
   }
   // Encode the ducks.
   emit_bitboard(state.ducks.0);
-  // Encode whose turn it is.
-  emit_bitboard(bool_board(state.white_turn));
+  // Encode whose turn it is, just in case the model wants to care.
+  emit_bitboard(bool_board(state.turn == Player::White));
   // Encode if it's the duck subturn.
   emit_bitboard(bool_board(state.is_duck_move));
   // Encode castling rights.
-  for player in [1, 0] {
-    emit_bitboard(bool_board(state.castling_rights[player].king_side));
-    emit_bitboard(bool_board(state.castling_rights[player].queen_side));
+  for player in player_order {
+    emit_bitboard(bool_board(state.castling_rights[player as usize].king_side));
+    emit_bitboard(bool_board(state.castling_rights[player as usize].queen_side));
   }
   // Encode en passant square.
   emit_bitboard(state.en_passant.0);
-  // Encode last move.
-  emit_bitboard(state.highlight.0);
+  // Encode last four moves.
+  for m in state.move_history.iter() {
+    if let Some(m) = m {
+      // TODO: Verify that these really are the right squares.
+      emit_bitboard(1 << m.from);
+      emit_bitboard(1 << m.to);
+    } else {
+      emit_bitboard(0);
+      emit_bitboard(0);
+    }
+  }
   // Encode all ones.
   emit_bitboard(u64::MAX);
   assert_eq!(layer_index, CHANNEL_COUNT);
@@ -64,7 +115,7 @@ pub struct ModelOutputs {
   // policy[64 * from + to] is a probability 0 to 1.
   pub policy: [f32; POLICY_LEN],
   // value is a valuation for the current player from -1 to +1.
-  pub value:  f32,
+  pub value:  Evaluation,
 }
 
 impl ModelOutputs {
@@ -152,7 +203,10 @@ impl<'a> InferenceResults<'a> {
   pub fn get(&self, index: usize) -> ModelOutputs {
     ModelOutputs {
       policy: *self.policies[index],
-      value:  self.values[index],
+      value:  Evaluation {
+        expected_score: (self.values[index] + 1.0) / 2.0,
+        perspective_player: todo!(),
+      },
     }
   }
 }

@@ -4,7 +4,7 @@ use std::future::Pending;
 
 use slotmap::SlotMap;
 
-use crate::inference::{InferenceEngine, ModelOutputs, PendingIndex, POLICY_LEN};
+use crate::inference::{InferenceEngine, ModelOutputs, PendingIndex, POLICY_LEN, Evaluation};
 use crate::rng::Rng;
 //use crate::inference::{ModelOutputs, POLICY_LEN};
 use crate::rules::{GameOutcome, Move, State};
@@ -40,17 +40,11 @@ struct MctsNode {
 
 impl MctsNode {
   fn new(state: State, depth: u32) -> Self {
-    let turn_flip = if state.white_turn { 1.0 } else { -1.0 };
-    let outcome = state.get_outcome();
     let mut outputs = ModelOutputs {
       policy: [1.0; POLICY_LEN],
-      value:  match outcome {
-        GameOutcome::Ongoing => 0.0,
-        GameOutcome::WhiteWin => turn_flip,
-        GameOutcome::BlackWin => -turn_flip,
-        GameOutcome::Draw => 0.0,
-      },
+      value:  Evaluation::from_terminal_state(&state).unwrap_or(Evaluation::EVEN_EVAL),
     };
+    let needs_eval = state.get_outcome().is_none();
     let mut moves = vec![];
     state.move_gen::<false>(&mut moves);
     outputs.renormalize(&moves);
@@ -60,7 +54,7 @@ impl MctsNode {
       moves,
       outputs,
       dirichlet_applied: false,
-      needs_eval: outcome == GameOutcome::Ongoing,
+      needs_eval,
       total_score: 0.0,
       visits: 0,
       in_flight: 0,
@@ -71,15 +65,18 @@ impl MctsNode {
     }
   }
 
-  fn get_subtree_value(&self) -> f32 {
+  fn get_subtree_value(&self) -> Evaluation {
     // Implement so called "virtual losses" -- we pretend each in flight evaluation
     // will evaluate to the worst possible outcome, to encourage diversity of paths.
-    self.total_score / (self.visits + self.in_flight) as f32
+    Evaluation {
+      expected_score: self.total_score / (self.visits + self.in_flight) as f32,
+      perspective_player: self.state.turn,
+    }
   }
 
-  fn adjust_score(&mut self, score: f32) {
+  fn adjust_score(&mut self, eval: Evaluation) {
     self.visits += 1;
-    self.total_score += score;
+    self.total_score += eval.expected_score_for_player(self.state.turn);
   }
 
   fn total_action_score(
@@ -92,13 +89,13 @@ impl MctsNode {
     let (u, q) = match self.outgoing_edges.get(&m) {
       None => (
         (effective_visits as f32).sqrt(),
-        (self.get_subtree_value() - FIRST_PLAY_URGENCY * sqrt_policy_explored).max(0.0),
+        (self.get_subtree_value().expected_score_for_player(self.state.turn) - FIRST_PLAY_URGENCY * sqrt_policy_explored).max(0.0),
       ),
       Some(child_index) => {
         let child = &nodes[*child_index];
         (
           (effective_visits as f32).sqrt() / (1.0 + (child.visits + child.in_flight) as f32),
-          child.get_subtree_value(),
+          child.get_subtree_value().expected_score_for_player(self.state.turn),
         )
       }
     };
@@ -133,6 +130,7 @@ impl MctsNode {
   fn new_child(&mut self, m: Move, child_index: NodeIndex) {
     debug_assert!(!self.outgoing_edges.contains_key(&m));
     self.outgoing_edges.insert(m, child_index);
+    // FIXME: I need to track the policy_explored more carefully, as evals might not be filled in yet!
     self.policy_explored += self.posterior(m);
   }
 
@@ -334,7 +332,7 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
             let node = &mut self.nodes[*node_index];
             node.needs_eval = false;
             node.outputs = inference_results.get(i);
-            //crate::web::log(&format!("Outputs: {:?}", node.outputs.value));
+            //crate::log(&format!("Outputs: {:?}", node.outputs.value));
             //node.outputs.renormalize(&node.moves);
             self.adjust_scores_on_path::<true>(pending_path.path, "inference");
           }
@@ -372,45 +370,40 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
     path: Vec<NodeIndex>,
     cause: &str,
   ) {
-    //crate::web::log(&format!("Adjusting scores on path: {:?}", path));
+    //crate::log(&format!("Adjusting scores on path: {:?}", path));
     if path.is_empty() {
-      crate::web::log("WARNING: Got empty path.");
-      crate::web::log(&format!("Cause: {}", cause));
+      crate::log("WARNING: Got empty path.");
+      crate::log(&format!("Cause: {}", cause));
     }
     let last_node_index = *path.last().unwrap();
     {
-      //crate::web::log(&format!("Last node: {:?}", self.nodes.contains_key(last_node_index)));
+      //crate::log(&format!("Last node: {:?}", self.nodes.contains_key(last_node_index)));
       if !self.nodes.contains_key(last_node_index) {
-        crate::web::log("WARNING: Got path with unknown tail.");
-        crate::web::log(&format!("Cause: {}", cause));
+        crate::log("WARNING: Got path with unknown tail.");
+        crate::log(&format!("Cause: {}", cause));
       }
       let last_node = &mut self.nodes[last_node_index];
       if last_node.needs_eval {
-        crate::web::log("WARNING: Got path with un-evaluated tail.");
-        crate::web::log(&format!("Cause: {}", cause));
+        crate::log("WARNING: Got path with un-evaluated tail.");
+        crate::log(&format!("Cause: {}", cause));
       }
       //if last_node.propagated && !last_node.state.is_game_over() {
-      //  crate::web::log("WARNING: Got path with already propagated non-terminal tail.");
-      //  crate::web::log(&format!("Cause: {}", cause));
+      //  crate::log("WARNING: Got path with already propagated non-terminal tail.");
+      //  crate::log(&format!("Cause: {}", cause));
       //}
       assert!(!last_node.needs_eval);
       //assert!(!last_node.propagated || last_node.state.is_game_over());
       last_node.propagated = true;
     }
-    let value_score = (self.nodes[last_node_index].outputs.value + 1.0) / 2.0;
-    let is_from_whites_perspective = self.nodes[last_node_index].state.white_turn;
+    let value_score = self.nodes[last_node_index].outputs.value;
     // Adjust every node along the path, including the final node itself.
     for node_index in path {
       if !self.nodes.contains_key(node_index) {
-        crate::web::log("WARNING: Got path with unknown node.");
-        crate::web::log(&format!("Cause: {}", cause));
+        crate::log("WARNING: Got path with unknown node.");
+        crate::log(&format!("Cause: {}", cause));
       }
       let node = &mut self.nodes[node_index];
-      let player_perspective_score = match node.state.white_turn == is_from_whites_perspective {
-        true => value_score,
-        false => 1.0 - value_score,
-      };
-      node.adjust_score(player_perspective_score);
+      node.adjust_score(value_score);
       if DECREMENT_IN_FLIGHT {
         assert!(node.in_flight > 0);
         node.in_flight -= 1;
@@ -519,7 +512,8 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
     // Finally, we clear out the transposition table, because it may
     // still contain references to freed nodes.
     self.transposition_table.clear();
-    self.pending_paths.clear();
+    // FIXME: What do I do about pending paths?
+    assert!(self.pending_paths.is_empty());
   }
 
   pub fn print_tree_root(&self) {
@@ -535,7 +529,7 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
       let already_printed = already_printed_set.contains(&node_index);
       already_printed_set.insert(node_index);
       println!(
-        "{}{}{}[{:?}] (visits={} in-flight={} value={} mean={} moves={}){}\x1b[0m",
+        "{}{}{}[{:?}] (visits={} in-flight={} value={:?} mean={:?} moves={}){}\x1b[0m",
         "  ".repeat(depth),
         match m {
           Some(m) => format!("{:?} -> ", m),

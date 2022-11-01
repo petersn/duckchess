@@ -2,7 +2,7 @@ use std::collections::{hash_map::DefaultHasher, HashMap};
 use std::hash::{Hash, Hasher};
 
 use crate::rng::Rng;
-use crate::rules::{iter_bits, GameOutcome, Move, State};
+use crate::rules::{iter_bits, GameOutcome, Move, State, Player};
 
 type Evaluation = i32;
 
@@ -134,10 +134,10 @@ pub fn evaluate_state(state: &State) -> Evaluation {
     ),
     (endgame_factor, 1_000_000, KING_ENDGAME_PST, &state.kings),
   ] {
-    let (mut us, mut them, pst_xor) = match state.white_turn {
+    let (mut us, mut them, pst_xor) = match state.turn {
       //let (mut us, mut them, pst_xor) = match true {
-      true => (piece_array[1].0, piece_array[0].0, 0),
-      false => (piece_array[0].0, piece_array[1].0, 56),
+      Player::White => (piece_array[1].0, piece_array[0].0, 0),
+      Player::Black => (piece_array[0].0, piece_array[1].0, 56),
     };
     score += us.count_ones() as Evaluation * piece_value;
     score -= them.count_ones() as Evaluation * piece_value;
@@ -218,7 +218,7 @@ impl Engine {
     moves
   }
 
-  pub fn get_outcome(&self) -> GameOutcome {
+  pub fn get_outcome(&self) -> Option<GameOutcome> {
     self.state.get_outcome()
   }
 
@@ -245,7 +245,7 @@ impl Engine {
     beta: Evaluation,
   ) -> (Evaluation, (Option<Move>, Option<Move>)) {
     self.nodes_searched += 1;
-    let game_over = state.is_game_over();
+    let game_over = state.get_outcome().is_some();
     let random_bonus = (self.rng.next_random() & 0xf) as Evaluation;
     match (game_over, depth, QUIESCENCE) {
       (true, _, _) => return (evaluate_state(state) + random_bonus, (None, None)),

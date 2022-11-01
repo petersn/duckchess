@@ -1,6 +1,9 @@
+use std::sync::{Mutex, Barrier};
+
 use clap::Parser;
-use engine::desktop_inference::InferenceEngine;
+use engine::inference_desktop::TensorFlowEngine;
 use engine::mcts::Mcts;
+use engine::inference::InferenceEngine;
 
 const PLAYOUT_CAP_RANDOMIZATION_P: f32 = 0.25;
 const FULL_SEARCH_PLAYOUTS: u32 = 1000;
@@ -17,12 +20,12 @@ struct Args {
   model_dir: String,
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
   let args = Args::parse();
 
-  let inference_engine: &InferenceEngine =
-    Box::leak(Box::new(InferenceEngine::create(&args.model_dir).await));
+  let inference_engine: &TensorFlowEngine =
+    Box::leak(Box::new(TensorFlowEngine::new(&args.model_dir)));
+  let barrier: &Barrier = Box::leak(Box::new(Barrier::new()));
 
   let output_path = format!(
     "{}/games-mcts-{:016x}.json",
@@ -30,17 +33,18 @@ async fn main() {
     rand::random::<u64>()
   );
   println!("Writing to {}", output_path);
-  let output_file: &'static _ = Box::leak(Box::new(tokio::sync::Mutex::new(
+  let output_file: &'static _ = Box::leak(Box::new(Mutex::new(
     std::fs::File::create(output_path).unwrap(),
   )));
 
   // Spawn several tasks to run MCTS in parallel.
   let mut tasks = Vec::new();
-  for task_id in 0..2 * engine::desktop_inference::BATCH_SIZE - 1 {
-    tasks.push(tokio::spawn(async move {
+  for task_id in 0..2 * TensorFlowEngine::DESIRED_BATCH_SIZE {
+    tasks.push(std::thread::spawn(move || {
       use std::io::Write;
       loop {
-        let mut mcts = Mcts::create(inference_engine).await;
+        let seed = rand::random::<u64>();
+        let mut mcts = Mcts::new(seed, inference_engine);
         // This array tracks the moves that actually occur in the game.
         let mut moves: Vec<engine::rules::Move> = vec![];
         // This array says if the game move was uniformly random, or based on our tree search.
@@ -65,7 +69,11 @@ async fn main() {
           }
           // Perform the actual tree search.
           // We early out only if we're not doing a full search, to properly compute our training target.
-          let steps = mcts.step_until(playouts, !do_full_search).await;
+          loop {
+            mcts.step();
+            // Block until evaluation has completed.
+          }
+          //let steps = mcts.step_until(playouts, !do_full_search).await;
           //println!("{}: tree={} steps={}", task_id, playouts, steps);
 
           // We pick a uniformly random move for 10% of opening moves
@@ -111,9 +119,9 @@ async fn main() {
         assert_eq!(moves.len(), full_search.len());
         assert_eq!(moves.len(), steps_performed.len());
         {
-          let mut file = output_file.lock().await;
+          let mut file = output_file.lock().unwrap();
           let obj = serde_json::json!({
-            "outcome": mcts.get_state().get_outcome().to_option_str(),
+            "outcome": mcts.get_state().get_outcome().map(|o| o.to_str()),
             "final_state": mcts.get_state(),
             "moves": moves,
             "was_rand": was_rand,
@@ -124,6 +132,7 @@ async fn main() {
             "full_search_playouts": FULL_SEARCH_PLAYOUTS,
             "small_search_playouts": SMALL_SEARCH_PLAYOUTS,
             "game_len_limit": GAME_LEN_LIMIT,
+            "seed": seed,
             "version": "mcts-1",
           });
           let s = serde_json::to_string(&obj).unwrap();
@@ -136,6 +145,6 @@ async fn main() {
   }
   // Join all the tasks.
   for task in tasks {
-    task.await.unwrap();
+    task.join().unwrap();
   }
 }

@@ -21,3 +21,13 @@ pub mod inference_web;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod inference_desktop;
+
+// Define a log function that can be used in both web and desktop builds.
+
+#[cfg(target_arch = "wasm32")]
+pub use web::log;
+
+#[cfg(not(target_arch = "wasm32"))]
+fn log(msg: &str) {
+  println!("{}", msg);
+}

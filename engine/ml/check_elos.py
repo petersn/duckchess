@@ -128,4 +128,4 @@ def check():
 
 while True:
     check()
-    time.sleep(10)
+    time.sleep(30)
