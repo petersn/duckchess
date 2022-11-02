@@ -28,6 +28,7 @@ impl Evaluation {
   }
 
   pub fn expected_score_for_player(&self, player: Player) -> f32 {
+    assert!(0.0 <= self.expected_score && self.expected_score <= 1.0);
     match player == self.perspective_player {
       true => self.expected_score,
       false => 1.0 - self.expected_score,
@@ -124,7 +125,7 @@ pub struct ModelOutputs {
 }
 
 impl ModelOutputs {
-  pub fn renormalize(&mut self, moves: &[crate::rules::Move]) {
+  pub fn renormalize(&mut self, moves: &[crate::rules::Move], case: &str) {
     assert!(self.normalized_move_list.is_none());
     self.normalized_move_list = Some(moves.to_vec());
     let mut temp = Box::new([0.0; POLICY_LEN]);
@@ -135,7 +136,12 @@ impl ModelOutputs {
       temp[idx] = val;
       sum += val;
     }
-    //println!("Renormalizing with sum {} (move count {})", sum, moves.len());
+    if case != "[INIT]" {
+      println!("{}Renormalizing with sum {} (move count {})", case, sum, moves.len());
+    }
+    //if case.contains("BLAC") {
+    //  println!("{:?}", self.policy);
+    //}
     let rescale = 1.0 / (1e-16 + sum);
     for i in 0..POLICY_LEN {
       self.policy[i] = temp[i] * rescale;
@@ -212,15 +218,15 @@ fn make_perspective_policy(player: Player, policy: &[f32; POLICY_LEN]) -> Box<[f
   let mut result = Box::new([0.0; POLICY_LEN]);
   for from in 0..64 {
     for to in 0..64 {
-      let from = match player {
+      let remap_from = match player {
         Player::White => from,
         Player::Black => from ^ 56,
       };
-      let to = match player {
+      let remap_to = match player {
         Player::White => to,
         Player::Black => to ^ 56,
       };
-      result[64 * from + to] = policy[64 * from + to];
+      result[64 * remap_from + remap_to] = policy[64 * from + to];
     }
   }
   // Check that the result is also normalized.
@@ -257,6 +263,8 @@ impl<'a, Cookie> InferenceResults<'a, Cookie> {
   }
 
   pub fn get(&self, index: usize) -> ModelOutputs {
+    //println!("Value: {}", self.values[index]);
+    debug_assert!(-1.0 <= self.values[index] && self.values[index] <= 1.0);
     ModelOutputs {
       policy:               make_perspective_policy(self.players[index], self.policies[index]),
       value:                Evaluation {

@@ -8,7 +8,7 @@ use slotmap::SlotMap;
 use crate::inference::{Evaluation, InferenceEngine, ModelOutputs, POLICY_LEN};
 use crate::rng::Rng;
 //use crate::inference::{ModelOutputs, POLICY_LEN};
-use crate::rules::{GameOutcome, Move, State};
+use crate::rules::{GameOutcome, Move, State, Player};
 
 const EXPLORATION_ALPHA: f32 = 1.0;
 const FIRST_PLAY_URGENCY: f32 = 0.2;
@@ -23,21 +23,21 @@ slotmap::new_key_type! {
 }
 
 #[derive(Clone)]
-struct MctsNode {
-  depth:             u32,
-  state:             State,
-  moves:             Vec<Move>,
-  outputs:           ModelOutputs,
-  dirichlet_applied: bool,
-  needs_eval:        bool,
-  total_score:       f32,
-  visits:            u32,
-  tail_visits:       u32,
-  in_flight:         u32,
-  policy_explored:   f32,
-  outgoing_edges:    HashMap<Move, NodeIndex>,
-  gc_state:          u32,
-  propagated:        bool,
+pub struct MctsNode {
+  pub depth:             u32,
+  pub state:             State,
+  pub moves:             Vec<Move>,
+  pub outputs:           ModelOutputs,
+  pub dirichlet_applied: bool,
+  pub needs_eval:        bool,
+  pub total_score:       f32,
+  pub visits:            u32,
+  pub tail_visits:       u32,
+  pub in_flight:         u32,
+  pub policy_explored:   f32,
+  pub outgoing_edges:    HashMap<Move, NodeIndex>,
+  pub gc_state:          u32,
+  pub propagated:        bool,
 }
 
 impl MctsNode {
@@ -51,7 +51,7 @@ impl MctsNode {
     let needs_eval = state.get_outcome().is_none();
     let mut moves = vec![];
     state.move_gen::<false>(&mut moves);
-    outputs.renormalize(&moves);
+    outputs.renormalize(&moves, "[INIT]");
     Self {
       depth,
       state,
@@ -216,7 +216,7 @@ impl MctsNode {
     debug_assert!((sum - 1.0).abs() < 1e-3);
   }
 
-  fn posterior(&self, m: Move) -> f32 {
+  pub fn posterior(&self, m: Move) -> f32 {
     self.outputs.policy[m.to_index() as usize]
   }
 }
@@ -238,13 +238,13 @@ pub struct PendingPath {
 
 pub struct Mcts<'a, Infer: InferenceEngine<(usize, PendingPath)>> {
   // This ID is used to identify evaluation requests from this MCTS instance.
-  id:                  usize,
-  inference_engine:    &'a Infer,
-  in_flight_count:     usize,
-  rng:                 Rng,
-  root:                NodeIndex,
-  nodes:               SlotMap<NodeIndex, MctsNode>,
-  transposition_table: HashMap<(u64, u32), NodeIndex>,
+  pub id:                  usize,
+  pub inference_engine:    &'a Infer,
+  pub in_flight_count:     usize,
+  pub rng:                 Rng,
+  pub root:                NodeIndex,
+  pub nodes:               SlotMap<NodeIndex, MctsNode>,
+  pub transposition_table: HashMap<(u64, u32), NodeIndex>,
   //pending_paths:       SlotMap<PendingIndex, PendingPath>,
 }
 
@@ -392,7 +392,10 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     node.needs_eval = false;
     node.outputs = model_outputs;
     //crate::log(&format!("Outputs: {:?}", node.outputs.value));
-    node.outputs.renormalize(&node.moves);
+    node.outputs.renormalize(&node.moves, match node.state.turn {
+      Player::White => "\x1b[91m[WHIT]\x1b[0m",
+      Player::Black => "\x1b[94m[BLAC]\x1b[0m",
+    });
     self.adjust_scores_on_path::<true>(pending_path.path, "inference");
     self.in_flight_count -= 1;
   }

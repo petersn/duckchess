@@ -40,7 +40,7 @@ async fn main() {
     std::fs::File::create(output_path).unwrap(),
   )));
 
-  let (tx_channels, rx_channels): (Vec<_>, Vec<_>) = (0..5
+  let (tx_channels, rx_channels): (Vec<_>, Vec<_>) = (0..7
     * TensorFlowEngine::<()>::DESIRED_BATCH_SIZE)
     .map(|_| tokio::sync::mpsc::unbounded_channel())
     .unzip();
@@ -157,6 +157,7 @@ async fn main() {
               steps_performed.push(steps);
               moves.push(game_move);
               mcts.apply_move(game_move);
+              mcts.get_state().sanity_check().unwrap();
             }
           }
         }
