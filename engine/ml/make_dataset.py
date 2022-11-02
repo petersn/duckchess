@@ -7,9 +7,6 @@ from tqdm import tqdm
 import show_game
 import engine
 
-# We only sparsely store the top positions in the policy for each move, to save space.
-policy_truncation = 32
-
 def process_game_paths(paths):
     all_games = []
     for path in tqdm(paths):
@@ -19,12 +16,12 @@ def process_game_paths(paths):
 
     total_moves = 0
     for game in all_games:
-        if "version" not in game:
-            continue
+        #if "version" not in game:
+        #    continue
         version = game["version"]
-        if version != 3:
-            continue
-        version = "pvs-1"
+        #if version != 3:
+        #    continue
+        #version = "pvs-1"
         if version == "pvs-1":
             total_moves += sum(not was_rand for was_rand in game["was_rand"])
         elif version == "mcts-1":
@@ -47,12 +44,12 @@ def process_game_paths(paths):
 
     entry = 0
     for game in tqdm(all_games):
-        if "version" not in game:
-            continue
+        #if "version" not in game:
+        #    continue
         version = game["version"]
-        if version != 3:
-            continue
-        version = "pvs-1"
+        #if version != 3:
+        #    continue
+        #version = "pvs-1"
         value_for_white = {"1-0": +1, "0-1": -1, None: 0}[game["outcome"]]
         e = engine.Engine(0)
 
@@ -106,8 +103,8 @@ def process_game_paths(paths):
                 policy_dist = game["train_dists"][i]
             assert abs(sum(p for _, p in policy_dist) - 1.0) < 1e-6
             policy_slice = policy_array[entry]
-            for move_str, p in policy_dist:
-                move = json.loads(move_str)
+            for move, p in policy_dist:
+                #move = json.loads(move_str)
                 policy_slice[move["from"] ^ this_move_flip][move["to"] ^ this_move_flip] = p
             #policy_dist.sort(key=lambda x: x[1], reverse=True)
             #for j, (m, prob) in enumerate(policy_dist[:policy_truncation]):

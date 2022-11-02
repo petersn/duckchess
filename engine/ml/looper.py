@@ -19,7 +19,7 @@ def kill(proc):
         print("ERROR in kill:", e)
     proc.kill()
 
-def generate_games(model_number):
+def generate_games(prefix, model_number):
     try:
         os.mkdir(index_to_games_dir(model_number))
     except FileExistsError:
@@ -34,12 +34,13 @@ def generate_games(model_number):
     games_processes = [
         subprocess.Popen(
             [
-                "cargo", "run", "--release", "--bin", "mcts_generate", "--",
+                prefix + "/mcts_generate", #"--release", "--bin", "mcts_generate", "--",
                     "--model-dir", index_to_keras_model_path(model_number),
                     "--output-dir", index_to_games_dir(model_number),
             ],
             close_fds=True,
-            env=dict(os.environ, TF_FORCE_GPU_ALLOW_GROWTH="true", LD_LIBRARY_PATH="/usr/lib/python3/dist-packages/tensorflow/"),
+            env=dict(os.environ, TF_FORCE_GPU_ALLOW_GROWTH="true"),
+            #, LD_LIBRARY_PATH="/usr/lib/python3/dist-packages/tensorflow/"),
         )
         for _ in range(args.parallel_games_processes)
     ]
@@ -115,8 +116,8 @@ technically statistically biases the games slightly towards being shorter.)
     parser.add_argument("--training-steps-const", metavar="N", type=int, default=500, help="Base number of training steps to perform per iteration.")
     parser.add_argument("--training-steps-linear", metavar="N", type=int, default=200, help="We also apply an additional N steps for each additional iteration included in the training window.")
     parser.add_argument("--training-window", metavar="N", type=int, default=20, help="When training include games from the past N iterations.")
-    parser.add_argument("--training-window-exclude", metavar="N", type=int, default=0, help="To help things get started faster we exclude games from the very first N iterations from later training game windows.")
-    parser.add_argument("--parallel-games-processes", metavar="N", type=int, default=3, help="Number of games processes to run in parallel.")
+    parser.add_argument("--training-window-exclude", metavar="N", type=int, default=1, help="To help things get started faster we exclude games from the very first N iterations from later training game windows.")
+    parser.add_argument("--parallel-games-processes", metavar="N", type=int, default=1, help="Number of games processes to run in parallel.")
     args = parser.parse_args()
     print("Arguments:", args)
 
@@ -142,7 +143,7 @@ technically statistically biases the games slightly towards being shorter.)
 
         print("=========================== Doing data generation for:", old_model)
         print("Start time:", start)
-        generate_games(current_model_number)
+        generate_games(args.prefix, current_model_number)
 
         try:
             os.mkdir(index_to_dir(current_model_number + 1))

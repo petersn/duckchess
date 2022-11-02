@@ -40,7 +40,7 @@ async fn main() {
     std::fs::File::create(output_path).unwrap(),
   )));
 
-  let (tx_channels, rx_channels): (Vec<_>, Vec<_>) = (0..7
+  let (tx_channels, rx_channels): (Vec<_>, Vec<_>) = (0..4
     * TensorFlowEngine::<()>::DESIRED_BATCH_SIZE)
     .map(|_| tokio::sync::mpsc::unbounded_channel())
     .unzip();
@@ -49,7 +49,7 @@ async fn main() {
   let mut tasks = Vec::new();
 
   // Spawn some tasks to do inference.
-  for _ in 0..3 {
+  for _ in 0..2 {
     tasks.push(tokio::spawn(async move {
       let mut last_print = std::time::Instant::now();
       let mut evals_since_last_print = 0;
@@ -70,7 +70,7 @@ async fn main() {
               .unwrap();
           }
         });
-        if last_print.elapsed().as_secs() >= 10 {
+        if last_print.elapsed().as_secs() >= 20 {
           println!(
             "Evals per second: {}",
             evals_since_last_print as f32 / last_print.elapsed().as_secs_f32()
@@ -87,8 +87,7 @@ async fn main() {
     tasks.push(tokio::spawn(async move {
       use std::io::Write;
       loop {
-        //let seed = rand::random::<u64>();
-        let seed = 0;
+        let seed = rand::random::<u64>();
         let mut mcts = Mcts::new(task_id, seed, inference_engine);
         // This array tracks the moves that actually occur in the game.
         let mut moves: Vec<engine::rules::Move> = vec![];

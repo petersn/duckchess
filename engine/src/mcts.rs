@@ -46,12 +46,11 @@ impl MctsNode {
       policy:               Box::new([1.0; POLICY_LEN]),
       value:                Evaluation::from_terminal_state(&state)
         .unwrap_or(Evaluation::EVEN_EVAL),
-      normalized_move_list: None,
     };
     let needs_eval = state.get_outcome().is_none();
     let mut moves = vec![];
     state.move_gen::<false>(&mut moves);
-    outputs.renormalize(&moves, "[INIT]");
+    outputs.renormalize(&moves);
     Self {
       depth,
       state,
@@ -149,7 +148,7 @@ impl MctsNode {
       return;
     }
 
-    let backup_policy = self.outputs.policy.clone();
+    //let backup_policy = self.outputs.policy.clone();
 
     //use rand_distr::Distribution;
     //let mut thread_rng = rand::thread_rng();
@@ -174,46 +173,46 @@ impl MctsNode {
       self.outputs.policy[i] = (1.0 - DIRICHLET_WEIGHT) * self.outputs.policy[i] / policy_sum
         + DIRICHLET_WEIGHT * noise[i] / noise_sum;
     }
-    // Make sure the policy is zero on illegal moves.
-    for i in 0..noise.len() {
-      let mut is_move = false;
-      for m in &self.moves {
-        if m.to_index() as usize == i {
-          is_move = true;
-          break;
-        }
-      }
-      if !is_move {
-        if self.outputs.policy[i] != 0.0 {
-          println!(
-            "Invalid policy: {:?} at move {:?}",
-            self.outputs.policy[i],
-            Move::from_index(i as u16)
-          );
-          println!("  sums: {:?} {:?}", policy_sum, noise_sum);
-          println!("  moves: {:?}", self.moves);
-          println!("  state: {:?}", self.state);
-          println!("  policy: {:?}", self.outputs.policy);
-          println!("  backup: {:?}", backup_policy);
-          panic!()
-        }
-        assert_eq!(self.outputs.policy[i], 0.0);
-      }
-    }
+    //// Make sure the policy is zero on illegal moves.
+    //for i in 0..noise.len() {
+    //  let mut is_move = false;
+    //  for m in &self.moves {
+    //    if m.to_index() as usize == i {
+    //      is_move = true;
+    //      break;
+    //    }
+    //  }
+    //  if !is_move {
+    //    if self.outputs.policy[i] != 0.0 {
+    //      println!(
+    //        "Invalid policy: {:?} at move {:?}",
+    //        self.outputs.policy[i],
+    //        Move::from_index(i as u16)
+    //      );
+    //      println!("  sums: {:?} {:?}", policy_sum, noise_sum);
+    //      println!("  moves: {:?}", self.moves);
+    //      println!("  state: {:?}", self.state);
+    //      println!("  policy: {:?}", self.outputs.policy);
+    //      println!("  backup: {:?}", backup_policy);
+    //      panic!()
+    //    }
+    //    assert_eq!(self.outputs.policy[i], 0.0);
+    //  }
+    //}
     // Assert normalization.
-    let sum = self.outputs.policy.iter().sum::<f32>();
-    let count_nonzero = self.outputs.policy.iter().filter(|&&x| x != 0.0).count();
-    // FIXME: Something is busted here, normalization keeps failing dramatically!
-    if (sum - 1.0).abs() >= 1e-3 {
-      println!(
-        "\x1b[91mWARNING:\x1b[0m policy sum: {}  nonzero: {}",
-        sum, count_nonzero
-      );
-      println!("  moves: {:?}", self.moves);
-      println!("  state: {:?}", self.state);
-      //println!("  policy: {:?}", self.outputs.policy);
-    }
-    debug_assert!((sum - 1.0).abs() < 1e-3);
+    //let sum = self.outputs.policy.iter().sum::<f32>();
+    //let count_nonzero = self.outputs.policy.iter().filter(|&&x| x != 0.0).count();
+    //// FIXME: Something is busted here, normalization keeps failing dramatically!
+    //if (sum - 1.0).abs() >= 1e-3 {
+    //  println!(
+    //    "\x1b[91mWARNING:\x1b[0m policy sum: {}  nonzero: {}",
+    //    sum, count_nonzero
+    //  );
+    //  println!("  moves: {:?}", self.moves);
+    //  println!("  state: {:?}", self.state);
+    //  //println!("  policy: {:?}", self.outputs.policy);
+    //}
+    //debug_assert!((sum - 1.0).abs() < 1e-3);
   }
 
   pub fn posterior(&self, m: Move) -> f32 {
@@ -392,10 +391,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     node.needs_eval = false;
     node.outputs = model_outputs;
     //crate::log(&format!("Outputs: {:?}", node.outputs.value));
-    node.outputs.renormalize(&node.moves, match node.state.turn {
-      Player::White => "\x1b[91m[WHIT]\x1b[0m",
-      Player::Black => "\x1b[94m[BLAC]\x1b[0m",
-    });
+    node.outputs.renormalize(&node.moves);
     self.adjust_scores_on_path::<true>(pending_path.path, "inference");
     self.in_flight_count -= 1;
   }

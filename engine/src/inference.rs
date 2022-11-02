@@ -121,13 +121,10 @@ pub struct ModelOutputs {
   pub policy:               Box<[f32; POLICY_LEN]>,
   // value is a valuation for the current player from -1 to +1.
   pub value:                Evaluation,
-  pub normalized_move_list: Option<Vec<crate::rules::Move>>,
 }
 
 impl ModelOutputs {
-  pub fn renormalize(&mut self, moves: &[crate::rules::Move], case: &str) {
-    assert!(self.normalized_move_list.is_none());
-    self.normalized_move_list = Some(moves.to_vec());
+  pub fn renormalize(&mut self, moves: &[crate::rules::Move]) {
     let mut temp = Box::new([0.0; POLICY_LEN]);
     let mut sum = 0.0;
     for m in moves {
@@ -136,12 +133,6 @@ impl ModelOutputs {
       temp[idx] = val;
       sum += val;
     }
-    if case != "[INIT]" {
-      println!("{}Renormalizing with sum {} (move count {})", case, sum, moves.len());
-    }
-    //if case.contains("BLAC") {
-    //  println!("{:?}", self.policy);
-    //}
     let rescale = 1.0 / (1e-16 + sum);
     for i in 0..POLICY_LEN {
       self.policy[i] = temp[i] * rescale;
@@ -271,7 +262,6 @@ impl<'a, Cookie> InferenceResults<'a, Cookie> {
         expected_score:     (self.values[index] + 1.0) / 2.0,
         perspective_player: self.players[index],
       },
-      normalized_move_list: None,
     }
   }
 }

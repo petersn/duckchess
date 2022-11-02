@@ -9,8 +9,8 @@ pub mod search;
 #[cfg(target_arch = "wasm32")]
 pub mod web;
 
-//#[cfg(not(target_arch = "wasm32"))]
-//pub mod python;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod python;
 
 // Build an inference engine depending on whether we're targeting web or desktop.
 

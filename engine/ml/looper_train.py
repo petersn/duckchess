@@ -37,7 +37,7 @@ if __name__ == "__main__":
         train_value = data["value"]
     else:
         train_features, train_policy, train_value = \
-            make_dataset.process_game_paths(random.sample(args.games, 150))
+            make_dataset.process_game_paths(args.games)
 
     print("Converting tensors")
     train_features = torch.tensor(train_features)
