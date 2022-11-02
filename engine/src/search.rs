@@ -2,7 +2,7 @@ use std::collections::{hash_map::DefaultHasher, HashMap};
 use std::hash::{Hash, Hasher};
 
 use crate::rng::Rng;
-use crate::rules::{iter_bits, GameOutcome, Move, State, Player};
+use crate::rules::{iter_bits, GameOutcome, Move, Player, State};
 
 type Evaluation = i32;
 

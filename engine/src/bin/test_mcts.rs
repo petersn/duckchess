@@ -2,8 +2,7 @@ use engine::inference_desktop::TensorFlowEngine;
 use engine::mcts::Mcts;
 
 fn main() {
-  let inference_engine =
-    TensorFlowEngine::new("../../duckchess/engine/run-004/step-075/model-keras/");
+  let inference_engine = TensorFlowEngine::new("/tmp/keras");
   let mut mcts = Mcts::new(0, &inference_engine);
   mcts.predict_now();
   for _ in 0..2 {

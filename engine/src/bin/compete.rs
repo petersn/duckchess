@@ -40,9 +40,7 @@ fn main() {
     Box::leak(Box::new(TensorFlowEngine::create(model1_dir).await));
   let inference_engine2: Option<&TensorFlowEngine> = match model2_dir == "@pvs" {
     true => None,
-    false => Some(Box::leak(Box::new(
-      TensorFlowEngine::new(model2_dir),
-    ))),
+    false => Some(Box::leak(Box::new(TensorFlowEngine::new(model2_dir)))),
   };
 
   let output_path = format!(

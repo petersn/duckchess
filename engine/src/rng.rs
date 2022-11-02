@@ -53,7 +53,7 @@ impl Rng {
     self.generate_float_pair().0
   }
 
-  /// Generate an f32 gamma distributed with the given shape and scale = 1.
+  /// Generate a gamma distributed f32 with the given shape and scale = 1.
   #[inline]
   pub fn generate_gamma_variate(&self, shape: f32) -> f32 {
     let e = std::f32::consts::E;

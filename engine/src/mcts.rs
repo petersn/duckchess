@@ -1,10 +1,11 @@
+use core::panic;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::future::Pending;
 
 use slotmap::SlotMap;
 
-use crate::inference::{InferenceEngine, ModelOutputs, PendingIndex, POLICY_LEN, Evaluation};
+use crate::inference::{Evaluation, InferenceEngine, ModelOutputs, POLICY_LEN};
 use crate::rng::Rng;
 //use crate::inference::{ModelOutputs, POLICY_LEN};
 use crate::rules::{GameOutcome, Move, State};
@@ -31,6 +32,7 @@ struct MctsNode {
   needs_eval:        bool,
   total_score:       f32,
   visits:            u32,
+  tail_visits:       u32,
   in_flight:         u32,
   policy_explored:   f32,
   outgoing_edges:    HashMap<Move, NodeIndex>,
@@ -41,8 +43,10 @@ struct MctsNode {
 impl MctsNode {
   fn new(state: State, depth: u32) -> Self {
     let mut outputs = ModelOutputs {
-      policy: [1.0; POLICY_LEN],
-      value:  Evaluation::from_terminal_state(&state).unwrap_or(Evaluation::EVEN_EVAL),
+      policy:               Box::new([1.0; POLICY_LEN]),
+      value:                Evaluation::from_terminal_state(&state)
+        .unwrap_or(Evaluation::EVEN_EVAL),
+      normalized_move_list: None,
     };
     let needs_eval = state.get_outcome().is_none();
     let mut moves = vec![];
@@ -57,6 +61,7 @@ impl MctsNode {
       needs_eval,
       total_score: 0.0,
       visits: 0,
+      tail_visits: 0,
       in_flight: 0,
       policy_explored: 0.0,
       outgoing_edges: HashMap::new(),
@@ -69,7 +74,7 @@ impl MctsNode {
     // Implement so called "virtual losses" -- we pretend each in flight evaluation
     // will evaluate to the worst possible outcome, to encourage diversity of paths.
     Evaluation {
-      expected_score: self.total_score / (self.visits + self.in_flight) as f32,
+      expected_score:     self.total_score / (self.visits + self.in_flight) as f32,
       perspective_player: self.state.turn,
     }
   }
@@ -89,7 +94,9 @@ impl MctsNode {
     let (u, q) = match self.outgoing_edges.get(&m) {
       None => (
         (effective_visits as f32).sqrt(),
-        (self.get_subtree_value().expected_score_for_player(self.state.turn) - FIRST_PLAY_URGENCY * sqrt_policy_explored).max(0.0),
+        (self.get_subtree_value().expected_score_for_player(self.state.turn)
+          - FIRST_PLAY_URGENCY * sqrt_policy_explored)
+          .max(0.0),
       ),
       Some(child_index) => {
         let child = &nodes[*child_index];
@@ -104,7 +111,7 @@ impl MctsNode {
   }
 
   fn select_action(&self, nodes: &SlotMap<NodeIndex, MctsNode>) -> Option<Move> {
-    println!("select_action from: {:?}", self.depth);
+    //println!("select_action from: {:?}", self.depth);
     if self.moves.is_empty() {
       return None;
     }
@@ -113,12 +120,12 @@ impl MctsNode {
     let mut best_move = None;
     for m in &self.moves {
       let score = self.total_action_score(sqrt_policy_explored, nodes, *m);
-      println!(
-        "    score: {:?} for move: {:?}  (posterior: {})",
-        score,
-        m,
-        self.posterior(*m)
-      );
+      //println!(
+      //  "    score: {:?} for move: {:?}  (posterior: {})",
+      //  score,
+      //  m,
+      //  self.posterior(*m)
+      //);
       if score > best_score {
         best_score = score;
         best_move = Some(*m);
@@ -137,6 +144,12 @@ impl MctsNode {
   fn add_dirichlet_noise(&mut self, rng: &mut Rng) {
     assert!(!self.dirichlet_applied);
     self.dirichlet_applied = true;
+
+    if self.moves.is_empty() {
+      return;
+    }
+
+    let backup_policy = self.outputs.policy.clone();
 
     //use rand_distr::Distribution;
     //let mut thread_rng = rand::thread_rng();
@@ -161,8 +174,45 @@ impl MctsNode {
       self.outputs.policy[i] = (1.0 - DIRICHLET_WEIGHT) * self.outputs.policy[i] / policy_sum
         + DIRICHLET_WEIGHT * noise[i] / noise_sum;
     }
+    // Make sure the policy is zero on illegal moves.
+    for i in 0..noise.len() {
+      let mut is_move = false;
+      for m in &self.moves {
+        if m.to_index() as usize == i {
+          is_move = true;
+          break;
+        }
+      }
+      if !is_move {
+        if self.outputs.policy[i] != 0.0 {
+          println!(
+            "Invalid policy: {:?} at move {:?}",
+            self.outputs.policy[i],
+            Move::from_index(i as u16)
+          );
+          println!("  sums: {:?} {:?}", policy_sum, noise_sum);
+          println!("  moves: {:?}", self.moves);
+          println!("  state: {:?}", self.state);
+          println!("  policy: {:?}", self.outputs.policy);
+          println!("  backup: {:?}", backup_policy);
+          panic!()
+        }
+        assert_eq!(self.outputs.policy[i], 0.0);
+      }
+    }
     // Assert normalization.
     let sum = self.outputs.policy.iter().sum::<f32>();
+    let count_nonzero = self.outputs.policy.iter().filter(|&&x| x != 0.0).count();
+    // FIXME: Something is busted here, normalization keeps failing dramatically!
+    if (sum - 1.0).abs() >= 1e-3 {
+      println!(
+        "\x1b[91mWARNING:\x1b[0m policy sum: {}  nonzero: {}",
+        sum, count_nonzero
+      );
+      println!("  moves: {:?}", self.moves);
+      println!("  state: {:?}", self.state);
+      //println!("  policy: {:?}", self.outputs.policy);
+    }
     debug_assert!((sum - 1.0).abs() < 1e-3);
   }
 
@@ -177,30 +227,40 @@ fn get_transposition_table_key(state: &State, depth: u32) -> (u64, u32) {
   (state.get_transposition_table_hash(), depth)
 }
 
-struct PendingPath {
+//slotmap::new_key_type! {
+//  pub struct PendingIndex;
+//}
+
+#[derive(Clone)]
+pub struct PendingPath {
   path: Vec<NodeIndex>,
 }
 
-pub struct Mcts<'a, Infer: InferenceEngine> {
+pub struct Mcts<'a, Infer: InferenceEngine<(usize, PendingPath)>> {
+  // This ID is used to identify evaluation requests from this MCTS instance.
+  id:                  usize,
   inference_engine:    &'a Infer,
+  in_flight_count:     usize,
   rng:                 Rng,
   root:                NodeIndex,
   nodes:               SlotMap<NodeIndex, MctsNode>,
   transposition_table: HashMap<(u64, u32), NodeIndex>,
-  pending_paths:       SlotMap<PendingIndex, PendingPath>,
+  //pending_paths:       SlotMap<PendingIndex, PendingPath>,
 }
 
 // TODO: Implement speculatively finding good candidate states to evaluate and cache.
 
-impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
-  pub fn new(seed: u64, inference_engine: &'a Infer) -> Mcts<Infer> {
+impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
+  pub fn new(id: usize, seed: u64, inference_engine: &'a Infer) -> Mcts<Infer> {
     let mut this = Self {
+      id,
       inference_engine,
+      in_flight_count: 0,
       rng: Rng::new(seed),
       root: NodeIndex::default(),
       nodes: SlotMap::with_key(),
       transposition_table: HashMap::new(),
-      pending_paths: SlotMap::with_key(),
+      //pending_paths: SlotMap::with_key(),
     };
     this.root = this.add_child_and_adjust_scores(vec![], None, State::starting_state(), 0);
     this
@@ -208,6 +268,10 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
 
   pub fn get_state(&self) -> &State {
     &self.nodes[self.root].state
+  }
+
+  pub fn any_in_flight(&self) -> bool {
+    self.in_flight_count > 0
   }
 
   // FIXME: These names here are so bad.
@@ -280,7 +344,7 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
     state: State,
     depth: u32,
   ) -> NodeIndex {
-    println!("Adding child at depth {} (path={:?}).", depth, path);
+    //println!("Adding child at depth {} (path={:?}).", depth, path);
     // Check our transposition table to see if this new state has already been reached.
     let transposition_table_key = get_transposition_table_key(&state, depth);
     // We get a node, possibly new.
@@ -290,17 +354,18 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
       Entry::Vacant(entry) => {
         let node = MctsNode::new(state, depth);
         let new_node_index = self.nodes.insert(node);
-        match (path.last(), m) {
-          (None, None) => {}
-          (Some(parent_node_index), Some(m)) => {
-            let parent_node = &mut self.nodes[*parent_node_index];
-            parent_node.new_child(m, new_node_index);
-          }
-          _ => unreachable!(),
-        }
         *entry.insert(new_node_index)
       }
     };
+    match (path.last(), m) {
+      // We use an empty path and empty move to indicate building the root.
+      (None, None) => {}
+      (Some(parent_node_index), Some(m)) => {
+        let parent_node = &mut self.nodes[*parent_node_index];
+        parent_node.new_child(m, last_node_index);
+      }
+      _ => unreachable!(),
+    }
     path.push(last_node_index);
     // If the node is terminal then we can adjust scores immediately.
     if !self.nodes[last_node_index].needs_eval {
@@ -312,34 +377,48 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
       }
       self.inference_engine.add_work(
         &self.nodes[last_node_index].state,
-        self.pending_paths.insert(PendingPath { path }),
+        (self.id, PendingPath { path }),
       );
+      self.in_flight_count += 1;
     }
     last_node_index
   }
 
-  pub fn predict_now(&mut self) {
-    self.inference_engine.predict(|inference_results| {
-      for i in 0..inference_results.length {
-        match self.pending_paths.remove(inference_results.cookies[i]) {
-          None => {
-            println!("WARNING: Got inference result for unknown cookie.");
-            continue;
-          }
-          Some(pending_path) => {
-            println!("Got inference result for path: {:?}.", pending_path.path);
-            let node_index = pending_path.path.last().unwrap();
-            let node = &mut self.nodes[*node_index];
-            node.needs_eval = false;
-            node.outputs = inference_results.get(i);
-            //crate::log(&format!("Outputs: {:?}", node.outputs.value));
-            //node.outputs.renormalize(&node.moves);
-            self.adjust_scores_on_path::<true>(pending_path.path, "inference");
-          }
-        }
-      }
-    });
+  pub fn process_path(&mut self, pending_path: PendingPath, model_outputs: ModelOutputs) {
+    assert!(self.in_flight_count > 0);
+    // FIXME: I need to ignore the path if it includes GCed nodes.
+    let node_index = pending_path.path.last().unwrap();
+    let node = &mut self.nodes[*node_index];
+    node.needs_eval = false;
+    node.outputs = model_outputs;
+    //crate::log(&format!("Outputs: {:?}", node.outputs.value));
+    node.outputs.renormalize(&node.moves);
+    self.adjust_scores_on_path::<true>(pending_path.path, "inference");
+    self.in_flight_count -= 1;
   }
+
+  //pub fn predict_now(&mut self) {
+  //  //self.inference_engine.predict(|inference_results| {
+  //  //  for i in 0..inference_results.length {
+  //  //    match self.pending_paths.remove(inference_results.cookies[i]) {
+  //  //      None => {
+  //  //        println!("WARNING: Got inference result for unknown cookie.");
+  //  //        continue;
+  //  //      }
+  //  //      Some(pending_path) => {
+  //  //        println!("Got inference result for path: {:?}.", pending_path.path);
+  //  //        let node_index = pending_path.path.last().unwrap();
+  //  //        let node = &mut self.nodes[*node_index];
+  //  //        node.needs_eval = false;
+  //  //        node.outputs = inference_results.get(i);
+  //  //        //crate::log(&format!("Outputs: {:?}", node.outputs.value));
+  //  //        //node.outputs.renormalize(&node.moves);
+  //  //        self.adjust_scores_on_path::<true>(pending_path.path, "inference");
+  //  //      }
+  //  //    }
+  //  //  }
+  //  //});
+  //}
 
   pub fn step(&mut self) {
     let root_visit_count = self.nodes[self.root].visits + self.nodes[self.root].in_flight;
@@ -395,6 +474,7 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
       //assert!(!last_node.propagated || last_node.state.is_game_over());
       last_node.propagated = true;
     }
+    self.nodes[last_node_index].tail_visits += 1;
     let value_score = self.nodes[last_node_index].outputs.value;
     // Adjust every node along the path, including the final node itself.
     for node_index in path {
@@ -409,6 +489,25 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
         node.in_flight -= 1;
       }
     }
+  }
+
+  pub fn have_reached_visit_count(&self, tree_size: u32) -> bool {
+    // Find the most and second most visited children at the root.
+    let mut best_child_visits = 0;
+    let mut second_best_child_visits = 0;
+    for (_, child_index) in &self.nodes[self.root].outgoing_edges {
+      let child_visits = self.nodes[*child_index].visits;
+      if child_visits > best_child_visits {
+        second_best_child_visits = best_child_visits;
+        best_child_visits = child_visits;
+      } else if child_visits > second_best_child_visits {
+        second_best_child_visits = child_visits;
+      }
+    }
+    // Compute the greatest possible number of additional steps we might take.
+    let maximum_steps = tree_size as i64 - self.nodes[self.root].visits as i64;
+    // Check if there are enough steps left for the second best to surpass the best.
+    maximum_steps <= 0 || second_best_child_visits as i64 + maximum_steps < best_child_visits as i64
   }
 
   /*
@@ -467,6 +566,11 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
   pub fn sample_move_by_visit_count(&self) -> Option<Move> {
     let sum_child_visits = self.get_sum_child_visits(self.root);
     if sum_child_visits == 0 {
+      if self.get_state().get_outcome().is_none() {
+        crate::log("WARNING: No moves available!");
+        self.print_tree_root();
+        panic!("No moves??");
+      }
       return None;
     }
     let mut visit_count = self.rng.generate_range(sum_child_visits as u32) as i32;
@@ -484,6 +588,7 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
   }
 
   pub fn apply_move(&mut self, m: Move) {
+    assert!(!self.any_in_flight());
     let root_node = &self.nodes[self.root];
     self.root = match root_node.outgoing_edges.get(&m) {
       // If we already have a node for this move, then just make it the new root.
@@ -512,8 +617,8 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
     // Finally, we clear out the transposition table, because it may
     // still contain references to freed nodes.
     self.transposition_table.clear();
-    // FIXME: What do I do about pending paths?
-    assert!(self.pending_paths.is_empty());
+    //// FIXME: What do I do about pending paths?
+    //assert!(self.pending_paths.is_empty());
   }
 
   pub fn print_tree_root(&self) {
@@ -529,7 +634,7 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
       let already_printed = already_printed_set.contains(&node_index);
       already_printed_set.insert(node_index);
       println!(
-        "{}{}{}[{:?}] (visits={} in-flight={} value={:?} mean={:?} moves={}){}\x1b[0m",
+        "{}{}{}[{:?}] (visits={} tail={} in-flight={} value={:?} mean={:?} moves={}){}\x1b[0m",
         "  ".repeat(depth),
         match m {
           Some(m) => format!("{:?} -> ", m),
@@ -541,6 +646,7 @@ impl<'a, Infer: InferenceEngine> Mcts<'a, Infer> {
         },
         node_index,
         node.visits,
+        node.tail_visits,
         node.in_flight,
         node.outputs.value,
         node.get_subtree_value(),

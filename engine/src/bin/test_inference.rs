@@ -1,4 +1,4 @@
-use engine::{inference_desktop::TensorFlowEngine, inference::InferenceEngine};
+use engine::{inference::InferenceEngine, inference_desktop::TensorFlowEngine};
 
 fn main() {
   let inference_engine = TensorFlowEngine::new("/tmp/keras");

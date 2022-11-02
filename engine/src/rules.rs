@@ -259,7 +259,10 @@ impl State {
 
   // TODO: Implement stalemate.
   pub fn get_outcome(&self) -> Option<GameOutcome> {
-    match (self.kings[Player::Black as usize].0 == 0, self.kings[Player::White as usize].0 == 0) {
+    match (
+      self.kings[Player::Black as usize].0 == 0,
+      self.kings[Player::White as usize].0 == 0,
+    ) {
       (false, false) => None,
       (true, false) => Some(GameOutcome::Win(Player::White)),
       (false, true) => Some(GameOutcome::Win(Player::Black)),

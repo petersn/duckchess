@@ -1,16 +1,17 @@
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::sync::Mutex;
 
 use tensorflow::{Graph, Operation, SavedModelBundle, SessionOptions, SessionRunArgs, Tensor};
 
-use crate::inference::{self, PendingIndex};
+use crate::inference;
 use crate::inference::{
   featurize_state, InferenceResults, InputBlock, CHANNEL_COUNT, FEATURES_SIZE, POLICY_LEN,
 };
 use crate::mcts;
 use crate::rules::{Move, State};
 
-pub const MAX_BATCH_SIZE: usize = 128;
+pub const MAX_BATCH_SIZE: usize = 128; //128;
 
 //struct ReturnChannels {
 //  next_buffer: usize,
@@ -18,19 +19,20 @@ pub const MAX_BATCH_SIZE: usize = 128;
 //  channels:    [Option<tokio::sync::oneshot::Sender<ModelOutputs>>; BUFFER_COUNT * BATCH_SIZE],
 //}
 
-pub struct TensorFlowEngine {
-  bundle:       SavedModelBundle,
-  input_op:     Operation,
-  policy_op:    Operation,
-  value_op:     Operation,
-  input_blocks: Mutex<Vec<InputBlock<MAX_BATCH_SIZE>>>,
+pub struct TensorFlowEngine<Cookie> {
+  bundle:        SavedModelBundle,
+  input_op:      Operation,
+  policy_op:     Operation,
+  value_op:      Operation,
+  input_blocks:  Mutex<VecDeque<InputBlock<Cookie>>>,
   //input_tensors:   [&'static SyncUnsafeCell<Tensor<f32>>; BUFFER_COUNT],
   //return_channels: tokio::sync::Mutex<ReturnChannels>,
-  eval_count:   std::sync::atomic::AtomicUsize,
+  pub semaphore: tokio::sync::Semaphore,
+  eval_count:    std::sync::atomic::AtomicUsize,
 }
 
-impl TensorFlowEngine {
-  pub fn new(model_dir: &str) -> TensorFlowEngine {
+impl<Cookie> TensorFlowEngine<Cookie> {
+  pub fn new(model_dir: &str) -> TensorFlowEngine<Cookie> {
     //// Initialize model_dir, input tensor, and an empty graph
     //let input_tensors = (0..BUFFER_COUNT)
     //  .map(|_| {
@@ -92,19 +94,31 @@ impl TensorFlowEngine {
       //    .map_err(|_| ())
       //    .unwrap(),
       //}),
-      input_blocks: Mutex::new(vec![]),
+      input_blocks: Mutex::new(VecDeque::new()),
+      semaphore: tokio::sync::Semaphore::new(0),
       eval_count: std::sync::atomic::AtomicUsize::new(0),
     }
   }
+
+  pub fn batch_ready(&self) -> bool {
+    let input_blocks = self.input_blocks.lock().unwrap();
+    input_blocks.front().map(|b| b.cookies.len() == MAX_BATCH_SIZE).unwrap_or(false)
+  }
 }
 
-impl inference::InferenceEngine for TensorFlowEngine {
+impl<Cookie> inference::InferenceEngine<Cookie> for TensorFlowEngine<Cookie> {
   const DESIRED_BATCH_SIZE: usize = MAX_BATCH_SIZE;
 
-  fn add_work(&self, state: &crate::rules::State, cookie: PendingIndex) -> usize {
-    println!("\x1b[93mAdding work...\x1b[0m");
+  fn add_work(&self, state: &crate::rules::State, cookie: Cookie) -> bool {
+    //println!("\x1b[93mAdding work...\x1b[0m");
     let mut input_blocks = self.input_blocks.lock().unwrap();
-    inference::add_to_input_blocks(&mut input_blocks, state, cookie)
+    let ready = inference::add_to_input_blocks(MAX_BATCH_SIZE, &mut input_blocks, state, cookie);
+    // FIXME: This notifies too much.
+    if ready {
+      //println!("\x1b[91mNotifying...\x1b[0m");
+      self.semaphore.add_permits(1);
+    }
+    ready
     /*
     // Allocate a slot.
     let (rx, work) = {
@@ -143,12 +157,12 @@ impl inference::InferenceEngine for TensorFlowEngine {
     */
   }
 
-  fn predict(&self, use_outputs: impl FnOnce(InferenceResults)) -> usize {
-    println!("\x1b[93mPredicting...\x1b[0m");
+  fn predict(&self, use_outputs: impl FnOnce(InferenceResults<Cookie>)) -> usize {
+    //println!("\x1b[92mPredicting...\x1b[0m");
     // Pop the last input block, which is inside the mutex.
     let last_block = {
       let mut guard = self.input_blocks.lock().unwrap();
-      match guard.pop() {
+      match guard.pop_front() {
         Some(block) => block,
         None => return 0,
       }
@@ -183,6 +197,7 @@ impl inference::InferenceEngine for TensorFlowEngine {
     // Pass the outputs to the callback.
     use_outputs(InferenceResults::new(
       &last_block.cookies,
+      &last_block.players,
       &policies,
       &value_output[..],
     ));
@@ -226,6 +241,7 @@ impl inference::InferenceEngine for TensorFlowEngine {
   }
 
   fn clear(&self) {
+    println!("\x1b[92m>>>>>>>>>>>>>>>>>>> Clearing...\x1b[0m");
     self.input_blocks.lock().unwrap().clear();
   }
 }
