@@ -19,42 +19,42 @@ fn main() {
   }
   inference!();
 
-  // e4
-  mcts.apply_move(Move { from: 12, to: 28 });
-  inference!();
-  mcts.apply_move(Move { from: 16, to: 16 });
-  inference!();
-
-  // a5
-  mcts.apply_move(Move { from: 48, to: 40 });
-  inference!();
-  mcts.apply_move(Move { from: 16, to: 17 });
-  inference!();
-
-  // Qf3
-  mcts.apply_move(Move { from: 3, to: 21 });
-  inference!();
-  mcts.apply_move(Move { from: 17, to: 16 });
-  inference!();
-
-  // a4
-  mcts.apply_move(Move { from: 40, to: 32 });
-  inference!();
-  mcts.apply_move(Move { from: 16, to: 17 });
-  inference!();
-
-  // Qxf7??
-  mcts.apply_move(Move { from: 21, to: 53 });
-  inference!();
-  mcts.apply_move(Move { from: 17, to: 16 });
-  inference!();
+//  // e4
+//  mcts.apply_move(Move { from: 12, to: 28 });
+//  inference!();
+//  mcts.apply_move(Move { from: 16, to: 16 });
+//  inference!();
+//
+//  // a5
+//  mcts.apply_move(Move { from: 48, to: 40 });
+//  inference!();
+//  mcts.apply_move(Move { from: 16, to: 17 });
+//  inference!();
+//
+//  // Qf3
+//  mcts.apply_move(Move { from: 3, to: 21 });
+//  inference!();
+//  mcts.apply_move(Move { from: 17, to: 16 });
+//  inference!();
+//
+//  // a4
+//  mcts.apply_move(Move { from: 40, to: 32 });
+//  inference!();
+//  mcts.apply_move(Move { from: 16, to: 17 });
+//  inference!();
+//
+//  // Qxf7??
+//  mcts.apply_move(Move { from: 21, to: 53 });
+//  inference!();
+//  mcts.apply_move(Move { from: 17, to: 16 });
+//  inference!();
 
   for _ in 0..1 {
-    for _ in 0..30 {
+    for _ in 0..500 {
       mcts.step();
       inference!();
     }
-    mcts.print_tree_root();
+    mcts.print_tree_as_graphviz();
     //mcts.predict_now();
     //mcts.print_tree_root();
     //let best_move = mcts.sample_move_by_visit_count().unwrap();
