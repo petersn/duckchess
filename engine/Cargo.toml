@@ -8,7 +8,6 @@ name = "engine"
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
-pgn4 = "0.3.3"
 serde = { version = "1.0.145", features = ["derive"] }
 slotmap = "1.0.6"
 

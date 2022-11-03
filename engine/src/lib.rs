@@ -3,6 +3,7 @@ pub mod mcts;
 pub mod rng;
 pub mod rules;
 pub mod search;
+pub mod pgn4_parse;
 
 // Build bindings depending on whether we're targeting web or desktop.
 
