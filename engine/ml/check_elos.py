@@ -76,8 +76,11 @@ def regenerate_report(steps, games):
     last_model = int(short_name(steps[-1])[1:])
     cmd = "wc -l %s/step-%03i/games/*.json" % (prefix, last_model)
     print("Running:", cmd)
-    output = subprocess.check_output(cmd, shell=True)
-    game_count = output.decode().split()[0]
+    try:
+        output = subprocess.check_output(cmd, shell=True)
+        game_count = output.decode().split()[0]
+    except subprocess.CalledProcessError:
+        game_count = "0"
     print("Got:", output)
 
 
