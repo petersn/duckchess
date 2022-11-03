@@ -667,4 +667,35 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       }
     }
   }
+
+
+  pub fn print_tree_as_graphviz(&self) {
+    println!("digraph {{");
+    let mut already_printed_set = std::collections::HashSet::new();
+    let mut stack = vec![(None, self.root, 0)];
+    while !stack.is_empty() {
+      let (m, node_index, depth) = stack.pop().unwrap();
+      let node = &self.nodes[node_index];
+      let already_printed = already_printed_set.contains(&node_index);
+      already_printed_set.insert(node_index);
+      println!(
+        "  {:?} [label=\"{:?} (visits={} tail={} in-flight={} value={:?} mean={:?} moves={})\"]",
+        node_index,
+        node_index,
+        node.visits,
+        node.tail_visits,
+        node.in_flight,
+        node.outputs.value,
+        node.get_subtree_value(),
+        node.moves.len(),
+      );
+      if !already_printed {
+        for (m, child_index) in &node.outgoing_edges {
+          println!("  {:?} -> {:?} [label=\"{:?}\"]", node_index, child_index, m);
+          stack.push((Some(*m), *child_index, depth + 1));
+        }
+      }
+    }
+    println!("}}");
+  }
 }

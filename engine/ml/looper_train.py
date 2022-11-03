@@ -5,6 +5,8 @@ from tqdm import tqdm
 
 import model_pytorch
 
+import wandb
+
 class EWMA:
     def __init__(self, alpha=0.02):
         self.alpha = alpha
@@ -21,7 +23,7 @@ if __name__ == "__main__":
     parser.add_argument("--new-path", metavar="PATH", required=True, help="Path for output network.")
     parser.add_argument("--steps", metavar="COUNT", type=int, default=1000, help="Training steps.")
     parser.add_argument("--minibatch-size", metavar="COUNT", type=int, default=1024, help="Minibatch size.")
-    parser.add_argument("--learning-rate", metavar="LR", type=float, default=5e-4, help="Learning rate.")
+    parser.add_argument("--learning-rate", metavar="LR", type=float, default=1e-4, help="Learning rate.")
     parser.add_argument("--data-file", metavar="PATH", type=str, help="Saved .npz file of features/targets.")
     parser.add_argument("--save-every", metavar="STEPS", default=0, type=int, help="Save a model every n steps.")
     args = parser.parse_args()
@@ -45,6 +47,17 @@ if __name__ == "__main__":
     train_value = torch.tensor(train_value)
 
     print("Got data:", train_features.shape, train_policy.shape, train_value.shape)
+
+
+    wandb.init(project="duck-chess-zero-run-006", name=args.new_path)
+    wandb.config = {
+        "old_path": args.old_path,
+        "new_path": args.new_path,
+        "steps": args.steps,
+        "minibatch_size": args.minibatch_size,
+        "learning_rate": args.learning_rate,
+        "datapoint_count": len(train_features),
+    }
 
     def make_batch(batch_size):
         indices = np.random.randint(0, len(train_features), size=batch_size)
@@ -78,6 +91,7 @@ if __name__ == "__main__":
         policy_loss = cross_en(policy_output, target_policy)
         value_loss = mse_func(value_output, target_value)
         loss = policy_loss + value_loss
+        wandb.log({"loss": loss.item(), "policy_loss": policy_loss.item(), "value_loss": value_loss.item()})
         loss.backward()
         optimizer.step()
         policy_loss_ewma.apply(policy_loss.item())
