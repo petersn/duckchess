@@ -143,8 +143,8 @@ pub fn channel_count() -> usize {
 }
 
 #[wasm_bindgen]
-pub fn parse_pgn4(pgn: &str) -> JsValue {
-  let pgn4 = crate::pgn4_parse::parse_pgn4(pgn);
+pub fn parse_pgn4(pgn4_str: &str) -> JsValue {
+  let pgn4 = crate::pgn4_parse::parse(pgn4_str);
   serde_wasm_bindgen::to_value(&pgn4).unwrap_or_else(|e| {
     log(&format!("Failed to parse pgn4: {}", e));
     JsValue::NULL

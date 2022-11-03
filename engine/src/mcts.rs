@@ -205,7 +205,7 @@ impl MctsNode {
     //  }
     //}
     // Assert normalization.
-    //let sum = self.outputs.policy.iter().sum::<f32>();
+    let sum = self.outputs.policy.iter().sum::<f32>();
     //let count_nonzero = self.outputs.policy.iter().filter(|&&x| x != 0.0).count();
     //// FIXME: Something is busted here, normalization keeps failing dramatically!
     //if (sum - 1.0).abs() >= 1e-3 {
@@ -217,7 +217,7 @@ impl MctsNode {
     //  println!("  state: {:?}", self.state);
     //  //println!("  policy: {:?}", self.outputs.policy);
     //}
-    //debug_assert!((sum - 1.0).abs() < 1e-3);
+    debug_assert!((sum - 1.0).abs() < 1e-3);
   }
 
   pub fn posterior(&self, m: Move) -> f32 {
