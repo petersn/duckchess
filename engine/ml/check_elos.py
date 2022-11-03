@@ -73,10 +73,19 @@ def regenerate_report(steps, games):
         table += "</tr>"
     table += "</table>"
 
+    last_model = int(short_name(steps[-1])[1:])
+    cmd = "wc -l %s/step-%03i/games/*.json" % (prefix, last_model)
+    print("Running:", cmd)
+    output = subprocess.check_output(cmd, shell=True)
+    game_count = output.decode().split()[0]
+    print("Got:", output)
+
+
     with open("web/index.html", "w") as f:
         f.write(template % {
             "table": table,
             "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "game_count": game_count,
         })
 
 def process_name(name):
