@@ -2,13 +2,13 @@
 
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Move {
   pub from: u16,
   pub to: u16,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Pgn4 {
   pub headers: HashMap<String, String>,
   pub moves: Vec<Move>,
@@ -66,7 +66,7 @@ fn lex_moves(mut s: &str) -> Vec<Token> {
   tokens
 }
 
-pub fn parse_pgn4(mut s: &str) -> Result<Pgn4, String> {
+pub fn parse(mut s: &str) -> Result<Pgn4, String> {
   s = s.trim();
 
   // Parse headers.

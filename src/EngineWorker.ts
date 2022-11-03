@@ -1,4 +1,4 @@
-import init, { new_engine, max_batch_size, channel_count, Engine } from 'engine';
+import init, { new_engine, max_batch_size, channel_count, parse_pgn4, Engine } from 'engine';
 import * as tf from '@tensorflow/tfjs';
 import { MessageToEngineWorker } from './EngineWorkerMessages';
 
@@ -10,7 +10,7 @@ function sendBoardState() {
 }
 
 function workLoop() {
-  setTimeout(workLoop, 1);
+  setTimeout(workLoop, 10000);
   let inputArray = new Float32Array(max_batch_size() * channel_count() * 8 * 8);
   const batchSize = engine.step_until_batch(inputArray);
   //const batchSize = 1 as any;

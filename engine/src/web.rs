@@ -141,3 +141,12 @@ pub fn max_batch_size() -> usize {
 pub fn channel_count() -> usize {
   inference::CHANNEL_COUNT
 }
+
+#[wasm_bindgen]
+pub fn parse_pgn4(pgn: &str) -> JsValue {
+  let pgn4 = crate::pgn4_parse::parse_pgn4(pgn);
+  serde_wasm_bindgen::to_value(&pgn4).unwrap_or_else(|e| {
+    log(&format!("Failed to parse pgn4: {}", e));
+    JsValue::NULL
+  })
+}
