@@ -96,7 +96,7 @@ pub fn parse(mut s: &str) -> Result<Pgn4, String> {
 
   // Parse moves.
   let tokens = lex_moves(s);
-  println!("{:?}", tokens);
+  //println!("{:?}", tokens);
   let mut moves = Vec::new();
   let mut i = 0;
   loop {
@@ -126,17 +126,29 @@ pub fn parse(mut s: &str) -> Result<Pgn4, String> {
       _ => {}
     }
 
-    // We now try to parse one ply.
-    // Start by skipping over a piece name.
-    match tokens[i] {
-      Token::Other('K') | Token::Other('Q') | Token::Other('R') | Token::Other('B') | Token::Other('N') => {
-        println!("skip piece {:?}", tokens[i]);
-        i += 1;
+    macro_rules! optional_char {
+      ($($c:literal),*) => {
+        match tokens[i] {
+          $(
+            Token::Other($c) => i += 1,
+          )*
+          _ => {},
+        }
       }
-      _ => {}
+    }
+    macro_rules! expect_one_of {
+      ($($c:literal),*) => {
+        match tokens[i] {
+          $(
+            Token::Other($c) => i += 1,
+          )*
+          _ => return Err(format!("Expected one of {}, got {:?}", stringify!($($c),*), tokens[i])),
+        }
+      }
     }
     macro_rules! parse_square {
-      () => {
+      () => {{
+        optional_char!('K', 'Q', 'R', 'B', 'N');
         match (&tokens[i], &tokens[i + 1]) {
           (Token::Other(file@'d'..='k'), Token::Number(rank@4..=11)) => {
             let file = *file as u8 - b'd';
@@ -146,33 +158,29 @@ pub fn parse(mut s: &str) -> Result<Pgn4, String> {
           }
           _ => return Err("Expected square".to_string()),
         }
-      }
+      }}
     }
-    macro_rules! expect_char {
-      ($c:expr) => {
-        match tokens[i] {
-          Token::Other($c) => i += 1,
-          _ => return Err(format!("Expected {}, got {:?}", $c, tokens[i])),
-        }
-      }
-    }
+
+    // We now try to parse one ply.
     let departure_square = parse_square!();
-    expect_char!('-');
+    expect_one_of!('-', 'x');
     let arrival_square = parse_square!();
-    println!("{:?}-{:?}", departure_square, arrival_square);
+    optional_char!('+', '#');
+    //println!("{:?}-{:?}", departure_square, arrival_square);
     moves.push(Move {
       from: to_index(departure_square),
       to: to_index(arrival_square),
     });
     // Now we must have a duck move.
-    expect_char!('Θ');
+    expect_one_of!('Θ');
     // The departure square is optional.
     let departure_square = match tokens[i] {
       Token::Other('-') => None,
       _ => Some(parse_square!()),
     };
-    expect_char!('-');
+    expect_one_of!('-');
     let arrival_square = parse_square!();
+    optional_char!('+', '#');
     let departure_square = departure_square.unwrap_or(arrival_square);
     moves.push(Move {
       from: to_index(departure_square),
