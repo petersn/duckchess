@@ -13,9 +13,9 @@ def make_model(
     )(input_node)
     for _ in range(blocks):
         skip_connection = x
-        x = tf.keras.layers.Activation("gelu")(x)
+        x = tf.keras.layers.Activation("relu")(x)
         x = tf.keras.layers.Conv2D(feature_count, 3, padding="same", data_format="channels_first")(x)
-        x = tf.keras.layers.Activation("gelu")(x)
+        x = tf.keras.layers.Activation("relu")(x)
         x = tf.keras.layers.Conv2D(feature_count, 3, padding="same", data_format="channels_first")(x)
         x = tf.keras.layers.Add()([skip_connection, x])
     policy = tf.keras.layers.Conv2D(policy_channels, 3, padding="same", data_format="channels_first")(x)

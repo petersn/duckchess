@@ -9,7 +9,7 @@ class ConvBlock(torch.nn.Module):
         self.conv1 = torch.nn.Conv2d(filters, filters, kernel_size=kernel_size, padding="same")
         self.conv2 = torch.nn.Conv2d(filters, filters, kernel_size=kernel_size, padding="same")
         self.conv2.weight.data *= 1e-3
-        self.activation = torch.nn.GELU()
+        self.activation = torch.nn.ReLU() #GELU()
 
     def forward(self, x):
         skip = x
