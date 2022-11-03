@@ -11,6 +11,7 @@ use crate::rng::Rng;
 use crate::rules::{GameOutcome, Move, State, Player};
 
 const EXPLORATION_ALPHA: f32 = 1.0;
+const DUCK_EXPLORATION_ALPHA: f32 = 0.5;
 const FIRST_PLAY_URGENCY: f32 = 0.2;
 const ROOT_SOFTMAX_TEMP: f32 = 1.2;
 const DIRICHLET_ALPHA: f32 = 0.1;
@@ -105,7 +106,11 @@ impl MctsNode {
         )
       }
     };
-    let u = EXPLORATION_ALPHA * self.posterior(m) * u;
+    let alpha = match self.state.is_duck_move {
+      true => DUCK_EXPLORATION_ALPHA,
+      false => EXPLORATION_ALPHA,
+    };
+    let u = alpha * self.posterior(m) * u;
     q + u
   }
 
@@ -137,7 +142,7 @@ impl MctsNode {
     debug_assert!(!self.outgoing_edges.contains_key(&m));
     self.outgoing_edges.insert(m, child_index);
     // FIXME: I need to track the policy_explored more carefully, as evals might not be filled in yet!
-    self.policy_explored += self.posterior(m);
+    self.policy_explored = (self.policy_explored + self.posterior(m)).min(1.0);
   }
 
   fn add_dirichlet_noise(&mut self, rng: &mut Rng) {
