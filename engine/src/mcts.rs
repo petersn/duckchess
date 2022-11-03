@@ -679,19 +679,24 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       let already_printed = already_printed_set.contains(&node_index);
       already_printed_set.insert(node_index);
       println!(
-        "  {:?} [label=\"{:?} (visits={} tail={} in-flight={} value={:?} mean={:?} moves={})\"]",
+        "  {:?} [label=\"\"]",
         node_index,
-        node_index,
-        node.visits,
-        node.tail_visits,
-        node.in_flight,
-        node.outputs.value,
-        node.get_subtree_value(),
-        node.moves.len(),
       );
+      //println!(
+      //  "  {:?} [label=\"{:?} (visits={} tail={} in-flight={} value={:?} mean={:?} moves={})\"]",
+      //  node_index,
+      //  node_index,
+      //  node.visits,
+      //  node.tail_visits,
+      //  node.in_flight,
+      //  node.outputs.value,
+      //  node.get_subtree_value(),
+      //  node.moves.len(),
+      //);
       if !already_printed {
         for (m, child_index) in &node.outgoing_edges {
-          println!("  {:?} -> {:?} [label=\"{:?}\"]", node_index, child_index, m);
+          //println!("  {:?} -> {:?} [label=\"{:?}\"]", node_index, child_index, m);
+          println!("  {:?} -> {:?}", node_index, child_index);
           stack.push((Some(*m), *child_index, depth + 1));
         }
       }
