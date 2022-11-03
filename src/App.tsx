@@ -60,7 +60,7 @@ function AppWithEngineWorker(props: { engineWorker: EngineWorker }) {
 
   React.useEffect(() => {
     engineWorker.forceUpdateCallback = () => {
-      setForceUpdateCounter(forceUpdateCounter + 1);
+      setForceUpdateCounter(Math.random());
     };
   }, []);
 
@@ -169,6 +169,7 @@ function AppWithEngineWorker(props: { engineWorker: EngineWorker }) {
   }
 
   //let showMoves: any[] = (pair && pair[1][0]) ? pair[1] : [];
+  console.log('----PV:', engineWorker.pv);
   let showMoves: any[] = engineWorker.pv;
   if ((state.isDuckMove || true) && showMoves) {
     showMoves = showMoves.slice(0, 1);
@@ -232,8 +233,8 @@ function AppWithEngineWorker(props: { engineWorker: EngineWorker }) {
                 {row.map((piece, x) => {
                   const isSelected = selectedSquare !== null && selectedSquare[0] === x && selectedSquare[1] === y;
                   let backgroundColor = (x + y) % 2 === 0 ? '#eca' : '#b97';
-                  if (state.highlight[7 - y] & (1 << x))
-                    backgroundColor = (x + y) % 2 === 0 ? '#dd9' : '#aa6';
+                  //if (state.highlight[7 - y] & (1 << x))
+                  //  backgroundColor = (x + y) % 2 === 0 ? '#dd9' : '#aa6';
                   if (isSelected)
                     backgroundColor = '#7f7';
                   return <td key={x} style={{ margin: 0, padding: 0 }}>

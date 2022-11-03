@@ -1,5 +1,6 @@
 use wasm_bindgen::prelude::*;
 
+use crate::mcts::PendingPath;
 use crate::inference::{FEATURES_SIZE, POLICY_LEN};
 use crate::inference_web::MAX_BATCH_SIZE;
 use crate::{inference, inference_web, mcts, rules::Move, search};
@@ -14,9 +15,9 @@ extern "C" {
 
 #[wasm_bindgen]
 pub struct Engine {
-  inference_engine: &'static inference_web::TensorFlowJsEngine,
+  inference_engine: &'static inference_web::TensorFlowJsEngine<(usize, PendingPath)>,
   engine:           search::Engine,
-  mcts:             mcts::Mcts<'static, inference_web::TensorFlowJsEngine>,
+  mcts:             mcts::Mcts<'static, inference_web::TensorFlowJsEngine<(usize, PendingPath)>>,
   //input_array: Box<[f32; MAX_BATCH_SIZE * FEATURES_SIZE]>,
   //policy_array: Box<[f32; MAX_BATCH_SIZE * POLICY_LEN]>,
   //value_array: Box<[f32; MAX_BATCH_SIZE]>,
@@ -81,8 +82,15 @@ impl Engine {
   }
 
   pub fn give_answers(&mut self, policy_array: &[f32], value_array: &[f32]) {
+    use crate::inference::InferenceEngine;
     self.inference_engine.give_answers(policy_array, value_array);
-    self.mcts.predict_now();
+    self.mcts.get_state().sanity_check().unwrap();
+    self.inference_engine.predict(|inference_results| {
+      for (i, (cookie, pending_path)) in inference_results.cookies.into_iter().enumerate() {
+        self.mcts.process_path(pending_path.clone(), inference_results.get(i));
+      }
+    });
+    //self.mcts.predict_now();
     //self.inference_engine.give_answers(&self.policy_array, &self.value_array);
   }
 
@@ -117,7 +125,7 @@ pub fn new_engine(seed: u64) -> Engine {
   Engine {
     inference_engine: tfjs_inference_engine,
     engine:           search::Engine::new(seed),
-    mcts:             mcts::Mcts::new(seed, tfjs_inference_engine),
+    mcts:             mcts::Mcts::new(0, seed, tfjs_inference_engine),
     //input_array: Box::new([0.0; MAX_BATCH_SIZE * FEATURES_SIZE]),
     //policy_array: Box::new([0.0; MAX_BATCH_SIZE * POLICY_LEN]),
     //value_array: Box::new([0.0; MAX_BATCH_SIZE]),
