@@ -10,7 +10,7 @@ function sendBoardState() {
 }
 
 function workLoop() {
-  setTimeout(workLoop, 2000);
+  setTimeout(workLoop, 1);
   let inputArray = new Float32Array(max_batch_size() * channel_count() * 8 * 8);
   const batchSize = engine.step_until_batch(inputArray);
   //const batchSize = 1 as any;
@@ -39,7 +39,7 @@ function workLoop() {
   inp.dispose();
   policy.dispose();
   value.dispose();
-  const evaluation = 0.37;
+  const evaluation = 9.99;
   const pv = engine.get_principal_variation();
   postMessage({ type: 'evaluation', evaluation, pv });
   // FIXME: Why do I need as any here?
