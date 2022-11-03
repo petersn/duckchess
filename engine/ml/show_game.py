@@ -40,8 +40,12 @@ if __name__ == "__main__":
     game = random.choice(games)
 
     e = engine.Engine(0)
-    for move in game["moves"]:
-        e.apply_move(json.dumps(move))
+    for i, move in enumerate(game["moves"]):
+        print(game["moves"][:i + 1])
+        r = e.apply_move(json.dumps(move))
+        if r is not None:
+            print("BAD:", r)
         state = json.loads(e.get_state())
+        print(state)
         render_state(state)
         input("> ")

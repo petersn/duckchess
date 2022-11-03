@@ -118,6 +118,9 @@ def process_game_paths(paths):
             # Apply the move.
             #print("Applying move", move_str)
             r = e.apply_move(move_str)
+            if r is not None:
+                print(f"Index = {i} Move {move_str} failed: {r}")
+                break
             assert r is None, f"Index = {i} Move {move_str} failed: {r}"
             r = e.sanity_check()
             assert r is None, f"Index = {i} Move {move_str} failed sanity check: {r}"
@@ -125,7 +128,12 @@ def process_game_paths(paths):
             #show_game.render_state(state)
             #input("> ")
         #assert e.get_outcome() == game["outcome"]
-    assert entry == total_moves
+    #assert entry == total_moves
+    if entry != total_moves:
+        print(f"FAILURE: entry != total_moves: {entry} != {total_moves}")
+        features_array = features_array[:entry]
+        policy_array = policy_array[:entry]
+        value_array = value_array[:entry]
 
     return features_array, policy_array, value_array
 

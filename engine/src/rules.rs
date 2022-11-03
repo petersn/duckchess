@@ -682,8 +682,8 @@ impl State {
     self.rooks[self.turn as usize].0 |= new_rooks;
     self.queens[self.turn as usize].0 |= new_queens;
 
-    //self.turn = self.turn.other_player();
-    self.is_duck_move = true;
+    self.turn = self.turn.other_player();
+    //self.is_duck_move = true;
     Ok(())
   }
 
