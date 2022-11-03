@@ -4,13 +4,6 @@ use engine::mcts::Mcts;
 
 const GAME_LEN_LIMIT: usize = 300;
 
-trait DuckChessEngine {
-  fn create() -> Self;
-  fn think(&mut self);
-  fn get_move(&self) -> Option<engine::rules::Move>;
-  fn apply_move(&mut self, m: engine::rules::Move);
-}
-
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {

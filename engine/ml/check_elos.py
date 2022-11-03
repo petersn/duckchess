@@ -20,7 +20,8 @@ def generate_games(output_dir, model_a, model_b, game_count):
     print("Generating games between", model_a, "and", model_b)
     proc = subprocess.Popen(
         [
-            "cargo", "run", "--bin", "compete", "--release", "--", "--playouts", "400",
+            #"cargo", "run", "--bin", "compete", "--release", "--", "--playouts", "400",
+            prefix + "/compete2", "--playouts", "100",
             "--model1-dir", model_a,
             "--model2-dir", model_b,
             "--output-dir", output_dir,
@@ -100,7 +101,8 @@ def check():
     steps = [process_name(step) for step in glob.glob(prefix + "/step-*/model-keras/")]
     steps.sort()
 
-    regenerate_report(steps, games)
+    if games:
+        regenerate_report(steps, games)
 
     # Find all pairs within two steps of each other.
     pairs = []

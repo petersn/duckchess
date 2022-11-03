@@ -11,7 +11,7 @@ use crate::inference::{
 use crate::mcts;
 use crate::rules::{Move, State};
 
-pub const MAX_BATCH_SIZE: usize = 128; //128;
+pub const MAX_BATCH_SIZE: usize = 128;
 
 //struct ReturnChannels {
 //  next_buffer: usize,

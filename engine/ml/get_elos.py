@@ -20,7 +20,7 @@ print("Games:", len(all_games))
 
 pgn = []
 for game in all_games:
-    assert game["version"].startswith("mcts-compete")
+    assert game["version"].startswith("mcts-")
     result = game["outcome"]
     if result is None:
         continue
