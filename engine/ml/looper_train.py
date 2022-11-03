@@ -48,8 +48,6 @@ if __name__ == "__main__":
 
     print("Got data:", train_features.shape, train_policy.shape, train_value.shape)
 
-
-    wandb.init(project="duck-chess-zero-run-007-regular-chess", name=args.new_path)
     wandb.config = {
         "old_path": args.old_path,
         "new_path": args.new_path,
@@ -58,6 +56,7 @@ if __name__ == "__main__":
         "learning_rate": args.learning_rate,
         "datapoint_count": len(train_features),
     }
+    wandb.init(project="duck-chess-zero-run-007-regular-chess", name=args.new_path)
 
     def make_batch(batch_size):
         indices = np.random.randint(0, len(train_features), size=batch_size)
