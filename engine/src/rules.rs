@@ -2,6 +2,8 @@ include!(concat!(env!("OUT_DIR"), "/tables.rs"));
 
 use serde::{ser::SerializeSeq, Deserialize, Serialize};
 
+use crate::nnue::{Nnue, DUCK_LAYER_OFFSET};
+
 pub const IS_DUCK_CHESS: bool = true;
 
 pub const MOVE_HISTORY_LEN: usize = 4;
@@ -556,7 +558,7 @@ impl State {
     }
   }
 
-  pub fn apply_move(&mut self, m: Move) -> Result<(), &'static str> {
+  pub fn apply_move<const NNUE: bool>(&mut self, m: Move, nnue: &mut Nnue) -> Result<(), &'static str> {
     if m.from > 63 || m.to > 63 {
       return Err("from/to out of range");
     }
@@ -578,6 +580,9 @@ impl State {
       if self.ducks.0 & from_mask != 0 || (self.ducks.0 == 0 && m.from == m.to) {
         self.ducks.0 &= !from_mask;
         self.ducks.0 |= to_mask;
+        if NNUE {
+          nnue.sub_add_layers(DUCK_LAYER_OFFSET + m.from as usize, DUCK_LAYER_OFFSET + m.to as usize);
+        }
         self.is_duck_move = false;
         self.turn = self.turn.other_player();
         return Ok(());
@@ -618,12 +623,18 @@ impl State {
       };
       // Capture pieces on the target square.
       them.0 &= !to_mask;
+      if NNUE && them.0 & to_mask != 0 {
+        nnue.sub_layer(/* FIXME: The right layer offset here +*/ m.to as usize);
+      }
       // Check if this is the kind of piece we're moving.
       if us.0 & from_mask != 0 {
         piece_moved = true;
         // Move our piece.
         us.0 &= !from_mask;
         us.0 |= to_mask;
+        if NNUE {
+          nnue.sub_add_layers(/* FIXME: The right layer offset here +*/ m.from as usize, m.to as usize);
+        }
         // Handle special rules for special pieces.
         match (piece_kind, m.from) {
           (PieceKind::Pawn, _) => {
@@ -633,6 +644,7 @@ impl State {
                 Player::White => them.0 &= !(1 << (m.to - 8)),
                 Player::Black => them.0 &= !(1 << (m.to + 8)),
               }
+              // FIXME: Subtract the right layer here, if appropriate.
             }
             // Setup the en passant state.
             let is_double_move = (m.from as i8 - m.to as i8).abs() == 16;
@@ -650,6 +662,7 @@ impl State {
             // Remove the pawn, and setup the promotion.
             us.0 &= !promotion_mask;
             new_queens = promotion_mask;
+            // FIXME: sub_add_layers here
             //match promotion {
             //  PromotablePiece::Queen => new_queens = promotion_mask,
             //  PromotablePiece::Rook => new_rooks = promotion_mask,
@@ -677,6 +690,7 @@ impl State {
               remove_rooks = 1 << rook_from;
               new_rooks = 1 << rook_to;
             }
+            // FIXME: sub_add_layers twice here.
           }
           (PieceKind::Rook, 0) | (PieceKind::Rook, 56) => {
             self.castling_rights[self.turn as usize].queen_side = false

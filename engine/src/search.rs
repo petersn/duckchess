@@ -1,6 +1,7 @@
 use std::collections::{hash_map::DefaultHasher, HashMap};
 use std::hash::{Hash, Hasher};
 
+use crate::nnue::Nnue;
 use crate::rng::Rng;
 use crate::rules::{iter_bits, GameOutcome, Move, Player, State};
 
@@ -149,38 +150,6 @@ pub fn evaluate_state(state: &State) -> Evaluation {
     }
   }
   score + 25
-}
-
-// 6 layes for our pieces, 6 for theirs, 1 for the duck.
-const LINEAR_STATE_SIZE: usize = 32;
-const FIRST_LAYER_WEIGHTS: &'static [[i32; LINEAR_STATE_SIZE]] = &[[0; LINEAR_STATE_SIZE]; 13 * 64];
-
-struct Nnue {
-  linear_state: [i32; LINEAR_STATE_SIZE],
-}
-
-impl Nnue {
-  fn new(state: &State) -> Self {
-    let mut linear_state = [0; LINEAR_STATE_SIZE];
-    // Apply the state here.
-    Self {
-      linear_state,
-    }
-  }
-
-  fn apply_move(&self, state: &State, m: Move) -> (usize, usize) {
-    // Figure out which layer to apply.
-    //m.from
-    todo!()
-  }
-
-  fn unapply_move(&self, cookie: (usize, usize)) {
-    // Unapply the move.
-  }
-
-  fn evaluate(&self) -> Evaluation {
-    todo!();
-  }
 }
 
 const QUIESCENCE_DEPTH: u16 = 10;
