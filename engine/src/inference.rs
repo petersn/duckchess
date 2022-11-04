@@ -36,6 +36,19 @@ impl Evaluation {
   }
 }
 
+// Implement Display for Evaluation.
+impl std::fmt::Display for Evaluation {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    write!(f, "{}{:.3}{}\x1b[0m", match self.perspective_player {
+      Player::White => "\x1b[91m",
+      Player::Black => "\x1b[92m",
+    }, self.expected_score, match self.perspective_player {
+      Player::White => "W",
+      Player::Black => "B",
+    })
+  }
+}
+
 // We have:
 //   Six channels for our pieces: pawns, knights, bishops, rooks, queens, kings
 //   Six channels for their pieces.

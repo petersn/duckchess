@@ -49,14 +49,27 @@ fn main() {
 //  mcts.apply_move(Move { from: 17, to: 16 });
 //  inference!();
 
+  //let s = r#"{"pawns": [[0, 0, 0, 0, 32, 64, 23, 0], [0, 119, 0, 72, 0, 0, 0, 0]], "knights": [[0, 0, 0, 0, 0, 2, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0]], "bishops": [[0, 0, 0, 0, 0, 0, 0, 4], [32, 0, 0, 0, 0, 0, 0, 0]], "rooks": [[0, 0, 0, 0, 0, 0, 0, 1], [1, 0, 0, 0, 0, 0, 0, 128]], "queens": [[0, 0, 0, 0, 0, 0, 0, 8], [8, 0, 0, 0, 0, 0, 0, 0]], "kings": [[0, 0, 0, 0, 0, 0, 0, 16], [16, 0, 0, 0, 0, 0, 0, 0]], "ducks": [0, 0, 0, 0, 0, 0, 0, 0], "enPassant": [0, 0, 0, 0, 0, 0, 0, 0], "castlingRights": [{"kingSide": false, "queenSide": true}, {"kingSide": false, "queenSide": true}], "turn": "black", "isDuckMove": false, "moveHistory": [{"from": 47, "to": 63}, {"from": 53, "to": 37}, {"from": 7, "to": 47}, {"from": 63, "to": 47}]}"#;
+  //let state: engine::rules::State = serde_json::from_str(s).unwrap();
+  let moves = r#"[{"from": 6, "to": 21}, {"from": 54, "to": 46}, {"from": 21, "to": 31}, {"from": 51, "to": 35}, {"from": 1, "to": 18}, {"from": 62, "to": 47}, {"from": 11, "to": 27}, {"from": 57, "to": 51}, {"from": 15, "to": 23}, {"from": 47, "to": 30}, {"from": 23, "to": 30}, {"from": 55, "to": 47}, {"from": 18, "to": 35}, {"from": 51, "to": 45}, {"from": 31, "to": 37}, {"from": 45, "to": 35}, {"from": 37, "to": 47}, {"from": 35, "to": 41}, {"from": 2, "to": 38}, {"from": 61, "to": 47}, {"from": 38, "to": 47}, {"from": 63, "to": 47}, {"from": 7, "to": 47}, {"from": 53, "to": 37}, {"from": 47, "to": 63}]"#;
+  let moves: Vec<engine::rules::Move> = serde_json::from_str(moves).unwrap();
+  //mcts.set_state(state);
+  for m in moves {
+    mcts.apply_move(m);
+    inference!();
+  }
+  println!("=================");
+  //println!("{:?}", state);
+  println!("{:?}", mcts.get_state());
+
   for _ in 0..1 {
-    for _ in 0..500 {
+    for _ in 0..200 {
       mcts.step();
       inference!();
     }
-    mcts.print_tree_as_graphviz();
+    //mcts.print_tree_as_graphviz();
     //mcts.predict_now();
-    //mcts.print_tree_root();
+    mcts.print_tree_root();
     //let best_move = mcts.sample_move_by_visit_count().unwrap();
     //println!("====== Making move: {:?}", best_move);
     //mcts.apply_move(best_move);
@@ -65,7 +78,7 @@ fn main() {
   let root_node = &mcts.nodes[mcts.root];
   for m in &root_node.moves {
     println!(
-      "  {:?} -> {:?}",
+      "  {} -> {:?}",
       m,
       root_node.posterior(*m),
     );

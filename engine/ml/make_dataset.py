@@ -80,14 +80,21 @@ def process_game_paths(paths):
                     print(state)
                     show_game.render_state(state)
                     print(state["turn"])
+                    break
                     raise RuntimeError
 
             # Don't train on random moves, or fast search moves.
             if (version.startswith("pvs") and game["was_rand"][i]) or (version.startswith("mcts") and not game["full_search"][i]):
                 #print("Applying move", move_str)
                 r = e.apply_move(move_str)
+                if r is not None:
+                    print(f"Index = {i} Move {move_str} failed: {r}")
+                    break
                 assert r is None, f"Index = {i} Move {move_str} failed: {r}"
                 r = e.sanity_check()
+                if r is not None:
+                    print(f"Index = {i} Sanity check failed: {r}")
+                    break
                 assert r is None, f"Index = {i} Move {move_str} failed sanity check: {r}"
                 #state = json.loads(e.get_state())
                 #show_game.render_state(state)
@@ -123,6 +130,9 @@ def process_game_paths(paths):
                 break
             assert r is None, f"Index = {i} Move {move_str} failed: {r}"
             r = e.sanity_check()
+            if r is not None:
+                print(f"Index = {i} Move {move_str} failed sanity check: {r}")
+                break
             assert r is None, f"Index = {i} Move {move_str} failed sanity check: {r}"
             #state = json.loads(e.get_state())
             #show_game.render_state(state)

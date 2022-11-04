@@ -634,20 +634,25 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     let mut stack = vec![(None, root, 0)];
     while !stack.is_empty() {
       let (m, node_index, depth) = stack.pop().unwrap();
+      if depth > 3 {
+        println!("... (depth {})", depth);
+        continue;
+      }
       let node = &self.nodes[node_index];
       let already_printed = already_printed_set.contains(&node_index);
       already_printed_set.insert(node_index);
       println!(
-        "{}{}{}[{:?}] (visits={} tail={} in-flight={} value={:?} mean={:?} moves={}){}\x1b[0m",
+        "{}{}{}[{:?}] (vis={} tail={} iflght={} eval={} mean={} movs={}){}\x1b[0m",
         "  ".repeat(depth),
         match m {
-          Some(m) => format!("{:?} -> ", m),
+          Some(m) => format!("{} -> ", m),
           None => "".to_string(),
         },
-        match node.gc_state == desired_state {
-          true => "\x1b[91m",
-          false => "\x1b[92m",
-        },
+        "",
+        //match node.gc_state == desired_state {
+        //  true => "\x1b[91m",
+        //  false => "\x1b[92m",
+        //},
         node_index,
         node.visits,
         node.tail_visits,

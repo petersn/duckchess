@@ -121,6 +121,22 @@ impl Move {
   }
 }
 
+// Implement Display for Move, printing as SAN, like e2e4.
+impl std::fmt::Display for Move {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    let from = self.from;
+    let to = self.to;
+    write!(
+      f,
+      "{}{}{}{}",
+      (b'a' + (from % 8)) as char,
+      (b'1' + (from / 8)) as char,
+      (b'a' + (to % 8)) as char,
+      (b'1' + (to / 8)) as char,
+    )
+  }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum GameOutcome {
   Win(Player),

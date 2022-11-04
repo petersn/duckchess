@@ -78,7 +78,7 @@ def regenerate_report(steps, games):
     print("Running:", cmd)
     try:
         output = subprocess.check_output(cmd, shell=True)
-        game_count = output.decode().split()[0]
+        game_count = output.decode().strip().rsplit("\n", 1)[-1].split()[0]
     except subprocess.CalledProcessError:
         output = "0"
         game_count = "0"
