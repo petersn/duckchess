@@ -1,7 +1,7 @@
 use std::collections::{hash_map::DefaultHasher, HashMap};
 use std::hash::{Hash, Hasher};
 
-use crate::nnue::Nnue;
+use crate::nnue::{Nnue, UndoCookie};
 use crate::rng::Rng;
 use crate::rules::{iter_bits, GameOutcome, Move, Player, State};
 
@@ -179,21 +179,27 @@ fn make_terminal_scores_much_less_extreme<T>(p: (Evaluation, T)) -> (Evaluation,
 }
 
 pub struct Engine {
-  nodes_searched:   u64,
+  pub nodes_searched:   u64,
+  pub total_eval:   f32,
   rng:              Rng,
   state:            State,
+  nnue:             Nnue,
   move_order_table: HashMap<u64, Move>,
   killer_moves:     [Option<Move>; 100],
 }
 
 impl Engine {
   pub fn new(seed: u64) -> Self {
+    let state = State::starting_state();
+    let nnue = Nnue::new(&state);
     Self {
-      nodes_searched:   0,
-      rng:              Rng::new(seed),
-      state:            State::starting_state(),
+      nodes_searched: 0,
+      total_eval: 0.0,
+      rng: Rng::new(seed),
+      state,
+      nnue,
       move_order_table: HashMap::new(),
-      killer_moves:     [None; 100],
+      killer_moves: [None; 100],
     }
   }
 
@@ -209,8 +215,8 @@ impl Engine {
     self.state = state;
   }
 
-  pub fn apply_move(&mut self, m: Move) -> Result<(), &'static str> {
-    self.state.apply_move(m)
+  pub fn apply_move(&mut self, m: Move) -> Result<UndoCookie, &'static str> {
+    self.state.apply_move::<true>(m, Some(&mut self.nnue))
   }
 
   pub fn get_moves(&self) -> Vec<Move> {
@@ -231,7 +237,13 @@ impl Engine {
     let mut p = (0, (None, None));
     //for d in 1..=depth {
     for d in 1..=depth {
-      p = self.pvs::<false>(d, &start_state, &mut nnue, VERY_NEGATIVE_EVAL, VERY_POSITIVE_EVAL);
+      p = self.pvs::<false>(
+        d,
+        &start_state,
+        &mut nnue,
+        VERY_NEGATIVE_EVAL,
+        VERY_POSITIVE_EVAL,
+      );
       //log(&format!(
       //  "Depth {}: {} (nodes={})",
       //  d, p.0, self.nodes_searched
@@ -248,7 +260,6 @@ impl Engine {
     mut alpha: Evaluation,
     beta: Evaluation,
   ) -> (Evaluation, (Option<Move>, Option<Move>)) {
-    self.nodes_searched += 1;
     let game_over = state.get_outcome().is_some();
     let random_bonus = (self.rng.next_random() & 0xf) as Evaluation;
     match (game_over, depth, QUIESCENCE) {
@@ -328,8 +339,9 @@ impl Engine {
 
     let mut first = true;
     for m in moves {
+      self.nodes_searched += 1;
       let mut new_state = state.clone();
-      new_state.apply_move(m).unwrap();
+      let undo_cookie = new_state.apply_move::<true>(m, Some(&mut self.nnue)).unwrap();
 
       let mut score;
       let mut next_pair;
@@ -341,7 +353,8 @@ impl Engine {
         if first {
           (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, alpha, beta);
         } else {
-          (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, alpha, alpha + 1);
+          (score, next_pair) =
+            self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, alpha, alpha + 1);
           if alpha < score && score < beta {
             (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, score, beta);
           }
@@ -351,7 +364,8 @@ impl Engine {
           (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, -beta, -alpha);
           score *= -1;
         } else {
-          (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, -alpha - 1, -alpha);
+          (score, next_pair) =
+            self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, -alpha - 1, -alpha);
           score *= -1;
           if alpha < score && score < beta {
             (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, -beta, -score);
@@ -359,6 +373,13 @@ impl Engine {
           }
         }
       }
+
+      nnue.undo(undo_cookie);
+      if state.is_duck_move {
+        let eval = nnue.evaluate().expected_score;
+        self.total_eval += eval;
+      }
+
       // TODO: For some reason adding the random bonus in here makes play awful??
       let comparison_score = score; // + random_bonus;
       if comparison_score > best_score {

@@ -2,7 +2,7 @@ include!(concat!(env!("OUT_DIR"), "/tables.rs"));
 
 use serde::{ser::SerializeSeq, Deserialize, Serialize};
 
-use crate::nnue::{Nnue, DUCK_LAYER_OFFSET};
+use crate::nnue::{Nnue, UndoCookie, DUCK_LAYER};
 
 pub const IS_DUCK_CHESS: bool = true;
 
@@ -558,7 +558,18 @@ impl State {
     }
   }
 
-  pub fn apply_move<const NNUE: bool>(&mut self, m: Move, nnue: &mut Nnue) -> Result<(), &'static str> {
+  pub fn apply_move<const NNUE: bool>(
+    &mut self,
+    m: Move,
+    nnue: Option<&mut Nnue>,
+  ) -> Result<UndoCookie, &'static str> {
+    let mut undo_cookie = UndoCookie::new();
+    let nnue = if NNUE {
+      nnue.unwrap()
+    } else {
+      // Make a fake dangling referenc that we won't use.
+      unsafe { &mut *(0x1 as *mut Nnue) }
+    };
     if m.from > 63 || m.to > 63 {
       return Err("from/to out of range");
     }
@@ -581,11 +592,13 @@ impl State {
         self.ducks.0 &= !from_mask;
         self.ducks.0 |= to_mask;
         if NNUE {
-          nnue.sub_add_layers(DUCK_LAYER_OFFSET + m.from as usize, DUCK_LAYER_OFFSET + m.to as usize);
+          undo_cookie.sub_layers[0] = 64 * DUCK_LAYER as u16 + m.from as u16;
+          undo_cookie.add_layers[0] = 64 * DUCK_LAYER as u16 + m.to as u16;
+          nnue.sub_add_layers(undo_cookie.sub_layers[0], undo_cookie.add_layers[0]);
         }
         self.is_duck_move = false;
         self.turn = self.turn.other_player();
-        return Ok(());
+        return Ok(undo_cookie);
       }
       return Err("no duck at from position");
     }
@@ -608,14 +621,20 @@ impl State {
       Queen,
     }
     let mut piece_moved = false;
-    for (piece_kind, piece_array) in [
+    for (piece_layer_number, (piece_kind, piece_array)) in [
       (PieceKind::Pawn, &mut self.pawns),
       (PieceKind::Knight, &mut self.knights),
       (PieceKind::Bishop, &mut self.bishops),
       (PieceKind::Rook, &mut self.rooks),
       (PieceKind::Queen, &mut self.queens),
       (PieceKind::King, &mut self.kings),
-    ] {
+    ]
+    .into_iter()
+    .enumerate()
+    {
+      let our_nnue_layer = 2 * piece_layer_number + self.turn as usize;
+      let their_nnue_layer = 2 * piece_layer_number + self.turn.other_player() as usize;
+
       let (a, b) = piece_array.split_at_mut(1);
       let (us, them) = match self.turn {
         Player::White => (&mut b[0], &mut a[0]),
@@ -624,7 +643,8 @@ impl State {
       // Capture pieces on the target square.
       them.0 &= !to_mask;
       if NNUE && them.0 & to_mask != 0 {
-        nnue.sub_layer(/* FIXME: The right layer offset here +*/ m.to as usize);
+        undo_cookie.sub_layers[1] = 64 * their_nnue_layer as u16 + m.to as u16;
+        nnue.sub_layer(undo_cookie.sub_layers[1]);
       }
       // Check if this is the kind of piece we're moving.
       if us.0 & from_mask != 0 {
@@ -633,7 +653,9 @@ impl State {
         us.0 &= !from_mask;
         us.0 |= to_mask;
         if NNUE {
-          nnue.sub_add_layers(/* FIXME: The right layer offset here +*/ m.from as usize, m.to as usize);
+          undo_cookie.sub_layers[0] = 64 * our_nnue_layer as u16 + m.from as u16;
+          undo_cookie.add_layers[0] = 64 * our_nnue_layer as u16 + m.to as u16;
+          nnue.sub_add_layers(undo_cookie.sub_layers[0], undo_cookie.add_layers[0]);
         }
         // Handle special rules for special pieces.
         match (piece_kind, m.from) {
@@ -641,10 +663,21 @@ impl State {
             // Check if we're taking en passant.
             if moving_en_passant {
               match self.turn {
-                Player::White => them.0 &= !(1 << (m.to - 8)),
-                Player::Black => them.0 &= !(1 << (m.to + 8)),
+                Player::White => {
+                  them.0 &= !(1 << (m.to - 8));
+                  if NNUE {
+                    undo_cookie.sub_layers[1] = 64 * their_nnue_layer as u16 + (m.to - 8) as u16;
+                    nnue.sub_layer(undo_cookie.sub_layers[1]);
+                  }
+                }
+                Player::Black => {
+                  them.0 &= !(1 << (m.to + 8));
+                  if NNUE {
+                    undo_cookie.sub_layers[1] = 64 * their_nnue_layer as u16 + (m.to + 8) as u16;
+                    nnue.sub_layer(undo_cookie.sub_layers[1]);
+                  }
+                }
               }
-              // FIXME: Subtract the right layer here, if appropriate.
             }
             // Setup the en passant state.
             let is_double_move = (m.from as i8 - m.to as i8).abs() == 16;
@@ -662,7 +695,12 @@ impl State {
             // Remove the pawn, and setup the promotion.
             us.0 &= !promotion_mask;
             new_queens = promotion_mask;
-            // FIXME: sub_add_layers here
+            if NNUE {
+              let our_queen_layer = 2 * 4 + self.turn as usize;
+              undo_cookie.sub_layers[1] = 64 * our_nnue_layer as u16 + m.to as u16;
+              undo_cookie.add_layers[1] = 64 * our_queen_layer as u16 + m.to as u16;
+              nnue.sub_add_layers(undo_cookie.sub_layers[1], undo_cookie.add_layers[1]);
+            }
             //match promotion {
             //  PromotablePiece::Queen => new_queens = promotion_mask,
             //  PromotablePiece::Rook => new_rooks = promotion_mask,
@@ -689,8 +727,13 @@ impl State {
               };
               remove_rooks = 1 << rook_from;
               new_rooks = 1 << rook_to;
+              if NNUE {
+                let our_rook_layer = 2 * 3 + self.turn as usize;
+                undo_cookie.sub_layers[1] = 64 * our_rook_layer as u16 + rook_from as u16;
+                undo_cookie.add_layers[1] = 64 * our_rook_layer as u16 + rook_to as u16;
+                nnue.sub_add_layers(undo_cookie.sub_layers[1], undo_cookie.add_layers[1]);
+              }
             }
-            // FIXME: sub_add_layers twice here.
           }
           (PieceKind::Rook, 0) | (PieceKind::Rook, 56) => {
             self.castling_rights[self.turn as usize].queen_side = false
@@ -719,7 +762,7 @@ impl State {
     } else {
       self.turn = self.turn.other_player();
     }
-    Ok(())
+    Ok(undo_cookie)
   }
 
   pub fn sanity_check(&self) -> Result<(), &'static str> {
