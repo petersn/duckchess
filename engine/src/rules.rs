@@ -2,7 +2,7 @@ include!(concat!(env!("OUT_DIR"), "/tables.rs"));
 
 use serde::{ser::SerializeSeq, Deserialize, Serialize};
 
-pub const IS_DUCK_CHESS: bool = false;
+pub const IS_DUCK_CHESS: bool = true;
 
 pub const MOVE_HISTORY_LEN: usize = 4;
 

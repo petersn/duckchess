@@ -151,6 +151,38 @@ pub fn evaluate_state(state: &State) -> Evaluation {
   score + 25
 }
 
+// 6 layes for our pieces, 6 for theirs, 1 for the duck.
+const LINEAR_STATE_SIZE: usize = 32;
+const FIRST_LAYER_WEIGHTS: &'static [[i32; LINEAR_STATE_SIZE]] = &[[0; LINEAR_STATE_SIZE]; 13 * 64];
+
+struct Nnue {
+  linear_state: [i32; LINEAR_STATE_SIZE],
+}
+
+impl Nnue {
+  fn new(state: &State) -> Self {
+    let mut linear_state = [0; LINEAR_STATE_SIZE];
+    // Apply the state here.
+    Self {
+      linear_state,
+    }
+  }
+
+  fn apply_move(&self, state: &State, m: Move) -> (usize, usize) {
+    // Figure out which layer to apply.
+    //m.from
+    todo!()
+  }
+
+  fn unapply_move(&self, cookie: (usize, usize)) {
+    // Unapply the move.
+  }
+
+  fn evaluate(&self) -> Evaluation {
+    todo!();
+  }
+}
+
 const QUIESCENCE_DEPTH: u16 = 10;
 
 fn make_terminal_scores_slightly_less_extreme<T>(p: (Evaluation, T)) -> (Evaluation, T) {
@@ -225,11 +257,12 @@ impl Engine {
   pub fn run(&mut self, depth: u16) -> (Evaluation, (Option<Move>, Option<Move>)) {
     self.nodes_searched = 0;
     let start_state = self.state.clone();
+    let mut nnue = Nnue::new(&start_state);
     // Apply iterative deepening.
     let mut p = (0, (None, None));
     //for d in 1..=depth {
     for d in 1..=depth {
-      p = self.pvs::<false>(d, &start_state, VERY_NEGATIVE_EVAL, VERY_POSITIVE_EVAL);
+      p = self.pvs::<false>(d, &start_state, &mut nnue, VERY_NEGATIVE_EVAL, VERY_POSITIVE_EVAL);
       //log(&format!(
       //  "Depth {}: {} (nodes={})",
       //  d, p.0, self.nodes_searched
@@ -242,6 +275,7 @@ impl Engine {
     &mut self,
     depth: u16,
     state: &State,
+    nnue: &mut Nnue,
     mut alpha: Evaluation,
     beta: Evaluation,
   ) -> (Evaluation, (Option<Move>, Option<Move>)) {
@@ -255,6 +289,7 @@ impl Engine {
         return make_terminal_scores_much_less_extreme(self.pvs::<true>(
           QUIESCENCE_DEPTH,
           state,
+          nnue,
           alpha,
           beta,
         ))
@@ -335,22 +370,22 @@ impl Engine {
 
       if new_state.is_duck_move {
         if first {
-          (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, alpha, beta);
+          (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, alpha, beta);
         } else {
-          (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, alpha, alpha + 1);
+          (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, alpha, alpha + 1);
           if alpha < score && score < beta {
-            (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, score, beta);
+            (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, score, beta);
           }
         }
       } else {
         if first {
-          (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, -beta, -alpha);
+          (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, -beta, -alpha);
           score *= -1;
         } else {
-          (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, -alpha - 1, -alpha);
+          (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, -alpha - 1, -alpha);
           score *= -1;
           if alpha < score && score < beta {
-            (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, -beta, -score);
+            (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, -beta, -score);
             score *= -1;
           }
         }

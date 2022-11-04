@@ -105,7 +105,7 @@ def process_game_paths(paths):
             e.get_state_into_array(features_slice.nbytes, features_slice.ctypes.data)
 
             if version == "pvs-1":
-                policy_dist = [(move_str, 1.0)]
+                policy_dist = [(json.loads(move_str), 1.0)]
             else:
                 policy_dist = game["train_dists"][i]
             assert abs(sum(p for _, p in policy_dist) - 1.0) < 1e-6

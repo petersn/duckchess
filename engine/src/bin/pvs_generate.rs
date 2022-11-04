@@ -29,18 +29,18 @@ fn work(depth: u16, output_dir: &str) {
     let mut moves = vec![];
     let mut was_rand = vec![];
     let mut engine = engine::search::Engine::new(rand::random());
-    let start_time = std::time::Instant::now();
+    //let start_time = std::time::Instant::now();
     //for move_index in 0..300 {
-    for move_index in 0..20 { // FIXME: Fixing for testing.
+    for move_index in 0..300 { // FIXME: Fixing for testing.
       let r: f32 = rand::random();
       let random_move = move_index == 0 || if move_index < 6 { r < 0.5 } else { r < 0.01 };
-      let random_move = false; // FIXME: Disabling for determinism.
+      //let random_move = false; // FIXME: Disabling for determinism.
       let p = match random_move {
         true => engine.get_moves().choose(&mut rng).map(|x| *x),
         false => engine.run(depth).1 .0,
       };
       if let Some(m) = p {
-        println!("{}: {}", move_index, m);
+        //println!("{}: {}", move_index, m);
         was_rand.push(random_move);
         moves.push(m);
         engine.apply_move(m).unwrap();
@@ -48,7 +48,7 @@ fn work(depth: u16, output_dir: &str) {
         break;
       }
     }
-    println!("Elapsed: {:.3}s", start_time.elapsed().as_secs_f32());
+    //println!("Elapsed: {:.3}s", start_time.elapsed().as_secs_f32());
     let outcome = engine.get_outcome().map(|o| o.to_str());
     println!(
       "Game generated: moves={} outcome={:?}",
