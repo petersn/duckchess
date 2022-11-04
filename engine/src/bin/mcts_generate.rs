@@ -189,6 +189,7 @@ async fn main() {
             "small_search_playouts": SMALL_SEARCH_PLAYOUTS,
             "game_len_limit": GAME_LEN_LIMIT,
             "seed": seed,
+            "is_duck_chess": engine::rules::IS_DUCK_CHESS,
             "version": "mcts-1",
           });
           let s = serde_json::to_string(&obj).unwrap();

@@ -227,6 +227,7 @@ impl Engine {
     let start_state = self.state.clone();
     // Apply iterative deepening.
     let mut p = (0, (None, None));
+    //for d in 1..=depth {
     for d in 1..=depth {
       p = self.pvs::<false>(d, &start_state, VERY_NEGATIVE_EVAL, VERY_POSITIVE_EVAL);
       //log(&format!(

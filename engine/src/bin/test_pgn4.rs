@@ -1,4 +1,3 @@
-
 fn main() {
   // Read example.pgn4 into a string.
   let pgn4_str = std::fs::read_to_string("example2.pgn4").unwrap();

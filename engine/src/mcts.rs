@@ -8,7 +8,7 @@ use slotmap::SlotMap;
 use crate::inference::{Evaluation, InferenceEngine, ModelOutputs, POLICY_LEN};
 use crate::rng::Rng;
 //use crate::inference::{ModelOutputs, POLICY_LEN};
-use crate::rules::{GameOutcome, Move, State, Player};
+use crate::rules::{GameOutcome, Move, Player, State};
 
 const EXPLORATION_ALPHA: f32 = 1.0;
 const DUCK_EXPLORATION_ALPHA: f32 = 0.5;
@@ -44,9 +44,8 @@ pub struct MctsNode {
 impl MctsNode {
   fn new(state: State, depth: u32) -> Self {
     let mut outputs = ModelOutputs {
-      policy:               Box::new([1.0; POLICY_LEN]),
-      value:                Evaluation::from_terminal_state(&state)
-        .unwrap_or(Evaluation::EVEN_EVAL),
+      policy: Box::new([1.0; POLICY_LEN]),
+      value:  Evaluation::from_terminal_state(&state).unwrap_or(Evaluation::EVEN_EVAL),
     };
     let needs_eval = state.get_outcome().is_none();
     let mut moves = vec![];
@@ -673,7 +672,6 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     }
   }
 
-
   pub fn print_tree_as_graphviz(&self) {
     println!("digraph {{");
     let mut already_printed_set = std::collections::HashSet::new();
@@ -683,10 +681,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       let node = &self.nodes[node_index];
       let already_printed = already_printed_set.contains(&node_index);
       already_printed_set.insert(node_index);
-      println!(
-        "  {:?} [label=\"\"]",
-        node_index,
-      );
+      println!("  {:?} [label=\"\"]", node_index,);
       //println!(
       //  "  {:?} [label=\"{:?} (visits={} tail={} in-flight={} value={:?} mean={:?} moves={})\"]",
       //  node_index,

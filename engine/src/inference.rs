@@ -39,13 +39,19 @@ impl Evaluation {
 // Implement Display for Evaluation.
 impl std::fmt::Display for Evaluation {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-    write!(f, "{}{:.3}{}\x1b[0m", match self.perspective_player {
-      Player::White => "\x1b[91m",
-      Player::Black => "\x1b[92m",
-    }, self.expected_score, match self.perspective_player {
-      Player::White => "W",
-      Player::Black => "B",
-    })
+    write!(
+      f,
+      "{}{:.3}{}\x1b[0m",
+      match self.perspective_player {
+        Player::White => "\x1b[91m",
+        Player::Black => "\x1b[92m",
+      },
+      self.expected_score,
+      match self.perspective_player {
+        Player::White => "W",
+        Player::Black => "B",
+      }
+    )
   }
 }
 
@@ -131,9 +137,9 @@ pub fn featurize_state<T: From<u8>>(state: &State, array: &mut [T; FEATURES_SIZE
 #[derive(Clone)]
 pub struct ModelOutputs {
   // policy[64 * from + to] is a probability 0 to 1.
-  pub policy:               Box<[f32; POLICY_LEN]>,
+  pub policy: Box<[f32; POLICY_LEN]>,
   // value is a valuation for the current player from -1 to +1.
-  pub value:                Evaluation,
+  pub value:  Evaluation,
 }
 
 impl ModelOutputs {
@@ -270,8 +276,8 @@ impl<'a, Cookie> InferenceResults<'a, Cookie> {
     //println!("Value: {}", self.values[index]);
     debug_assert!(-1.0 <= self.values[index] && self.values[index] <= 1.0);
     ModelOutputs {
-      policy:               make_perspective_policy(self.players[index], self.policies[index]),
-      value:                Evaluation {
+      policy: make_perspective_policy(self.players[index], self.policies[index]),
+      value:  Evaluation {
         expected_score:     (self.values[index] + 1.0) / 2.0,
         perspective_player: self.players[index],
       },

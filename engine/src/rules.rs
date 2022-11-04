@@ -2,6 +2,8 @@ include!(concat!(env!("OUT_DIR"), "/tables.rs"));
 
 use serde::{ser::SerializeSeq, Deserialize, Serialize};
 
+pub const IS_DUCK_CHESS: bool = false;
+
 pub const MOVE_HISTORY_LEN: usize = 4;
 
 #[rustfmt::skip]
@@ -698,8 +700,11 @@ impl State {
     self.rooks[self.turn as usize].0 |= new_rooks;
     self.queens[self.turn as usize].0 |= new_queens;
 
-    self.turn = self.turn.other_player();
-    //self.is_duck_move = true;
+    if IS_DUCK_CHESS {
+      self.is_duck_move = true;
+    } else {
+      self.turn = self.turn.other_player();
+    }
     Ok(())
   }
 

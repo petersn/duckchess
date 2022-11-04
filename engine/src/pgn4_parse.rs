@@ -1,17 +1,16 @@
 /// Parses chess.com's flavor of pgn4 used for encoding duck chess games.
-
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Move {
   pub from: u16,
-  pub to: u16,
+  pub to:   u16,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Pgn4 {
   pub headers: HashMap<String, String>,
-  pub moves: Vec<Move>,
+  pub moves:   Vec<Move>,
 }
 
 #[derive(Debug)]
@@ -108,7 +107,7 @@ pub fn parse(mut s: &str) -> Result<Pgn4, String> {
           return Err("Badly placed move number".to_string());
         }
         i += 2;
-        continue
+        continue;
       }
       // Parse a double dot.
       (Token::DotDot, _) => {
@@ -150,7 +149,7 @@ pub fn parse(mut s: &str) -> Result<Pgn4, String> {
       () => {{
         optional_char!('K', 'Q', 'R', 'B', 'N');
         match (&tokens[i], &tokens[i + 1]) {
-          (Token::Other(file@'d'..='k'), Token::Number(rank@4..=11)) => {
+          (Token::Other(file @ 'd'..='k'), Token::Number(rank @ 4..=11)) => {
             let file = *file as u8 - b'd';
             let rank = *rank as u8 - 4;
             i += 2;
@@ -158,7 +157,7 @@ pub fn parse(mut s: &str) -> Result<Pgn4, String> {
           }
           _ => return Err("Expected square".to_string()),
         }
-      }}
+      }};
     }
 
     // We now try to parse one ply.
@@ -169,7 +168,7 @@ pub fn parse(mut s: &str) -> Result<Pgn4, String> {
     //println!("{:?}-{:?}", departure_square, arrival_square);
     moves.push(Move {
       from: to_index(departure_square),
-      to: to_index(arrival_square),
+      to:   to_index(arrival_square),
     });
     // Now we must have a duck move.
     expect_one_of!('Θ');
@@ -184,7 +183,7 @@ pub fn parse(mut s: &str) -> Result<Pgn4, String> {
     let departure_square = departure_square.unwrap_or(arrival_square);
     moves.push(Move {
       from: to_index(departure_square),
-      to: to_index(arrival_square),
+      to:   to_index(arrival_square),
     });
   }
 

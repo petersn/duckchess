@@ -19,35 +19,35 @@ fn main() {
   }
   inference!();
 
-//  // e4
-//  mcts.apply_move(Move { from: 12, to: 28 });
-//  inference!();
-//  mcts.apply_move(Move { from: 16, to: 16 });
-//  inference!();
-//
-//  // a5
-//  mcts.apply_move(Move { from: 48, to: 40 });
-//  inference!();
-//  mcts.apply_move(Move { from: 16, to: 17 });
-//  inference!();
-//
-//  // Qf3
-//  mcts.apply_move(Move { from: 3, to: 21 });
-//  inference!();
-//  mcts.apply_move(Move { from: 17, to: 16 });
-//  inference!();
-//
-//  // a4
-//  mcts.apply_move(Move { from: 40, to: 32 });
-//  inference!();
-//  mcts.apply_move(Move { from: 16, to: 17 });
-//  inference!();
-//
-//  // Qxf7??
-//  mcts.apply_move(Move { from: 21, to: 53 });
-//  inference!();
-//  mcts.apply_move(Move { from: 17, to: 16 });
-//  inference!();
+  //  // e4
+  //  mcts.apply_move(Move { from: 12, to: 28 });
+  //  inference!();
+  //  mcts.apply_move(Move { from: 16, to: 16 });
+  //  inference!();
+  //
+  //  // a5
+  //  mcts.apply_move(Move { from: 48, to: 40 });
+  //  inference!();
+  //  mcts.apply_move(Move { from: 16, to: 17 });
+  //  inference!();
+  //
+  //  // Qf3
+  //  mcts.apply_move(Move { from: 3, to: 21 });
+  //  inference!();
+  //  mcts.apply_move(Move { from: 17, to: 16 });
+  //  inference!();
+  //
+  //  // a4
+  //  mcts.apply_move(Move { from: 40, to: 32 });
+  //  inference!();
+  //  mcts.apply_move(Move { from: 16, to: 17 });
+  //  inference!();
+  //
+  //  // Qxf7??
+  //  mcts.apply_move(Move { from: 21, to: 53 });
+  //  inference!();
+  //  mcts.apply_move(Move { from: 17, to: 16 });
+  //  inference!();
 
   //let s = r#"{"pawns": [[0, 0, 0, 0, 32, 64, 23, 0], [0, 119, 0, 72, 0, 0, 0, 0]], "knights": [[0, 0, 0, 0, 0, 2, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0]], "bishops": [[0, 0, 0, 0, 0, 0, 0, 4], [32, 0, 0, 0, 0, 0, 0, 0]], "rooks": [[0, 0, 0, 0, 0, 0, 0, 1], [1, 0, 0, 0, 0, 0, 0, 128]], "queens": [[0, 0, 0, 0, 0, 0, 0, 8], [8, 0, 0, 0, 0, 0, 0, 0]], "kings": [[0, 0, 0, 0, 0, 0, 0, 16], [16, 0, 0, 0, 0, 0, 0, 0]], "ducks": [0, 0, 0, 0, 0, 0, 0, 0], "enPassant": [0, 0, 0, 0, 0, 0, 0, 0], "castlingRights": [{"kingSide": false, "queenSide": true}, {"kingSide": false, "queenSide": true}], "turn": "black", "isDuckMove": false, "moveHistory": [{"from": 47, "to": 63}, {"from": 53, "to": 37}, {"from": 7, "to": 47}, {"from": 63, "to": 47}]}"#;
   //let state: engine::rules::State = serde_json::from_str(s).unwrap();
@@ -77,13 +77,8 @@ fn main() {
   // Print out the posterior probabilities of the root node.
   let root_node = &mcts.nodes[mcts.root];
   for m in &root_node.moves {
-    println!(
-      "  {} -> {:?}",
-      m,
-      root_node.posterior(*m),
-    );
+    println!("  {} -> {:?}", m, root_node.posterior(*m),);
   }
-
 
   // //mcts.print_tree();
   // for _ in 0..10 {

@@ -50,7 +50,10 @@ async fn main() {
   let output_file: &'static _ = Box::leak(Box::new(Mutex::new(
     std::fs::File::create(output_path).unwrap(),
   )));
-  println!("Starting up with batch size: {}", TensorFlowEngine::<()>::DESIRED_BATCH_SIZE);
+  println!(
+    "Starting up with batch size: {}",
+    TensorFlowEngine::<()>::DESIRED_BATCH_SIZE
+  );
 
   let (tx_channels, mut rx_channels): (Vec<_>, Vec<_>) = (0..4
     * TensorFlowEngine::<()>::DESIRED_BATCH_SIZE)

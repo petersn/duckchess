@@ -4,7 +4,11 @@ use std::collections::VecDeque;
 use wasm_bindgen::prelude::*;
 
 use crate::inference::{InferenceResults, InputBlock, FEATURES_SIZE, POLICY_LEN};
-use crate::{inference, mcts, rules::{Player, State}, web};
+use crate::{
+  inference, mcts,
+  rules::{Player, State},
+  web,
+};
 
 pub const MAX_BATCH_SIZE: usize = 16;
 

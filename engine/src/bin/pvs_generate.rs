@@ -8,9 +8,15 @@ use rand::seq::SliceRandom;
 struct Args {
   #[arg(short, long)]
   output_dir: String,
+
+  #[arg(short, long)]
+  depth: u16,
+
+  #[arg(short, long)]
+  threads: u32,
 }
 
-fn work(output_dir: &str) {
+fn work(depth: u16, output_dir: &str) {
   // Open a file for writing
   let output_path = format!(
     "{}/games-pvs-{:016x}.json",
@@ -23,14 +29,18 @@ fn work(output_dir: &str) {
     let mut moves = vec![];
     let mut was_rand = vec![];
     let mut engine = engine::search::Engine::new(rand::random());
-    for move_index in 0..300 {
+    let start_time = std::time::Instant::now();
+    //for move_index in 0..300 {
+    for move_index in 0..20 { // FIXME: Fixing for testing.
       let r: f32 = rand::random();
       let random_move = move_index == 0 || if move_index < 6 { r < 0.5 } else { r < 0.01 };
+      let random_move = false; // FIXME: Disabling for determinism.
       let p = match random_move {
         true => engine.get_moves().choose(&mut rng).map(|x| *x),
-        false => engine.run(4).1 .0,
+        false => engine.run(depth).1 .0,
       };
       if let Some(m) = p {
+        println!("{}: {}", move_index, m);
         was_rand.push(random_move);
         moves.push(m);
         engine.apply_move(m).unwrap();
@@ -38,6 +48,7 @@ fn work(output_dir: &str) {
         break;
       }
     }
+    println!("Elapsed: {:.3}s", start_time.elapsed().as_secs_f32());
     let outcome = engine.get_outcome().map(|o| o.to_str());
     println!(
       "Game generated: moves={} outcome={:?}",
@@ -48,6 +59,8 @@ fn work(output_dir: &str) {
       "outcome": outcome,
       "moves": moves,
       "was_rand": was_rand,
+      "depth": depth,
+      "is_duck_chess": engine::rules::IS_DUCK_CHESS,
       "version": "pvs-1",
     });
     let s = serde_json::to_string(&obj).unwrap();
@@ -60,12 +73,12 @@ fn work(output_dir: &str) {
 fn main() {
   let args = Args::parse();
   let output_dir: &'static str = Box::leak(String::into_boxed_str(args.output_dir));
-  println!("Writing to {}", output_dir);
+  println!("Writing games of depth {} to {}", args.depth, output_dir);
 
   // Launch workers for every thread.
   let mut workers = vec![];
-  for _ in 0..(num_cpus::get() - 3) {
-    workers.push(std::thread::spawn(move || work(output_dir)));
+  for _ in 0..args.threads {
+    workers.push(std::thread::spawn(move || work(args.depth, output_dir)));
   }
   // Wait for all workers to finish.
   for w in workers {
