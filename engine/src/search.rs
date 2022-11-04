@@ -259,7 +259,6 @@ impl Engine {
     mut alpha: Evaluation,
     beta: Evaluation,
   ) -> (Evaluation, (Option<Move>, Option<Move>)) {
-    println!("  -- pvs  depth: {}", depth);
     // Evaluate the nnue to get a score and 
     nnue.evaluate(state);
     let nnue_evaluation = nnue.value;
@@ -344,11 +343,8 @@ impl Engine {
     for m in moves {
       self.nodes_searched += 1;
       let mut new_state = state.clone();
-      let orig_debugging_hash = nnue.get_debugging_hash();
-      println!("About to apply move: {:016x}", orig_debugging_hash);
-      let undo_cookie = new_state.apply_move::<true>(m, Some(nnue)).unwrap();
       let debugging_hash = nnue.get_debugging_hash();
-      println!("Just applied move: {:016x}", debugging_hash);
+      let undo_cookie = new_state.apply_move::<true>(m, Some(nnue)).unwrap();
       //nnue.undo(undo_cookie);
       //let debugging_hash = nnue.get_debugging_hash();
       //println!("Undo debugging hash: {:016x}", debugging_hash);
@@ -384,13 +380,8 @@ impl Engine {
         }
       }
 
-      let debugging_hash = nnue.get_debugging_hash();
-      println!("Just got back: {:016x}", debugging_hash);
-      println!("  Cookie: {:?}", undo_cookie);
       nnue.undo(undo_cookie);
-      let changed_debugging_hash = nnue.get_debugging_hash();
-      println!("After undo: {:016x}", changed_debugging_hash);
-      assert_eq!(orig_debugging_hash, nnue.get_debugging_hash());
+      assert_eq!(debugging_hash, nnue.get_debugging_hash());
       //if state.is_duck_move {
       //  let eval = nnue.evaluate().expected_score;
       //  self.total_eval += eval;

@@ -638,8 +638,8 @@ impl State {
     .into_iter()
     .enumerate()
     {
-      let our_nnue_layer = 2 * piece_layer_number + self.turn as usize;
-      let their_nnue_layer = 2 * piece_layer_number + self.turn.other_player() as usize;
+      let our_nnue_layer = piece_layer_number + 6 * self.turn as usize;
+      let their_nnue_layer = piece_layer_number + 6 * self.turn.other_player() as usize;
 
       let (a, b) = piece_array.split_at_mut(1);
       let (us, them) = match self.turn {

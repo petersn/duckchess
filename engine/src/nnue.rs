@@ -16,7 +16,7 @@ use crate::{
   },
 };
 
-const LINEAR_STATE_SIZE: usize = 48;
+const LINEAR_STATE_SIZE: usize = 64;
 
 // 6 layers for our pieces, 6 for theirs, 1 for the duck.
 pub const DUCK_LAYER: usize = 12;
@@ -61,7 +61,7 @@ impl Nnue {
       .into_iter()
       .enumerate()
       {
-        let layer_number = 2 * piece_layer_number + turn as usize;
+        let layer_number = piece_layer_number + 6 * turn as usize;
         let mut bitboard = piece_array[turn as usize].0;
         // Get all of the pieces.
         while let Some(pos) = crate::rules::iter_bits(&mut bitboard) {
@@ -69,6 +69,9 @@ impl Nnue {
         }
       }
     } 
+    // We should now have all of the pieces in place.
+    println!("Linear state: {:?}", this.linear_state);
+    panic!();
     this
   }
 
@@ -80,40 +83,27 @@ impl Nnue {
   }
 
   pub fn add_layer(&mut self, layer: u16) {
-    println!("\x1b[91madding layer\x1b[0m {}", layer);
     for (i, weight) in PARAMS_MAIN_EMBED_WEIGHT[layer as usize].iter().enumerate() {
-      let old = self.linear_state[i];
       self.linear_state[i] += weight;
-      if i < 2 {
-        println!("a[{}] ({}) += {} -> {}", i, old, weight, self.linear_state[i]);
-      }
     }
   }
 
   pub fn sub_layer(&mut self, layer: u16) {
-    println!("\x1b[91msubbing layer\x1b[0m {}", layer);
     for (i, weight) in PARAMS_MAIN_EMBED_WEIGHT[layer as usize].iter().enumerate() {
-      let old = self.linear_state[i];
       self.linear_state[i] -= weight;
-      if i < 2 {
-        println!("a[{}] ({}) -= {} -> {}", i, old, weight, self.linear_state[i]);
-      }
     }
   }
 
   pub fn sub_add_layers(&mut self, from: u16, to: u16) {
-    self.sub_layer(from);
-    self.add_layer(to);
-    //for (i, weight) in PARAMS_MAIN_EMBED_WEIGHT[from as usize].iter().enumerate() {
-    //  self.linear_state[i] -= weight;
-    //}
-    //for (i, weight) in PARAMS_MAIN_EMBED_WEIGHT[to as usize].iter().enumerate() {
-    //  self.linear_state[i] += weight;
-    //}
+    for (i, weight) in PARAMS_MAIN_EMBED_WEIGHT[from as usize].iter().enumerate() {
+      self.linear_state[i] -= weight;
+    }
+    for (i, weight) in PARAMS_MAIN_EMBED_WEIGHT[to as usize].iter().enumerate() {
+      self.linear_state[i] += weight;
+    }
   }
 
   pub fn undo(&mut self, cookie: UndoCookie) {
-    println!("... undo...");
     for sub in cookie.sub_layers {
       if sub != u16::MAX {
         // Add because we're undoing a past sub.
@@ -126,7 +116,6 @@ impl Nnue {
         self.sub_layer(add);
       }
     }
-    println!("... done undo");
   }
 
   pub fn evaluate(&mut self, state: &State) {
@@ -165,6 +154,6 @@ impl Nnue {
       self.outputs[i] = sum;
     }
     // Rescale the value output as an integer.
-    self.value = (self.outputs[64] * 100.0) as i32;
+    self.value = (self.outputs[64].tanh() * 1000.0) as i32;
   }
 }
