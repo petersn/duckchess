@@ -589,12 +589,18 @@ impl State {
     // Handle duck moves.
     if self.is_duck_move {
       if self.ducks.0 & from_mask != 0 || (self.ducks.0 == 0 && m.from == m.to) {
+        let extant_duck = self.ducks.0 != 0;
         self.ducks.0 &= !from_mask;
         self.ducks.0 |= to_mask;
         if NNUE {
-          undo_cookie.sub_layers[0] = 64 * DUCK_LAYER as u16 + m.from as u16;
+          assert_eq!(undo_cookie.sub_layers[0], u16::MAX);
+          assert_eq!(undo_cookie.add_layers[0], u16::MAX);
+          if extant_duck {
+            undo_cookie.sub_layers[0] = 64 * DUCK_LAYER as u16 + m.from as u16;
+            nnue.sub_layer(undo_cookie.sub_layers[0]);
+          }
           undo_cookie.add_layers[0] = 64 * DUCK_LAYER as u16 + m.to as u16;
-          nnue.sub_add_layers(undo_cookie.sub_layers[0], undo_cookie.add_layers[0]);
+          nnue.add_layer(undo_cookie.add_layers[0]);
         }
         self.is_duck_move = false;
         self.turn = self.turn.other_player();
@@ -643,6 +649,7 @@ impl State {
       // Capture pieces on the target square.
       them.0 &= !to_mask;
       if NNUE && them.0 & to_mask != 0 {
+        assert_eq!(undo_cookie.sub_layers[1], u16::MAX);
         undo_cookie.sub_layers[1] = 64 * their_nnue_layer as u16 + m.to as u16;
         nnue.sub_layer(undo_cookie.sub_layers[1]);
       }
@@ -653,6 +660,8 @@ impl State {
         us.0 &= !from_mask;
         us.0 |= to_mask;
         if NNUE {
+          assert_eq!(undo_cookie.sub_layers[0], u16::MAX);
+          assert_eq!(undo_cookie.add_layers[0], u16::MAX);
           undo_cookie.sub_layers[0] = 64 * our_nnue_layer as u16 + m.from as u16;
           undo_cookie.add_layers[0] = 64 * our_nnue_layer as u16 + m.to as u16;
           nnue.sub_add_layers(undo_cookie.sub_layers[0], undo_cookie.add_layers[0]);
@@ -666,6 +675,7 @@ impl State {
                 Player::White => {
                   them.0 &= !(1 << (m.to - 8));
                   if NNUE {
+                    assert_eq!(undo_cookie.sub_layers[1], u16::MAX);
                     undo_cookie.sub_layers[1] = 64 * their_nnue_layer as u16 + (m.to - 8) as u16;
                     nnue.sub_layer(undo_cookie.sub_layers[1]);
                   }
@@ -673,6 +683,7 @@ impl State {
                 Player::Black => {
                   them.0 &= !(1 << (m.to + 8));
                   if NNUE {
+                    assert_eq!(undo_cookie.sub_layers[1], u16::MAX);
                     undo_cookie.sub_layers[1] = 64 * their_nnue_layer as u16 + (m.to + 8) as u16;
                     nnue.sub_layer(undo_cookie.sub_layers[1]);
                   }
@@ -697,6 +708,8 @@ impl State {
             new_queens = promotion_mask;
             if NNUE {
               let our_queen_layer = 2 * 4 + self.turn as usize;
+              assert_eq!(undo_cookie.sub_layers[1], u16::MAX);
+              assert_eq!(undo_cookie.add_layers[1], u16::MAX);
               undo_cookie.sub_layers[1] = 64 * our_nnue_layer as u16 + m.to as u16;
               undo_cookie.add_layers[1] = 64 * our_queen_layer as u16 + m.to as u16;
               nnue.sub_add_layers(undo_cookie.sub_layers[1], undo_cookie.add_layers[1]);
@@ -729,6 +742,8 @@ impl State {
               new_rooks = 1 << rook_to;
               if NNUE {
                 let our_rook_layer = 2 * 3 + self.turn as usize;
+                assert_eq!(undo_cookie.sub_layers[1], u16::MAX);
+                assert_eq!(undo_cookie.add_layers[1], u16::MAX);
                 undo_cookie.sub_layers[1] = 64 * our_rook_layer as u16 + rook_from as u16;
                 undo_cookie.add_layers[1] = 64 * our_rook_layer as u16 + rook_to as u16;
                 nnue.sub_add_layers(undo_cookie.sub_layers[1], undo_cookie.add_layers[1]);

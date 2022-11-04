@@ -107,6 +107,7 @@ const KING_ENDGAME_PST: [Evaluation; 64] = [
 ];
 
 pub fn evaluate_state(state: &State) -> Evaluation {
+  unimplemented!("this is being phased out");
   let mut score = 0;
   // endgame factor is 0 for middlegame, 1 for endgame
   let endgame_factor = 1.0
@@ -183,7 +184,6 @@ pub struct Engine {
   pub total_eval:   f32,
   rng:              Rng,
   state:            State,
-  nnue:             Nnue,
   move_order_table: HashMap<u64, Move>,
   killer_moves:     [Option<Move>; 100],
 }
@@ -197,7 +197,6 @@ impl Engine {
       total_eval: 0.0,
       rng: Rng::new(seed),
       state,
-      nnue,
       move_order_table: HashMap::new(),
       killer_moves: [None; 100],
     }
@@ -216,7 +215,7 @@ impl Engine {
   }
 
   pub fn apply_move(&mut self, m: Move) -> Result<UndoCookie, &'static str> {
-    self.state.apply_move::<true>(m, Some(&mut self.nnue))
+    self.state.apply_move::<false>(m, None)
   }
 
   pub fn get_moves(&self) -> Vec<Move> {
@@ -260,11 +259,16 @@ impl Engine {
     mut alpha: Evaluation,
     beta: Evaluation,
   ) -> (Evaluation, (Option<Move>, Option<Move>)) {
+    println!("  -- pvs  depth: {}", depth);
+    // Evaluate the nnue to get a score and 
+    nnue.evaluate(state);
+    let nnue_evaluation = nnue.value;
+
     let game_over = state.get_outcome().is_some();
     let random_bonus = (self.rng.next_random() & 0xf) as Evaluation;
-    match (game_over, depth, QUIESCENCE) {
-      (true, _, _) => return (evaluate_state(state) + random_bonus, (None, None)),
-      (_, 0, true) => return (evaluate_state(state) + random_bonus, (None, None)),
+    match (game_over, depth, true) {//QUIESCENCE) {
+      (true, _, _) => return (nnue_evaluation + random_bonus, (None, None)),
+      (_, 0, true) => return (nnue_evaluation + random_bonus, (None, None)),
       (_, 0, false) => {
         return make_terminal_scores_much_less_extreme(self.pvs::<true>(
           QUIESCENCE_DEPTH,
@@ -282,7 +286,7 @@ impl Engine {
 
     // If we're in a quiescence search and have quiesced, then return.
     if QUIESCENCE && moves.is_empty() {
-      return (evaluate_state(state) + random_bonus, (None, None));
+      return (nnue_evaluation + random_bonus, (None, None));
     }
     assert!(!moves.is_empty());
 
@@ -298,29 +302,28 @@ impl Engine {
       true => None,
     };
 
-    if mot_move.is_some() || killer_move.is_some() {
-      moves.sort_by(|a, b| {
-        let mut a_score = 0;
-        let mut b_score = 0;
-        if let Some(mot_move) = mot_move {
-          if a == mot_move {
-            a_score += 1;
-          }
-          if b == mot_move {
-            b_score += 1;
-          }
+    //if mot_move.is_some() || killer_move.is_some() {
+    moves.sort_by(|a, b| {
+      let mut a_score = (100.0 * nnue.outputs[a.to as usize]) as i32;
+      let mut b_score = (100.0 * nnue.outputs[b.to as usize]) as i32;
+      if let Some(mot_move) = mot_move {
+        if a == mot_move {
+          a_score += 10_000;
         }
-        if let Some(killer_move) = killer_move {
-          if *a == killer_move {
-            a_score += 1;
-          }
-          if *b == killer_move {
-            b_score += 1;
-          }
+        if b == mot_move {
+          b_score += 10_000;
         }
-        b_score.cmp(&a_score)
-      });
-    }
+      }
+      if let Some(killer_move) = killer_move {
+        if *a == killer_move {
+          a_score += 10_000;
+        }
+        if *b == killer_move {
+          b_score += 10_000;
+        }
+      }
+      b_score.cmp(&a_score)
+    });
     //moves.sort_by(|_, _| {
     //  self.next_random().cmp(&self.next_random())
     //});
@@ -331,7 +334,7 @@ impl Engine {
 
     // If we're in a QUIESCENCE search then we're allowed to pass.
     if QUIESCENCE {
-      alpha = alpha.max(evaluate_state(state) + random_bonus);
+      alpha = alpha.max(nnue_evaluation + random_bonus);
       if alpha >= beta {
         moves.clear();
       }
@@ -341,7 +344,14 @@ impl Engine {
     for m in moves {
       self.nodes_searched += 1;
       let mut new_state = state.clone();
-      let undo_cookie = new_state.apply_move::<true>(m, Some(&mut self.nnue)).unwrap();
+      let orig_debugging_hash = nnue.get_debugging_hash();
+      println!("About to apply move: {:016x}", orig_debugging_hash);
+      let undo_cookie = new_state.apply_move::<true>(m, Some(nnue)).unwrap();
+      let debugging_hash = nnue.get_debugging_hash();
+      println!("Just applied move: {:016x}", debugging_hash);
+      //nnue.undo(undo_cookie);
+      //let debugging_hash = nnue.get_debugging_hash();
+      //println!("Undo debugging hash: {:016x}", debugging_hash);
 
       let mut score;
       let mut next_pair;
@@ -374,11 +384,17 @@ impl Engine {
         }
       }
 
+      let debugging_hash = nnue.get_debugging_hash();
+      println!("Just got back: {:016x}", debugging_hash);
+      println!("  Cookie: {:?}", undo_cookie);
       nnue.undo(undo_cookie);
-      if state.is_duck_move {
-        let eval = nnue.evaluate().expected_score;
-        self.total_eval += eval;
-      }
+      let changed_debugging_hash = nnue.get_debugging_hash();
+      println!("After undo: {:016x}", changed_debugging_hash);
+      assert_eq!(orig_debugging_hash, nnue.get_debugging_hash());
+      //if state.is_duck_move {
+      //  let eval = nnue.evaluate().expected_score;
+      //  self.total_eval += eval;
+      //}
 
       // TODO: For some reason adding the random bonus in here makes play awful??
       let comparison_score = score; // + random_bonus;

@@ -1,26 +1,27 @@
+use std::collections::hash_map::DefaultHasher;
+
 use crate::{
   inference::Evaluation,
-  rules::{Move, State},
+  rules::{Move, State, Player, GameOutcome}, nnue_data::{
+    INTEGER_SCALE,
+    PARAMS_MAIN_EMBED_WEIGHT,
+    PARAMS_WHITE_MAIN_WEIGHT,
+    PARAMS_WHITE_MAIN_BIAS,
+    PARAMS_WHITE_DUCK_WEIGHT,
+    PARAMS_WHITE_DUCK_BIAS,
+    PARAMS_BLACK_MAIN_WEIGHT,
+    PARAMS_BLACK_MAIN_BIAS,
+    PARAMS_BLACK_DUCK_WEIGHT,
+    PARAMS_BLACK_DUCK_BIAS,
+  },
 };
 
-// 6 layes for our pieces, 6 for theirs, 1 for the duck.
-const LINEAR_STATE_SIZE: usize = 32;
-const SIZE1: usize = 64;
-const SIZE2: usize = 1;
-const SIZE3: usize = 64;
+const LINEAR_STATE_SIZE: usize = 48;
 
-const LAYER0_WEIGHT: &'static [[i32; LINEAR_STATE_SIZE]] = &[[0; LINEAR_STATE_SIZE]; 13 * 64];
-const LAYER0_BIASES: &'static [f32; LINEAR_STATE_SIZE] = &[0.4; LINEAR_STATE_SIZE];
-
-const LAYER_WEIGHTS1: &'static [[f32; SIZE1]; LINEAR_STATE_SIZE] = &[[0.3; SIZE1]; LINEAR_STATE_SIZE];
-const LAYER_BIASES1: &'static [f32; SIZE1] = &[0.3; SIZE1];
-const LAYER_WEIGHTS2: &'static [[f32; SIZE2]; SIZE1] = &[[0.3; SIZE2]; SIZE1];
-const LAYER_BIASES2: &'static [f32; SIZE2] = &[0.3; SIZE2];
-const LAYER_WEIGHTS3: &'static [[f32; SIZE3]; SIZE2] = &[[0.3; SIZE3]; SIZE2];
-const LAYER_BIASES3: &'static [f32; SIZE3] = &[0.3; SIZE3];
-
+// 6 layers for our pieces, 6 for theirs, 1 for the duck.
 pub const DUCK_LAYER: usize = 12;
 
+#[derive(Debug)]
 pub struct UndoCookie {
   pub sub_layers: [u16; 2],
   pub add_layers: [u16; 2],
@@ -36,40 +37,83 @@ impl UndoCookie {
 }
 
 pub struct Nnue {
-  linear_state: [i32; LINEAR_STATE_SIZE],
+  pub linear_state: [i32; LINEAR_STATE_SIZE],
+  pub outputs:      [f32; 64 + 1],
+  pub value:        i32,
 }
 
 impl Nnue {
   pub fn new(state: &State) -> Self {
     let mut this = Self {
       linear_state: [0; LINEAR_STATE_SIZE],
+      outputs:      [0.0; 64 + 1],
+      value:        0,
     };
-
+    for turn in [Player::Black, Player::White] {
+      for (piece_layer_number, piece_array) in [
+        &state.pawns,
+        &state.knights,
+        &state.bishops,
+        &state.rooks,
+        &state.queens,
+        &state.kings,
+      ]
+      .into_iter()
+      .enumerate()
+      {
+        let layer_number = 2 * piece_layer_number + turn as usize;
+        let mut bitboard = piece_array[turn as usize].0;
+        // Get all of the pieces.
+        while let Some(pos) = crate::rules::iter_bits(&mut bitboard) {
+          this.add_layer((64 * layer_number + pos as usize) as u16);
+        }
+      }
+    } 
     this
   }
 
+  pub fn get_debugging_hash(&self) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    self.linear_state.hash(&mut hasher);
+    hasher.finish()
+  }
+
   pub fn add_layer(&mut self, layer: u16) {
-    for (i, weight) in LAYER0_WEIGHT[layer as usize].iter().enumerate() {
+    println!("\x1b[91madding layer\x1b[0m {}", layer);
+    for (i, weight) in PARAMS_MAIN_EMBED_WEIGHT[layer as usize].iter().enumerate() {
+      let old = self.linear_state[i];
       self.linear_state[i] += weight;
+      if i < 2 {
+        println!("a[{}] ({}) += {} -> {}", i, old, weight, self.linear_state[i]);
+      }
     }
   }
 
   pub fn sub_layer(&mut self, layer: u16) {
-    for (i, weight) in LAYER0_WEIGHT[layer as usize].iter().enumerate() {
+    println!("\x1b[91msubbing layer\x1b[0m {}", layer);
+    for (i, weight) in PARAMS_MAIN_EMBED_WEIGHT[layer as usize].iter().enumerate() {
+      let old = self.linear_state[i];
       self.linear_state[i] -= weight;
+      if i < 2 {
+        println!("a[{}] ({}) -= {} -> {}", i, old, weight, self.linear_state[i]);
+      }
     }
   }
 
   pub fn sub_add_layers(&mut self, from: u16, to: u16) {
-    for (i, weight) in LAYER0_WEIGHT[from as usize].iter().enumerate() {
-      self.linear_state[i] -= weight;
-    }
-    for (i, weight) in LAYER0_WEIGHT[to as usize].iter().enumerate() {
-      self.linear_state[i] += weight;
-    }
+    self.sub_layer(from);
+    self.add_layer(to);
+    //for (i, weight) in PARAMS_MAIN_EMBED_WEIGHT[from as usize].iter().enumerate() {
+    //  self.linear_state[i] -= weight;
+    //}
+    //for (i, weight) in PARAMS_MAIN_EMBED_WEIGHT[to as usize].iter().enumerate() {
+    //  self.linear_state[i] += weight;
+    //}
   }
 
   pub fn undo(&mut self, cookie: UndoCookie) {
+    println!("... undo...");
     for sub in cookie.sub_layers {
       if sub != u16::MAX {
         // Add because we're undoing a past sub.
@@ -82,46 +126,45 @@ impl Nnue {
         self.sub_layer(add);
       }
     }
+    println!("... done undo");
   }
 
-  pub fn evaluate(&self) -> Evaluation {
-    // Add layer0 bias and apply relu.
-    let mut linear_scratch = *LAYER0_BIASES;
+  pub fn evaluate(&mut self, state: &State) {
+    // First, check if the state is terminal.
+    match state.get_outcome() {
+      Some(GameOutcome::Draw) => {
+        self.value = 0;
+        return;
+      },
+      Some(GameOutcome::Win(winner)) => {
+        self.value = match winner == state.turn {
+          true => 1_000_000_000,
+          false => -1_000_000_000,
+        };
+        return;
+      },
+      None => {},
+    }
+    let (mat, bias) = match (state.turn, state.is_duck_move) {
+      (Player::White, false) => (PARAMS_WHITE_MAIN_WEIGHT, PARAMS_WHITE_MAIN_BIAS),
+      (Player::White, true) => (PARAMS_WHITE_DUCK_WEIGHT, PARAMS_WHITE_DUCK_BIAS),
+      (Player::Black, false) => (PARAMS_BLACK_MAIN_WEIGHT, PARAMS_BLACK_MAIN_BIAS),
+      (Player::Black, true) => (PARAMS_BLACK_DUCK_WEIGHT, PARAMS_BLACK_DUCK_BIAS),
+    };
+    // Rescale and ReLU the linear state.
+    let mut scratch = [0.0; LINEAR_STATE_SIZE];
     for i in 0..LINEAR_STATE_SIZE {
-      linear_scratch[i] = (self.linear_state[i] as f32).max(0.0);
+      scratch[i] = self.linear_state[i].max(0) as f32 / INTEGER_SCALE;
     }
-    // Apply layer1 mat mul, bias, and relu.
-    let mut layer1_scratch = *LAYER_BIASES1;
-    let mut sum = 0.0;
-    for i in 0..SIZE1 {
+    // Compute the final output.
+    for i in 0..65 {
+      let mut sum = bias[i];
       for j in 0..LINEAR_STATE_SIZE {
-        layer1_scratch[i] += linear_scratch[j] * LAYER_WEIGHTS1[j][i];
+        sum += mat[j][i] * scratch[j];
       }
-      layer1_scratch[i] = layer1_scratch[i].max(0.0);
-      sum += layer1_scratch[i];
+      self.outputs[i] = sum;
     }
-    //// Apply layer2 mat mul, bias, and relu.
-    //let mut layer2_scratch = *LAYER_BIASES2;
-    //for i in 0..SIZE2 {
-    //  for j in 0..SIZE1 {
-    //    layer2_scratch[i] += layer1_scratch[j] * LAYER_WEIGHTS2[j][i];
-    //  }
-    //  layer2_scratch[i] = layer2_scratch[i].max(0.0);
-    //}
-    //// Apply layer3 mat mul, bias, and relu.
-    //let mut layer3_scratch = *LAYER_BIASES3;
-    //for i in 0..SIZE3 {
-    //  for j in 0..SIZE2 {
-    //    layer3_scratch[i] += layer2_scratch[j] * LAYER_WEIGHTS3[j][i];
-    //  }
-    //  layer3_scratch[i] = layer3_scratch[i].max(0.0);
-    //}
-
-    // Return the evaluation.
-    Evaluation {
-      //expected_score: layer1_scratch[0],
-      expected_score: sum,
-      perspective_player: crate::rules::Player::White,
-    }
+    // Rescale the value output as an integer.
+    self.value = (self.outputs[64] * 100.0) as i32;
   }
 }

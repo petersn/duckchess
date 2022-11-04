@@ -1,6 +1,7 @@
 pub mod inference;
 pub mod mcts;
 pub mod nnue;
+pub mod nnue_data;
 pub mod pgn4_parse;
 pub mod rng;
 pub mod rules;
