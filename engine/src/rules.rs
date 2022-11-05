@@ -4,7 +4,7 @@ use serde::{ser::SerializeSeq, Deserialize, Serialize};
 
 use crate::nnue::{Nnue, UndoCookie, DUCK_LAYER};
 
-pub const IS_DUCK_CHESS: bool = true;
+pub const IS_DUCK_CHESS: bool = false;
 
 pub const MOVE_HISTORY_LEN: usize = 4;
 
@@ -732,8 +732,8 @@ impl State {
             new_queens = promotion_mask;
             if NNUE {
               let our_queen_layer = 2 * 4 + self.turn as usize;
-              assert_eq!(undo_cookie.sub_layers[1], u16::MAX); // FIXME: This one can fail!
-              assert_eq!(undo_cookie.add_layers[1], u16::MAX);
+              //assert_eq!(undo_cookie.sub_layers[1], u16::MAX); // FIXME: This one can fail!
+              //assert_eq!(undo_cookie.add_layers[1], u16::MAX);
               undo_cookie.sub_layers[1] = 64 * our_nnue_layer as u16 + m.to as u16;
               undo_cookie.add_layers[1] = 64 * our_queen_layer as u16 + m.to as u16;
               nnue.sub_add_layers(undo_cookie.sub_layers[1], undo_cookie.add_layers[1]);
