@@ -150,3 +150,21 @@ pub fn parse_pgn4(pgn4_str: &str) -> JsValue {
     JsValue::NULL
   })
 }
+
+#[wasm_bindgen]
+pub fn uci_to_move(uci: &str) -> JsValue {
+  let m = crate::rules::Move::from_uci(uci);
+  serde_wasm_bindgen::to_value(&m).unwrap_or_else(|e| {
+    log(&format!("Failed to parse uci: {}", e));
+    JsValue::NULL
+  })
+}
+
+#[wasm_bindgen]
+pub fn move_to_uci(m: JsValue) -> String {
+  let m: Move = serde_wasm_bindgen::from_value(m).unwrap_or_else(|e| {
+    log(&format!("Failed to deserialize move: {}", e));
+    panic!("Failed to deserialize move: {}", e);
+  });
+  m.to_uci()
+}

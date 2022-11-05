@@ -69,9 +69,6 @@ impl Nnue {
         }
       }
     } 
-    // We should now have all of the pieces in place.
-    println!("Linear state: {:?}", this.linear_state);
-    panic!();
     this
   }
 

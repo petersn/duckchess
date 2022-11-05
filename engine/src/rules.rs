@@ -123,9 +123,33 @@ impl Move {
     let to = (index % 64) as Square;
     Move { from, to }
   }
+
+  pub fn to_uci(&self) -> String {
+    let from = self.from as usize;
+    let to = self.to as usize;
+    format!(
+      "{}{}{}{}",
+      ((from % 8) as u8 + b'a') as char,
+      ((from / 8) as u8 + b'1') as char,
+      ((to % 8) as u8 + b'a') as char,
+      ((to / 8) as u8 + b'1') as char,
+    )
+  }
+
+  pub fn from_uci(uci: &str) -> Option<Self> {
+    let mut chars = uci.chars();
+    let from = chars.next()?;
+    let from = from as u8 - b'a';
+    let from = from + 8 * (chars.next()? as u8 - b'1');
+    let to = chars.next()?;
+    let to = to as u8 - b'a';
+    let to = to + 8 * (chars.next()? as u8 - b'1');
+    Some(Move { from, to })
+  }
 }
 
 // Implement Display for Move, printing as SAN, like e2e4.
+// FIXME: Repetition here with the above.
 impl std::fmt::Display for Move {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
     let from = self.from;
@@ -708,7 +732,7 @@ impl State {
             new_queens = promotion_mask;
             if NNUE {
               let our_queen_layer = 2 * 4 + self.turn as usize;
-              assert_eq!(undo_cookie.sub_layers[1], u16::MAX);
+              assert_eq!(undo_cookie.sub_layers[1], u16::MAX); // FIXME: This one can fail!
               assert_eq!(undo_cookie.add_layers[1], u16::MAX);
               undo_cookie.sub_layers[1] = 64 * our_nnue_layer as u16 + m.to as u16;
               undo_cookie.add_layers[1] = 64 * our_queen_layer as u16 + m.to as u16;

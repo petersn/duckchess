@@ -107,7 +107,6 @@ const KING_ENDGAME_PST: [Evaluation; 64] = [
 ];
 
 pub fn evaluate_state(state: &State) -> Evaluation {
-  unimplemented!("this is being phased out");
   let mut score = 0;
   // endgame factor is 0 for middlegame, 1 for endgame
   let endgame_factor = 1.0
@@ -236,7 +235,7 @@ impl Engine {
     let mut p = (0, (None, None));
     //for d in 1..=depth {
     for d in 1..=depth {
-      p = self.pvs::<false>(
+      p = self.pvs::<false, false>(
         d,
         &start_state,
         &mut nnue,
@@ -251,7 +250,7 @@ impl Engine {
     p
   }
 
-  fn pvs<const QUIESCENCE: bool>(
+  fn pvs<const QUIESCENCE: bool, const NNUE: bool>(
     &mut self,
     depth: u16,
     state: &State,
@@ -259,17 +258,26 @@ impl Engine {
     mut alpha: Evaluation,
     beta: Evaluation,
   ) -> (Evaluation, (Option<Move>, Option<Move>)) {
-    // Evaluate the nnue to get a score and 
-    nnue.evaluate(state);
-    let nnue_evaluation = nnue.value;
+    // Evaluate the nnue to get a score.
+    let nnue_evaluation = if NNUE {
+      nnue.evaluate(state);
+      nnue.value
+    } else { 0 };
+    let get_eval = || {
+      if NNUE {
+        nnue_evaluation
+      } else {
+        evaluate_state(state)
+      }
+    };
 
     let game_over = state.get_outcome().is_some();
     let random_bonus = (self.rng.next_random() & 0xf) as Evaluation;
     match (game_over, depth, true) {//QUIESCENCE) {
-      (true, _, _) => return (nnue_evaluation + random_bonus, (None, None)),
-      (_, 0, true) => return (nnue_evaluation + random_bonus, (None, None)),
+      (true, _, _) => return (get_eval() + random_bonus, (None, None)),
+      (_, 0, true) => return (get_eval() + random_bonus, (None, None)),
       (_, 0, false) => {
-        return make_terminal_scores_much_less_extreme(self.pvs::<true>(
+        return make_terminal_scores_much_less_extreme(self.pvs::<true, NNUE>(
           QUIESCENCE_DEPTH,
           state,
           nnue,
@@ -285,7 +293,7 @@ impl Engine {
 
     // If we're in a quiescence search and have quiesced, then return.
     if QUIESCENCE && moves.is_empty() {
-      return (nnue_evaluation + random_bonus, (None, None));
+      return (get_eval() + random_bonus, (None, None));
     }
     assert!(!moves.is_empty());
 
@@ -343,8 +351,11 @@ impl Engine {
     for m in moves {
       self.nodes_searched += 1;
       let mut new_state = state.clone();
-      let debugging_hash = nnue.get_debugging_hash();
-      let undo_cookie = new_state.apply_move::<true>(m, Some(nnue)).unwrap();
+      let undo_cookie = if NNUE {
+        new_state.apply_move::<true>(m, Some(nnue)).unwrap()
+      } else {
+        new_state.apply_move::<false>(m, None).unwrap()
+      };
       //nnue.undo(undo_cookie);
       //let debugging_hash = nnue.get_debugging_hash();
       //println!("Undo debugging hash: {:016x}", debugging_hash);
@@ -357,31 +368,33 @@ impl Engine {
 
       if new_state.is_duck_move {
         if first {
-          (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, alpha, beta);
+          (score, next_pair) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, alpha, beta);
         } else {
           (score, next_pair) =
-            self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, alpha, alpha + 1);
+            self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, alpha, alpha + 1);
           if alpha < score && score < beta {
-            (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, score, beta);
+            (score, next_pair) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, score, beta);
           }
         }
       } else {
         if first {
-          (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, -beta, -alpha);
+          (score, next_pair) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -beta, -alpha);
           score *= -1;
         } else {
           (score, next_pair) =
-            self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, -alpha - 1, -alpha);
+            self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -alpha - 1, -alpha);
           score *= -1;
           if alpha < score && score < beta {
-            (score, next_pair) = self.pvs::<QUIESCENCE>(depth - 1, &new_state, nnue, -beta, -score);
+            (score, next_pair) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -beta, -score);
             score *= -1;
           }
         }
       }
 
-      nnue.undo(undo_cookie);
-      assert_eq!(debugging_hash, nnue.get_debugging_hash());
+      if NNUE {
+        nnue.undo(undo_cookie);
+      }
+      //assert_eq!(debugging_hash, nnue.get_debugging_hash());
       //if state.is_duck_move {
       //  let eval = nnue.evaluate().expected_score;
       //  self.total_eval += eval;
