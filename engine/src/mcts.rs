@@ -434,7 +434,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         // Create the new child state.
         let leaf_node = &self.nodes[*pv_nodes.last().unwrap()];
         let mut state = leaf_node.state.clone();
-        state.apply_move(m).unwrap();
+        state.apply_move::<false>(m, None).unwrap();
         let new_depth = leaf_node.depth + 1;
         // Possibly create a new child node.
         self.add_child_and_adjust_scores(pv_nodes, Some(m), state, new_depth);
@@ -599,7 +599,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       // Otherwise, we create a new node.
       None => {
         let mut new_state = root_node.state.clone();
-        new_state.apply_move(m).unwrap();
+        new_state.apply_move::<false>(m, None).unwrap();
         self.add_child_and_adjust_scores(vec![], None, new_state, root_node.depth + 1)
       }
     };

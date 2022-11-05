@@ -150,3 +150,71 @@ pub fn parse_pgn4(pgn4_str: &str) -> JsValue {
     JsValue::NULL
   })
 }
+
+#[wasm_bindgen]
+pub fn uci_to_move(uci: &str) -> JsValue {
+  let m = crate::rules::Move::from_uci(uci);
+  serde_wasm_bindgen::to_value(&m).unwrap_or_else(|e| {
+    log(&format!("Failed to parse uci: {}", e));
+    JsValue::NULL
+  })
+}
+
+#[wasm_bindgen]
+pub fn move_to_uci(m: JsValue) -> String {
+  let m: Move = serde_wasm_bindgen::from_value(m).unwrap_or_else(|e| {
+    log(&format!("Failed to deserialize move: {}", e));
+    panic!("Failed to deserialize move: {}", e);
+  });
+  m.to_uci()
+}
+
+fn perft<const NNUE: bool>() {
+  use engine::rules::{State, Move};
+  use engine::nnue::UndoCookie;
+
+  struct StackEntry {
+    depth: usize,
+    state: State,
+    m: Move,
+  }
+
+  let start_time = std::time::Instant::now();
+  let mut nodes = 0;
+  let mut moves = vec![];
+  let mut stack = vec![
+    StackEntry {
+      depth: 0,
+      state: State::starting_state(),
+      m: Move::from_uci("e2e4").unwrap(),
+    }
+  ];
+  let mut nnue = engine::nnue::Nnue::new(&State::starting_state());
+  while let Some(mut entry) = stack.pop() {
+    nodes += 1;
+    let undo_cookie = entry.state.apply_move::<NNUE>(entry.m, Some(&mut nnue)).unwrap();
+    nnue.evaluate(&entry.state);
+    if entry.depth == 4 {
+      
+    } else {
+      entry.state.move_gen::<false>(&mut moves);
+      for (i, m) in moves.iter().enumerate() {
+        //let mut new_state = entry.state.clone();
+        //let undo_cookie = new_state.apply_move::<false>(*m, None).unwrap();
+        stack.push(StackEntry {
+          depth: entry.depth + 1,
+          state: entry.state.clone(),
+          m: *m,
+        });
+      }
+      moves.clear();
+    }
+    if NNUE {
+      nnue.undo(undo_cookie);
+    }
+  }
+
+  web::log(&format!("{} nodes", nodes));
+  web::log(&format!("{} seconds", start_time.elapsed().as_secs_f64()));
+  web::log(&format!("{} Mnodes/second", 1e-6 * nodes as f64 / start_time.elapsed().as_secs_f64()));
+}
