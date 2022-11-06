@@ -1,4 +1,4 @@
-use std::{io::BufRead, collections::HashMap};
+use std::{collections::HashMap, io::BufRead};
 
 fn main() {
   let stdin = std::io::stdin();

@@ -1,3 +1,5 @@
+use std::arch::wasm32::*;
+
 use wasm_bindgen::prelude::*;
 
 use crate::inference::{FEATURES_SIZE, POLICY_LEN};
@@ -54,8 +56,8 @@ impl Engine {
       log(&format!("Failed to deserialize move: {}", e));
       panic!("Failed to deserialize move: {}", e);
     });
-    match self.engine.get_state_mut().apply_move(m) {
-      Ok(()) => {}
+    match self.engine.get_state_mut().apply_move::<false>(m, None) {
+      Ok(_) => {}
       Err(msg) => {
         log(&format!("Failed to apply move: {}", msg));
         return false;
@@ -169,33 +171,35 @@ pub fn move_to_uci(m: JsValue) -> String {
   m.to_uci()
 }
 
-fn perft<const NNUE: bool>() {
-  use engine::rules::{State, Move};
-  use engine::nnue::UndoCookie;
+fn run_perft<const NNUE: bool, const EVAL: bool>() -> usize {
+  use crate::nnue::UndoCookie;
+  use crate::rules::{Move, State};
 
   struct StackEntry {
     depth: usize,
     state: State,
-    m: Move,
+    m:     Move,
   }
 
-  let start_time = std::time::Instant::now();
+  //let start_time = std::time::Instant::now();
   let mut nodes = 0;
   let mut moves = vec![];
-  let mut stack = vec![
-    StackEntry {
-      depth: 0,
-      state: State::starting_state(),
-      m: Move::from_uci("e2e4").unwrap(),
-    }
-  ];
-  let mut nnue = engine::nnue::Nnue::new(&State::starting_state());
+  let mut stack = vec![StackEntry {
+    depth: 0,
+    state: State::starting_state(),
+    m:     Move::from_uci("e2e4").unwrap(),
+  }];
+  let mut nnue = crate::nnue::Nnue::new(&State::starting_state());
   while let Some(mut entry) = stack.pop() {
     nodes += 1;
     let undo_cookie = entry.state.apply_move::<NNUE>(entry.m, Some(&mut nnue)).unwrap();
-    nnue.evaluate(&entry.state);
+    if EVAL {
+      crate::search::evaluate_state(&entry.state);
+    }
+    if NNUE {
+      nnue.evaluate(&entry.state);
+    }
     if entry.depth == 4 {
-      
     } else {
       entry.state.move_gen::<false>(&mut moves);
       for (i, m) in moves.iter().enumerate() {
@@ -204,7 +208,7 @@ fn perft<const NNUE: bool>() {
         stack.push(StackEntry {
           depth: entry.depth + 1,
           state: entry.state.clone(),
-          m: *m,
+          m:     *m,
         });
       }
       moves.clear();
@@ -213,8 +217,53 @@ fn perft<const NNUE: bool>() {
       nnue.undo(undo_cookie);
     }
   }
+  nodes
 
-  web::log(&format!("{} nodes", nodes));
-  web::log(&format!("{} seconds", start_time.elapsed().as_secs_f64()));
-  web::log(&format!("{} Mnodes/second", 1e-6 * nodes as f64 / start_time.elapsed().as_secs_f64()));
+  //log(&format!("nnue={} Perft took {}ms, {} nodes", NNUE, start_time.elapsed().as_millis(), nodes));
+  //log(&format!("{} nodes", nodes));
+  //log(&format!("{} seconds", start_time.elapsed().as_secs_f64()));
+  //log(&format!("{} Mnodes/second", 1e-6 * nodes as f64 / start_time.elapsed().as_secs_f64()));
+}
+
+#[wasm_bindgen]
+pub fn perft() -> usize {
+  run_perft::<false, false>()
+}
+
+#[wasm_bindgen]
+pub fn perft_eval() -> usize {
+  run_perft::<false, true>()
+}
+
+#[wasm_bindgen]
+pub fn perft_nnue() -> usize {
+  run_perft::<true, false>()
+}
+
+#[wasm_bindgen]
+pub fn test_simd() {
+  let mut v = [i16x8(0, 1, 2, 3, 4, 5, 6, 7); 8];
+  for i in 0..8 {
+    v[i] = i16x8_add(v[i], i16x8_splat(i as i16));
+  }
+  log(&format!("{:?}", v));
+}
+
+#[wasm_bindgen]
+pub fn test_threads() {
+  let mut threads = vec![];
+  for i in 0..4 {
+    threads.push(std::thread::spawn(move || {
+      log(&format!("Thread {} started", i));
+      for j in 0..1000000 {
+        if j % 100000 == 0 {
+          log(&format!("Thread {} at {}", i, j));
+        }
+      }
+      log(&format!("Thread {} done", i));
+    }));
+  }
+  for t in threads {
+    t.join().unwrap();
+  }
 }

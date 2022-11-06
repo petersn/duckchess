@@ -106,6 +106,18 @@ const KING_ENDGAME_PST: [Evaluation; 64] = [
   -50,-30,-30,-30,-30,-30,-30,-50,
 ];
 
+// #[inline(never)]
+// pub fn evaluate_state(state: &State) -> Evaluation {
+//   let endgame_factor = 1.0
+//     - (2 * state.queens[0].0.count_ones()
+//       + 2 * state.queens[1].0.count_ones()
+//       + state.rooks[0].0.count_ones()
+//       + state.rooks[1].0.count_ones()) as f32
+//       / 8.0;
+//   let adjust = (endgame_factor * 10.0) as i32;
+//   return state.pawns[0].0.count_ones() as i32 - state.pawns[1].0.count_ones() as i32 + adjust;
+// }
+
 pub fn evaluate_state(state: &State) -> Evaluation {
   let mut score = 0;
   // endgame factor is 0 for middlegame, 1 for endgame
@@ -179,12 +191,12 @@ fn make_terminal_scores_much_less_extreme<T>(p: (Evaluation, T)) -> (Evaluation,
 }
 
 pub struct Engine {
-  pub nodes_searched:   u64,
-  pub total_eval:   f32,
-  rng:              Rng,
-  state:            State,
-  move_order_table: HashMap<u64, Move>,
-  killer_moves:     [Option<Move>; 100],
+  pub nodes_searched: u64,
+  pub total_eval:     f32,
+  rng:                Rng,
+  state:              State,
+  move_order_table:   HashMap<u64, Move>,
+  killer_moves:       [Option<Move>; 100],
 }
 
 impl Engine {
@@ -262,7 +274,9 @@ impl Engine {
     let nnue_evaluation = if NNUE {
       nnue.evaluate(state);
       nnue.value
-    } else { 0 };
+    } else {
+      0
+    };
     let get_eval = || {
       if NNUE {
         nnue_evaluation
@@ -273,7 +287,8 @@ impl Engine {
 
     let game_over = state.get_outcome().is_some();
     let random_bonus = (self.rng.next_random() & 0xf) as Evaluation;
-    match (game_over, depth, true) {//QUIESCENCE) {
+    match (game_over, depth, true) {
+      //QUIESCENCE) {
       (true, _, _) => return (get_eval() + random_bonus, (None, None)),
       (_, 0, true) => return (get_eval() + random_bonus, (None, None)),
       (_, 0, false) => {
@@ -368,24 +383,28 @@ impl Engine {
 
       if new_state.is_duck_move {
         if first {
-          (score, next_pair) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, alpha, beta);
+          (score, next_pair) =
+            self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, alpha, beta);
         } else {
           (score, next_pair) =
             self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, alpha, alpha + 1);
           if alpha < score && score < beta {
-            (score, next_pair) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, score, beta);
+            (score, next_pair) =
+              self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, score, beta);
           }
         }
       } else {
         if first {
-          (score, next_pair) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -beta, -alpha);
+          (score, next_pair) =
+            self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -beta, -alpha);
           score *= -1;
         } else {
           (score, next_pair) =
             self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -alpha - 1, -alpha);
           score *= -1;
           if alpha < score && score < beta {
-            (score, next_pair) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -beta, -score);
+            (score, next_pair) =
+              self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -beta, -score);
             score *= -1;
           }
         }

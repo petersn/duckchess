@@ -25,3 +25,6 @@ num_cpus = "1.13.1"
 #tensorflow = { version = "0.19.1", features = ["tensorflow_gpu"] }
 clap = { version = "4.0.18", features = ["derive"] }
 tokio = { version = "1.21.2", features = ["full"] }
+
+[profile.release]
+lto = true
