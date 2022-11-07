@@ -20,8 +20,8 @@ fn main() {
   while let Some(mut entry) = stack.pop() {
     nodes += 1;
     let undo_cookie = entry.state.apply_move::<true>(entry.m, Some(&mut nnue)).unwrap();
-    nnue.evaluate(&entry.state);
-    if entry.depth == 4 {
+    //nnue.evaluate(&entry.state);
+    if entry.depth == 6 {
     } else {
       entry.state.move_gen::<false>(&mut moves);
       for (i, m) in moves.iter().enumerate() {

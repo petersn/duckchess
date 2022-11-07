@@ -89,6 +89,7 @@ pub struct State {
   pub turn:            Player,
   pub is_duck_move:    bool,
   pub move_history:    [Option<Move>; MOVE_HISTORY_LEN],
+  pub zobrist:         u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -262,10 +263,12 @@ impl State {
       turn:            Player::White,
       is_duck_move:    false,
       move_history:    [None; MOVE_HISTORY_LEN],
+      zobrist:         0,
     }
   }
 
   pub fn get_transposition_table_hash(&self) -> u64 {
+    return self.zobrist;
     const MULT: u64 = 0x243f6a8885a308d3;
     let mut x = 0;
     macro_rules! hash_u64 {
@@ -616,16 +619,22 @@ impl State {
         let extant_duck = self.ducks.0 != 0;
         self.ducks.0 &= !from_mask;
         self.ducks.0 |= to_mask;
-        if NNUE {
-          assert_eq!(undo_cookie.sub_layers[0], u16::MAX);
-          assert_eq!(undo_cookie.add_layers[0], u16::MAX);
-          if extant_duck {
-            undo_cookie.sub_layers[0] = 64 * DUCK_LAYER as u16 + m.from as u16;
+
+        assert_eq!(undo_cookie.sub_layers[0], u16::MAX);
+        assert_eq!(undo_cookie.add_layers[0], u16::MAX);
+        if extant_duck {
+          undo_cookie.sub_layers[0] = 64 * DUCK_LAYER as u16 + m.from as u16;
+          if NNUE {
             nnue.sub_layer(undo_cookie.sub_layers[0]);
           }
-          undo_cookie.add_layers[0] = 64 * DUCK_LAYER as u16 + m.to as u16;
+          self.zobrist ^= ZOBRIST[undo_cookie.sub_layers[0] as usize];
+        }
+        undo_cookie.add_layers[0] = 64 * DUCK_LAYER as u16 + m.to as u16;
+        if NNUE {
           nnue.add_layer(undo_cookie.add_layers[0]);
         }
+        self.zobrist ^= ZOBRIST[undo_cookie.add_layers[0] as usize];
+
         self.is_duck_move = false;
         self.turn = self.turn.other_player();
         return Ok(undo_cookie);
@@ -672,10 +681,13 @@ impl State {
       };
       // Capture pieces on the target square.
       them.0 &= !to_mask;
-      if NNUE && them.0 & to_mask != 0 {
+      if them.0 & to_mask != 0 {
         assert_eq!(undo_cookie.sub_layers[1], u16::MAX);
         undo_cookie.sub_layers[1] = 64 * their_nnue_layer as u16 + m.to as u16;
-        nnue.sub_layer(undo_cookie.sub_layers[1]);
+        if NNUE {
+          nnue.sub_layer(undo_cookie.sub_layers[1]);
+        }
+        self.zobrist ^= ZOBRIST[undo_cookie.sub_layers[1] as usize];
       }
       // Check if this is the kind of piece we're moving.
       if us.0 & from_mask != 0 {
@@ -683,13 +695,17 @@ impl State {
         // Move our piece.
         us.0 &= !from_mask;
         us.0 |= to_mask;
+
+        assert_eq!(undo_cookie.sub_layers[0], u16::MAX);
+        assert_eq!(undo_cookie.add_layers[0], u16::MAX);
+        undo_cookie.sub_layers[0] = 64 * our_nnue_layer as u16 + m.from as u16;
+        undo_cookie.add_layers[0] = 64 * our_nnue_layer as u16 + m.to as u16;
         if NNUE {
-          assert_eq!(undo_cookie.sub_layers[0], u16::MAX);
-          assert_eq!(undo_cookie.add_layers[0], u16::MAX);
-          undo_cookie.sub_layers[0] = 64 * our_nnue_layer as u16 + m.from as u16;
-          undo_cookie.add_layers[0] = 64 * our_nnue_layer as u16 + m.to as u16;
           nnue.sub_add_layers(undo_cookie.sub_layers[0], undo_cookie.add_layers[0]);
         }
+        self.zobrist ^= ZOBRIST[undo_cookie.sub_layers[0] as usize];
+        self.zobrist ^= ZOBRIST[undo_cookie.add_layers[0] as usize];
+
         // Handle special rules for special pieces.
         match (piece_kind, m.from) {
           (PieceKind::Pawn, _) => {
@@ -698,19 +714,21 @@ impl State {
               match self.turn {
                 Player::White => {
                   them.0 &= !(1 << (m.to - 8));
+                  assert_eq!(undo_cookie.sub_layers[1], u16::MAX);
+                  undo_cookie.sub_layers[1] = 64 * their_nnue_layer as u16 + (m.to - 8) as u16;
                   if NNUE {
-                    assert_eq!(undo_cookie.sub_layers[1], u16::MAX);
-                    undo_cookie.sub_layers[1] = 64 * their_nnue_layer as u16 + (m.to - 8) as u16;
                     nnue.sub_layer(undo_cookie.sub_layers[1]);
                   }
+                  self.zobrist ^= ZOBRIST[undo_cookie.sub_layers[1] as usize];
                 }
                 Player::Black => {
                   them.0 &= !(1 << (m.to + 8));
+                  assert_eq!(undo_cookie.sub_layers[1], u16::MAX);
+                  undo_cookie.sub_layers[1] = 64 * their_nnue_layer as u16 + (m.to + 8) as u16;
                   if NNUE {
-                    assert_eq!(undo_cookie.sub_layers[1], u16::MAX);
-                    undo_cookie.sub_layers[1] = 64 * their_nnue_layer as u16 + (m.to + 8) as u16;
                     nnue.sub_layer(undo_cookie.sub_layers[1]);
                   }
+                  self.zobrist ^= ZOBRIST[undo_cookie.sub_layers[1] as usize];
                 }
               }
             }
@@ -730,14 +748,20 @@ impl State {
             // Remove the pawn, and setup the promotion.
             us.0 &= !promotion_mask;
             new_queens = promotion_mask;
+
+            let our_queen_layer = 2 * 4 + self.turn as usize;
+            // The first thing we do is undo our nnue/zobrist change that adds the pawn.
+            assert_ne!(undo_cookie.add_layers[0], u16::MAX);
             if NNUE {
-              let our_queen_layer = 2 * 4 + self.turn as usize;
-              //assert_eq!(undo_cookie.sub_layers[1], u16::MAX); // FIXME: This one can fail!
-              //assert_eq!(undo_cookie.add_layers[1], u16::MAX);
-              undo_cookie.sub_layers[1] = 64 * our_nnue_layer as u16 + m.to as u16;
-              undo_cookie.add_layers[1] = 64 * our_queen_layer as u16 + m.to as u16;
-              nnue.sub_add_layers(undo_cookie.sub_layers[1], undo_cookie.add_layers[1]);
+              nnue.sub_layer(undo_cookie.add_layers[0]);
             }
+            self.zobrist ^= ZOBRIST[undo_cookie.add_layers[0] as usize];
+            // Now we change it to be a queen.
+            undo_cookie.add_layers[0] = 64 * our_queen_layer as u16 + m.to as u16;
+            if NNUE {
+              nnue.sub_add_layers(undo_cookie.sub_layers[0], undo_cookie.add_layers[0]);
+            }
+            self.zobrist ^= ZOBRIST[undo_cookie.add_layers[0] as usize];
             //match promotion {
             //  PromotablePiece::Queen => new_queens = promotion_mask,
             //  PromotablePiece::Rook => new_rooks = promotion_mask,
@@ -764,14 +788,17 @@ impl State {
               };
               remove_rooks = 1 << rook_from;
               new_rooks = 1 << rook_to;
+
+              let our_rook_layer = 2 * 3 + self.turn as usize;
+              assert_eq!(undo_cookie.sub_layers[1], u16::MAX);
+              assert_eq!(undo_cookie.add_layers[1], u16::MAX);
+              undo_cookie.sub_layers[1] = 64 * our_rook_layer as u16 + rook_from as u16;
+              undo_cookie.add_layers[1] = 64 * our_rook_layer as u16 + rook_to as u16;
               if NNUE {
-                let our_rook_layer = 2 * 3 + self.turn as usize;
-                assert_eq!(undo_cookie.sub_layers[1], u16::MAX);
-                assert_eq!(undo_cookie.add_layers[1], u16::MAX);
-                undo_cookie.sub_layers[1] = 64 * our_rook_layer as u16 + rook_from as u16;
-                undo_cookie.add_layers[1] = 64 * our_rook_layer as u16 + rook_to as u16;
                 nnue.sub_add_layers(undo_cookie.sub_layers[1], undo_cookie.add_layers[1]);
               }
+              self.zobrist ^= ZOBRIST[undo_cookie.sub_layers[1] as usize];
+              self.zobrist ^= ZOBRIST[undo_cookie.add_layers[1] as usize];
             }
           }
           (PieceKind::Rook, 0) | (PieceKind::Rook, 56) => {
@@ -802,6 +829,19 @@ impl State {
       self.turn = self.turn.other_player();
     }
     Ok(undo_cookie)
+  }
+
+  pub fn undo(&mut self, cookie: UndoCookie) {
+    for sub in cookie.sub_layers {
+      if sub != u16::MAX {
+        self.zobrist ^= ZOBRIST[sub as usize];
+      }
+    }
+    for add in cookie.add_layers {
+      if add != u16::MAX {
+        self.zobrist ^= ZOBRIST[add as usize];
+      }
+    }
   }
 
   pub fn sanity_check(&self) -> Result<(), &'static str> {

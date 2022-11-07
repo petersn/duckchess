@@ -1,4 +1,5 @@
 use std::arch::wasm32::*;
+use js_sys::{Array, Atomics, Int32Array, SharedArrayBuffer, Uint8Array};
 
 use wasm_bindgen::prelude::*;
 
@@ -266,4 +267,21 @@ pub fn test_threads() {
   for t in threads {
     t.join().unwrap();
   }
+}
+
+#[wasm_bindgen]
+pub fn test_shared_mem(shared_mem: Int32Array, my_value: i32) {
+  log("Version 3");
+  let loaded_value = shared_mem.get_index(0);
+  log(&format!("[worker={}] Loaded value: {}", my_value, loaded_value));
+  shared_mem.set_index(0, my_value);
+  /*
+  // Cast the shared memory to slice of std::sync::atomic::AtomicI32.
+  let shared_mem = unsafe {
+    std::slice::from_raw_parts(shared_mem.as_ptr() as *const std::sync::atomic::AtomicI32, shared_mem.len())
+  };
+  let loaded_value = shared_mem[0].load(std::sync::atomic::Ordering::SeqCst);
+  log(&format!("[{}] test_shared_mem sees: {:?}", my_value, loaded_value));
+  shared_mem[0].store(my_value, std::sync::atomic::Ordering::SeqCst);
+  */
 }

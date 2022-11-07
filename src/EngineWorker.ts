@@ -1,15 +1,22 @@
-import init, { new_engine, max_batch_size, channel_count, parse_pgn4, Engine, perft, perft_nnue, perft_eval, test_threads, test_simd } from 'engine';
+import init, { new_engine, max_batch_size, channel_count, parse_pgn4, Engine, perft, perft_nnue, perft_eval, test_threads, test_simd, test_shared_mem } from 'engine';
 import * as tf from '@tensorflow/tfjs';
 import { MessageToEngineWorker } from './EngineWorkerMessages';
+import { threads } from 'wasm-feature-detect';
 
 let model: tf.LayersModel;
 let engine: Engine;
+let worker: Worker;
 
 function sendBoardState() {
   postMessage({ type: 'board', board: engine.get_state(), moves: engine.get_moves() });
 }
 
+const onSearchWorkerMessage = (e: MessageEvent<any>) => {
+  console.log(e);
+}
+
 function workLoop() {
+  return;
   setTimeout(workLoop, 10000);
   let inputArray = new Float32Array(max_batch_size() * channel_count() * 8 * 8);
   const batchSize = engine.step_until_batch(inputArray);
@@ -47,9 +54,12 @@ function workLoop() {
 }
 
 async function initWorker() {
-  await init();
+  const hasThreads = await threads();
+  console.log('Has threads:', hasThreads);
+  const sharedArrayBuffer = new SharedArrayBuffer(4 * 1024 * 1024);
+  const wasm = await init();
 
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 0; i++) {
     //const start1 = performance.now();
     //const nodes1 = perft();
     //const end1 = performance.now();
@@ -70,14 +80,24 @@ async function initWorker() {
     console.log('------------------');
   }
 
+  let array = new Int32Array(sharedArrayBuffer);
+  setInterval(() => {
+    test_shared_mem(array, 1);
+  }, 1000);
+
   test_simd();
 
   const seed = Math.floor(Math.random() * 1e9);
   engine = new_engine(BigInt(seed));
 
-  model = await tf.loadLayersModel('/duck-chess-engine/model.json')
-  postMessage({ type: 'initted' });
-  sendBoardState();
+  //model = await tf.loadLayersModel('/duck-chess-engine/model.json')
+  //postMessage({ type: 'initted' });
+  //sendBoardState();
+
+  // Create a search worker.
+  worker = new Worker(new URL('./SearchWorker.ts', import.meta.url));
+  worker.onmessage = onSearchWorkerMessage;
+  worker.postMessage({ type: 'init', mem: sharedArrayBuffer });
 
   workLoop();
 }

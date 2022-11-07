@@ -4,6 +4,9 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
+#[path = "src/rng.rs"]
+mod rng;
+
 fn main() {
   let knight_moves: Vec<u64> = (0..64)
     .map(|pos| {
@@ -77,11 +80,23 @@ fn main() {
         .collect()
     })
     .collect();
+  // We have:
+  //   12 side+pieces * 64 squares,
+  //   64 duck positions,
+  //   64 en passant positions,
+  //   4 castling rights,
+  //   1 is white's turn,
+  //   1 is duck move,
+  let zobrist_table_length = 64 * 12 + 64 + 64 + 4 + 1 + 1;
+  let rng = rng::Rng::new(0);
+  // Use rng.next_random() -> u64 to get random numbers.
+  let zobrist_table: Vec<u64> = (0..zobrist_table_length).map(|_| rng.next_random()).collect();
   let code = format!(
     r#"
         pub const KNIGHT_MOVES: [u64; 64] = [{}];
         pub const KING_MOVES: [u64; 64] = [{}];
         pub const RAYS: [[u64; 64]; 8] = [{}];
+        pub const ZOBRIST: [u64; {}] = [{}];
         "#,
     knight_moves.iter().map(|x| format!("0x{:016x}", x)).collect::<Vec<_>>().join(", "),
     king_moves.iter().map(|x| format!("0x{:016x}", x)).collect::<Vec<_>>().join(", "),
@@ -95,6 +110,8 @@ fn main() {
       })
       .collect::<Vec<_>>()
       .join(", "),
+    zobrist_table_length,
+    zobrist_table.iter().map(|x| format!("0x{:016x}", x)).collect::<Vec<_>>().join(", "),
   );
 
   let out_dir = env::var_os("OUT_DIR").unwrap();
