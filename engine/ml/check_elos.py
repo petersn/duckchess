@@ -56,14 +56,15 @@ def regenerate_report(steps, games):
     with open("web/template.html") as f:
         template = f.read()
     # Make the table.
-    table_data = [[games[a, b] for b in steps] for a in steps]
+    show_steps = steps[-5:]
+    table_data = [[games[a, b] for b in show_steps] for a in show_steps]
     table = "<table><tr><th></th>"
-    for step in steps:
+    for step in show_steps:
         table += "<th>" + short_name(step) + "</th>"
     table += "</tr>"
-    for i in range(len(steps)):
-        table += "<tr><th>" + short_name(steps[i]) + "</th>"
-        for j in range(len(steps)):
+    for i in range(len(show_steps)):
+        table += "<tr><th>" + short_name(show_steps[i]) + "</th>"
+        for j in range(len(show_steps)):
             if j < i:
                 table += "<td></td>"
             elif j == i:

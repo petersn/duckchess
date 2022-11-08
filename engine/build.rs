@@ -93,11 +93,11 @@ fn main() {
   let zobrist_table: Vec<u64> = (0..zobrist_table_length).map(|_| rng.next_random()).collect();
   let code = format!(
     r#"
-        pub const KNIGHT_MOVES: [u64; 64] = [{}];
-        pub const KING_MOVES: [u64; 64] = [{}];
-        pub const RAYS: [[u64; 64]; 8] = [{}];
-        pub const ZOBRIST: [u64; {}] = [{}];
-        "#,
+      pub const KNIGHT_MOVES: [u64; 64] = [{}];
+      pub const KING_MOVES: [u64; 64] = [{}];
+      pub const RAYS: [[u64; 64]; 8] = [{}];
+      pub const ZOBRIST: [u64; {}] = [{}];
+    "#,
     knight_moves.iter().map(|x| format!("0x{:016x}", x)).collect::<Vec<_>>().join(", "),
     king_moves.iter().map(|x| format!("0x{:016x}", x)).collect::<Vec<_>>().join(", "),
     rays

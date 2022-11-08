@@ -190,25 +190,49 @@ fn make_terminal_scores_much_less_extreme<T>(p: (Evaluation, T)) -> (Evaluation,
   (score, m)
 }
 
+enum NodeType {
+  Exact,
+  LowerBound,
+  UpperBound,
+}
+
+struct TTEntry {
+  zobrist: u64,
+  depth: u16,
+  score: Evaluation,
+  best_move: Option<Move>,
+  node_type: NodeType,
+}
+
 pub struct Engine {
-  pub nodes_searched: u64,
-  pub total_eval:     f32,
-  rng:                Rng,
-  state:              State,
-  move_order_table:   HashMap<u64, Move>,
-  killer_moves:       [Option<Move>; 100],
+  pub nodes_searched:  u64,
+  pub total_eval:      f32,
+  rng:                 Rng,
+  state:               State,
+  transposition_table: Vec<TTEntry>,
+  killer_moves:        [Option<Move>; 100],
 }
 
 impl Engine {
-  pub fn new(seed: u64) -> Self {
+  pub fn new(seed: u64, tt_size: usize) -> Self {
     let state = State::starting_state();
     let nnue = Nnue::new(&state);
+    let mut transposition_table = Vec::with_capacity(tt_size);
+    for _ in 0..tt_size {
+      transposition_table.push(TTEntry {
+        zobrist: 0,
+        depth: 0,
+        score: 0,
+        best_move: None,
+        node_type: NodeType::Exact,
+      });
+    }
     Self {
       nodes_searched: 0,
       total_eval: 0.0,
       rng: Rng::new(seed),
       state,
-      move_order_table: HashMap::new(),
+      transposition_table,
       killer_moves: [None; 100],
     }
   }
@@ -262,6 +286,25 @@ impl Engine {
     p
   }
 
+  fn tt_lookup(&self, state: &State) -> Option<&TTEntry> {
+    let index = (state.zobrist % self.transposition_table.len() as u64) as usize;
+    let entry = &self.transposition_table[index];
+    match entry.zobrist == state.zobrist {
+      true => Some(entry),
+      false => None,
+    }
+  }
+
+  fn tt_insert(&mut self, zobrist: u64, depth: u16, score: Evaluation, best_move: Option<Move>, node_type: NodeType) {
+    let index = (zobrist % self.transposition_table.len() as u64) as usize;
+    let entry = &mut self.transposition_table[index];
+    entry.zobrist = zobrist;
+    entry.depth = depth;
+    entry.score = score;
+    entry.best_move = best_move;
+    entry.node_type = node_type;
+  }
+
   fn pvs<const QUIESCENCE: bool, const NNUE: bool>(
     &mut self,
     depth: u16,
@@ -287,8 +330,7 @@ impl Engine {
 
     let game_over = state.get_outcome().is_some();
     let random_bonus = (self.rng.next_random() & 0xf) as Evaluation;
-    match (game_over, depth, true) {
-      //QUIESCENCE) {
+    match (game_over, depth, QUIESCENCE) {
       (true, _, _) => return (get_eval() + random_bonus, (None, None)),
       (_, 0, true) => return (get_eval() + random_bonus, (None, None)),
       (_, 0, false) => {
@@ -426,6 +468,7 @@ impl Engine {
         best_pair = (Some(m), next_pair.0);
       }
       if score > alpha && !QUIESCENCE {
+        self.tt_insert(state_hash, m, score, depth);
         self.move_order_table.insert(state_hash, m);
       }
       alpha = alpha.max(score);

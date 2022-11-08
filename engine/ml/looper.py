@@ -43,10 +43,11 @@ def generate_games(prefix, model_number):
                 os.environ,
                 TF_FORCE_GPU_ALLOW_GROWTH="true",
                 LD_LIBRARY_PATH="./run-005",
+                CUDA_VISIBLE_DEVICES=str(game_id),
             ),
             #, LD_LIBRARY_PATH="/usr/lib/python3/dist-packages/tensorflow/"),
         )
-        for _ in range(args.parallel_games_processes)
+        for game_id in range(args.parallel_games_processes)
     ]
     # If our process dies take the games generation down with us.
     def _(games_processes):
@@ -121,7 +122,7 @@ technically statistically biases the games slightly towards being shorter.)
     parser.add_argument("--training-steps-linear", metavar="N", type=int, default=200, help="We also apply an additional N steps for each additional iteration included in the training window.")
     parser.add_argument("--training-window", metavar="N", type=int, default=20, help="When training include games from the past N iterations.")
     parser.add_argument("--training-window-exclude", metavar="N", type=int, default=3, help="To help things get started faster we exclude games from the very first N iterations from later training game windows.")
-    parser.add_argument("--parallel-games-processes", metavar="N", type=int, default=1, help="Number of games processes to run in parallel.")
+    parser.add_argument("--parallel-games-processes", metavar="N", type=int, default=2, help="Number of games processes to run in parallel.")
     args = parser.parse_args()
     print("Arguments:", args)
 
