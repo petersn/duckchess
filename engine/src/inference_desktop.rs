@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::sync::Arc;
 use std::collections::VecDeque;
 use std::sync::Mutex;
 
@@ -19,16 +20,61 @@ pub const MAX_BATCH_SIZE: usize = 128;
 //  channels:    [Option<tokio::sync::oneshot::Sender<ModelOutputs>>; BUFFER_COUNT * BATCH_SIZE],
 //}
 
+pub struct Model {
+  bundle:    SavedModelBundle,
+  input_op:  Operation,
+  policy_op: Operation,
+  value_op:  Operation,
+}
+
 pub struct TensorFlowEngine<Cookie> {
-  bundle:        SavedModelBundle,
-  input_op:      Operation,
-  policy_op:     Operation,
-  value_op:      Operation,
+  model:         Mutex<Arc<Model>>,
   input_blocks:  Mutex<VecDeque<InputBlock<Cookie>>>,
   //input_tensors:   [&'static SyncUnsafeCell<Tensor<f32>>; BUFFER_COUNT],
   //return_channels: tokio::sync::Mutex<ReturnChannels>,
   pub semaphore: tokio::sync::Semaphore,
   eval_count:    std::sync::atomic::AtomicUsize,
+}
+
+fn load_model(model_dir: &str) -> Result<Model, String> {
+  let mut graph = Graph::new();
+  println!("Loading model from {}", model_dir);
+  // Load saved model bundle (session state + meta_graph data)
+  let bundle = SavedModelBundle::load(&SessionOptions::new(), &["serve"], &mut graph, model_dir)
+    .map_err(|e| format!("Failed to load saved model: {}", e))?;
+  // Get signature metadata from the model bundle
+  let signature = bundle.meta_graph_def().get_signature("serving_default")
+    .map_err(|e| format!("Failed to get signature: {}", e))?;
+  // Print all inputs.
+  println!("Inputs:");
+  for (name, tensor_info) in signature.inputs() {
+    println!("  {}: {:?}", name, tensor_info);
+  }
+  // Print all outputs.
+  println!("Outputs:");
+  for (name, tensor_info) in signature.outputs() {
+    println!("  {}: {:?}", name, tensor_info);
+  }
+  // Get input/output info.
+  let input_info = signature.get_input("inp_features")
+    .map_err(|e| format!("Failed to get input info: {}", e))?;
+  let policy_info = signature.get_output("out_policy")
+    .map_err(|e| format!("Failed to get policy info: {}", e))?;
+  let value_info = signature.get_output("out_value")
+    .map_err(|e| format!("Failed to get value info: {}", e))?;
+  // Get input/output ops from graph.
+  let input_op = graph.operation_by_name_required(&input_info.name().name)
+    .map_err(|e| format!("Failed to get input op: {}", e))?;
+  let policy_op = graph.operation_by_name_required(&policy_info.name().name)
+    .map_err(|e| format!("Failed to get policy op: {}", e))?;
+  let value_op = graph.operation_by_name_required(&value_info.name().name)
+    .map_err(|e| format!("Failed to get value op: {}", e))?;
+  Ok(Model {
+    bundle,
+    input_op,
+    policy_op,
+    value_op,
+  })
 }
 
 impl<Cookie> TensorFlowEngine<Cookie> {
@@ -44,45 +90,10 @@ impl<Cookie> TensorFlowEngine<Cookie> {
     //    ]))))
     //  })
     //  .collect::<Vec<_>>();
-    let mut graph = Graph::new();
-
-    println!("Loading model from {}", model_dir);
-
-    // Load saved model bundle (session state + meta_graph data)
-    let bundle = SavedModelBundle::load(&SessionOptions::new(), &["serve"], &mut graph, model_dir)
-      .expect("Can't load saved model");
-
-    // Get signature metadata from the model bundle
-    let signature = bundle.meta_graph_def().get_signature("serving_default").unwrap();
-
-    // Print all inputs.
-    println!("Inputs:");
-    for (name, tensor_info) in signature.inputs() {
-      println!("  {}: {:?}", name, tensor_info);
-    }
-    // Print all outputs.
-    println!("Outputs:");
-    for (name, tensor_info) in signature.outputs() {
-      println!("  {}: {:?}", name, tensor_info);
-    }
-
-    // Get input/output info.
-    let input_info = signature.get_input("inp_features").unwrap();
-    let policy_info = signature.get_output("out_policy").unwrap();
-    let value_info = signature.get_output("out_value").unwrap();
-
-    // Get input/output ops from graph.
-    let input_op = graph.operation_by_name_required(&input_info.name().name).unwrap();
-    let policy_op = graph.operation_by_name_required(&policy_info.name().name).unwrap();
-    let value_op = graph.operation_by_name_required(&value_info.name().name).unwrap();
-
     //let eval_count: &'static _ = Box::leak(Box::new(std::sync::atomic::AtomicUsize::new(0)));
 
     TensorFlowEngine {
-      bundle,
-      input_op,
-      policy_op,
-      value_op,
+      model: Mutex::new(Arc::new(load_model(model_dir).unwrap())),
       //input_tensors: input_tensors[..].try_into().unwrap(),
       //return_channels: tokio::sync::Mutex::new(ReturnChannels {
       //  next_buffer: 0,
@@ -103,6 +114,13 @@ impl<Cookie> TensorFlowEngine<Cookie> {
   pub fn batch_ready(&self) -> bool {
     let input_blocks = self.input_blocks.lock().unwrap();
     input_blocks.front().map(|b| b.cookies.len() == MAX_BATCH_SIZE).unwrap_or(false)
+  }
+
+  pub fn swap_out_model(&self, model_dir: &str) -> Result<(), String> {
+    let loaded_model = Arc::new(load_model(model_dir)?);
+    let mut model = self.model.lock().unwrap();
+    *model = loaded_model;
+    Ok(())
   }
 }
 
@@ -158,6 +176,12 @@ impl<Cookie> inference::InferenceEngine<Cookie> for TensorFlowEngine<Cookie> {
   }
 
   fn predict(&self, use_outputs: impl FnOnce(InferenceResults<Cookie>)) -> usize {
+    let model: Arc<Model> = {
+      let guard = self.model.lock().unwrap();
+      let cloned = guard.clone();
+      drop(guard);
+      cloned
+    };
     //println!("\x1b[92mPredicting...\x1b[0m");
     // Pop the last input block, which is inside the mutex.
     let last_block = {
@@ -176,11 +200,11 @@ impl<Cookie> inference::InferenceEngine<Cookie> for TensorFlowEngine<Cookie> {
       .unwrap();
     // Configure inputs and outputs.
     let mut session_run_args = SessionRunArgs::new();
-    session_run_args.add_feed(&self.input_op, 0, &input_tensor);
-    let policy_ft = session_run_args.request_fetch(&self.policy_op, 0);
-    let value_ft = session_run_args.request_fetch(&self.value_op, 1);
+    session_run_args.add_feed(&model.input_op, 0, &input_tensor);
+    let policy_ft = session_run_args.request_fetch(&model.policy_op, 0);
+    let value_ft = session_run_args.request_fetch(&model.value_op, 1);
     // Run the actual network.
-    self.bundle.session.run(&mut session_run_args).expect("Can't run session");
+    model.bundle.session.run(&mut session_run_args).expect("Can't run session");
     self.eval_count.fetch_add(block_len, std::sync::atomic::Ordering::Relaxed);
     // Fetch outputs.
     let policy_output = session_run_args.fetch::<f32>(policy_ft).expect("Can't fetch output");

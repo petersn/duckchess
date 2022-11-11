@@ -4,6 +4,35 @@ import json
 
 import engine
 
+move_squares = [
+    b + a
+    for a in "12345678"
+    for b in "abcdefgh"
+]
+
+# This function pretty prints all of the differences between two JSON objects
+# recursively, with the differences highlighted in red.
+def diff_json(a, b):
+    if isinstance(a, dict) and isinstance(b, dict):
+        for key in set(a.keys()) | set(b.keys()):
+            if key not in a:
+                print("\x1b[91m" + key + "\x1b[0m" + ": " + str(b[key]))
+            elif key not in b:
+                print("\x1b[91m" + key + "\x1b[0m" + ": " + str(a[key]))
+            else:
+                diff_json(a[key], b[key])
+    elif isinstance(a, list) and isinstance(b, list):
+        for i in range(max(len(a), len(b))):
+            if i >= len(a):
+                print("\x1b[91m" + str(i) + "\x1b[0m" + ": " + str(b[i]))
+            elif i >= len(b):
+                print("\x1b[91m" + str(i) + "\x1b[0m" + ": " + str(a[i]))
+            else:
+                diff_json(a[i], b[i])
+    elif a != b:
+        print("\x1b[91m" + str(a) + "\x1b[0m" + " != " + str(b))
+
+
 def render_state(state):
     piece_kinds = ["pawns", "knights", "bishops", "rooks", "queens", "kings"]
     board = [["."] * 8 for _ in range(8)]
@@ -38,14 +67,35 @@ if __name__ == "__main__":
     print("Games:", len(games))
 
     game = random.choice(games)
+    #game = games[21]
+    #game = games[77]
+    print("GAME LENGTH:", len(game["moves"]))
+
+    last_state = None
 
     e = engine.Engine(0)
     for i, move in enumerate(game["moves"]):
-        print(game["moves"][:i + 1])
+        #print(game["moves"][:i + 1])
+        print("vvvvvvvvvvvvvvvvvvvv")
+        print("ABOUT TO APPLY:", move_squares[move["from"]] + move_squares[move["to"]])
+        print("PRESTATE:", game["states"][i])
+        if game["states"][i] != last_state:
+            print("\x1b[91mSTATE MISMATCH!!!!!!!!!!!!!\x1b[0m")
+            diff_json(game["states"][i], last_state)
+        render_state(game["states"][i])
+        new_engine = engine.Engine(0)
+        moves = new_engine.get_moves()
+        print(" ".join(move_squares[m["from"]] + move_squares[m["to"]] for m in map(json.loads, moves)))
+        print("^^^^^^^^^^^^^^^^^^^^")
+        #new_engine.set_state(json.dumps(game["states"][i]))
+        
         r = e.apply_move(json.dumps(move))
         if r is not None:
             print("BAD:", r)
         state = json.loads(e.get_state())
+        print("AFTER MOVE:")
         print(state)
         render_state(state)
-        input("> ")
+        input(move_squares[move["from"]] + move_squares[move["to"]] + " > ")
+        print(e.sanity_check())
+        last_state = state

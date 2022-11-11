@@ -7,6 +7,8 @@ from tqdm import tqdm
 import show_game
 import engine
 
+policy_truncation = 32
+
 def process_game_paths(paths):
     all_games = []
     for path in tqdm(paths):
@@ -33,11 +35,15 @@ def process_game_paths(paths):
     print("Total moves:", total_moves)
 
     features_array = np.zeros((total_moves, engine.channel_count(), 8, 8), dtype=np.int8)
-    policy_array = np.zeros((total_moves, 64, 64), dtype=np.float16)
+    policy_indices_array = np.ones((total_moves, policy_truncation), dtype=np.int16)
+    policy_indices_array *= -1
+    policy_probs_array = np.zeros((total_moves, policy_truncation), dtype=np.float32)
+    #policy_array = np.zeros((total_moves, 64, 64), dtype=np.float16)
     value_array = np.zeros((total_moves, 1), dtype=np.float32)
     byte_length = (
         features_array.nbytes
-        + policy_array.nbytes
+        + policy_indices_array.nbytes
+        + policy_probs_array.nbytes
         + value_array.nbytes
     )
     print("Total storage:", byte_length / 1024 / 1024, "MiB")
@@ -109,14 +115,14 @@ def process_game_paths(paths):
             else:
                 policy_dist = game["train_dists"][i]
             assert abs(sum(p for _, p in policy_dist) - 1.0) < 1e-6
-            policy_slice = policy_array[entry]
-            for move, p in policy_dist:
-                #move = json.loads(move_str)
-                policy_slice[move["from"] ^ this_move_flip][move["to"] ^ this_move_flip] = p
-            #policy_dist.sort(key=lambda x: x[1], reverse=True)
-            #for j, (m, prob) in enumerate(policy_dist[:policy_truncation]):
-            #    policy_indices_array[entry, j] = engine.move_to_index(json.dumps(m))
-            #    policy_probs_array[entry, j] = prob
+            #policy_slice = policy_array[entry]
+            #for move, p in policy_dist:
+            #    #move = json.loads(move_str)
+            #    policy_slice[move["from"] ^ this_move_flip][move["to"] ^ this_move_flip] = p
+            policy_dist.sort(key=lambda x: x[1], reverse=True)
+            for j, (m, prob) in enumerate(policy_dist[:policy_truncation]):
+                policy_indices_array[entry, j] = engine.move_to_index(json.dumps(m))
+                policy_probs_array[entry, j] = prob
             #policy_array[entry] = engine.move_to_index(move_str)
             #engine.encode_move(move_str, policy.nbytes, policy.ctypes.data)
 
@@ -142,19 +148,21 @@ def process_game_paths(paths):
     if entry != total_moves:
         print(f"FAILURE: entry != total_moves: {entry} != {total_moves}")
         features_array = features_array[:entry]
-        policy_array = policy_array[:entry]
+        policy_indices_array = policy_indices_array[:entry]
+        policy_probs_array = policy_probs_array[:entry]
         value_array = value_array[:entry]
 
-    return features_array, policy_array, value_array
+    return features_array, policy_indices_array, policy_probs_array, value_array
 
 if __name__ == "__main__":
     game_paths = "games/games-*.json"
-    features_array, policy_array, value_array = process_game_paths(glob.glob(game_paths))
+    features_array, policy_indices_array, policy_probs_array, value_array = process_game_paths(glob.glob(game_paths))
     # Save the output as three numpy arrays packed into a single .npz file.
     np.savez_compressed(
         "train.npz",
         features=features_array,
-        policy=policy_array,
+        policy_indices=policy_indices_array,
+        policy_probs=policy_probs_array,
         value=value_array,
     )
     print("Done")

@@ -19,7 +19,10 @@ def kill(proc):
         print("ERROR in kill:", e)
     proc.kill()
 
+game_processes = None
+
 def generate_games(prefix, model_number):
+    global game_processes
     try:
         os.mkdir(index_to_games_dir(model_number))
     except FileExistsError:
@@ -30,32 +33,44 @@ def generate_games(prefix, model_number):
         print("Enough games to start with!")
         return
 
-    # Launch the games generation.
-    games_processes = [
-        subprocess.Popen(
-            [
-                prefix + "/mcts_generate", #"--release", "--bin", "mcts_generate", "--",
-                    "--model-dir", index_to_keras_model_path(model_number),
-                    "--output-dir", index_to_games_dir(model_number),
-            ],
-            close_fds=True,
-            env=dict(
-                os.environ,
-                TF_FORCE_GPU_ALLOW_GROWTH="true",
-                LD_LIBRARY_PATH="./run-005",
-                CUDA_VISIBLE_DEVICES=str(game_id),
-            ),
-            #, LD_LIBRARY_PATH="/usr/lib/python3/dist-packages/tensorflow/"),
-        )
-        for game_id in range(args.parallel_games_processes)
-    ]
-    # If our process dies take the games generation down with us.
-    def _(games_processes):
-        def handler():
-            for proc in games_processes:
-                kill(proc)
-        atexit.register(handler)
-    _(games_processes)
+    model_dir = index_to_keras_model_path(model_number)
+    output_dir = index_to_games_dir(model_number)
+
+    # If we don't have any game processes already, then launch them.
+    if game_processes is None:
+        game_processes = [
+            subprocess.Popen(
+                [
+                    prefix + "/mcts_generate", #"--release", "--bin", "mcts_generate", "--",
+                        "--model-dir", model_dir,
+                        "--output-dir", output_dir,
+                ],
+                close_fds=True,
+                env=dict(
+                    os.environ,
+                    TF_FORCE_GPU_ALLOW_GROWTH="true",
+                    LD_LIBRARY_PATH="./run-005",
+                    CUDA_VISIBLE_DEVICES=str(game_id),
+                ),
+                stdin=subprocess.PIPE,
+                #, LD_LIBRARY_PATH="/usr/lib/python3/dist-packages/tensorflow/"),
+            )
+            for game_id in range(args.parallel_games_processes)
+        ]
+        # If our process dies take the games generation down with us.
+        def _(game_processes):
+            def handler():
+                for proc in game_processes:
+                    kill(proc)
+            atexit.register(handler)
+        _(game_processes)
+    else:
+        # Otherwise, we simply tell our existing processes to swap to a new model.
+        message = f"swap:::{model_dir}:::{output_dir}\n"
+        print("===== Sending message to game processes:", message.strip())
+        for proc in game_processes:
+            proc.stdin.write(message)
+            proc.stdin.flush()
 
     # We now periodically check up on how many games we have.
     while True:
@@ -65,14 +80,14 @@ def generate_games(prefix, model_number):
         if game_count >= args.game_count:
             break
 
-    # Signal the process to die gracefully.
-    for proc in games_processes:
-        os.kill(proc.pid, signal.SIGTERM)
-    # Wait up to two seconds, then forcefully kill it.
-    time.sleep(2)
-    for proc in games_processes:
-        kill(proc)
-    print("Exiting.")
+    ## Signal the process to die gracefully.
+    #for proc in game_processes:
+    #    os.kill(proc.pid, signal.SIGTERM)
+    ## Wait up to two seconds, then forcefully kill it.
+    #time.sleep(2)
+    #for proc in game_processes:
+    #    kill(proc)
+    #print("Exiting.")
 
 def index_to_dir(i):
     return f"{args.prefix}/step-{i:03}"

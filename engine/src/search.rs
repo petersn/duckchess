@@ -357,10 +357,11 @@ impl Engine {
     // Reorder based on our move order table.
     let state_hash: u64 = state.get_transposition_table_hash();
 
-    let mot_move = match QUIESCENCE {
-      false => self.move_order_table.get(&state_hash),
-      true => None,
-    };
+    let mot_move: Option<&Move> = None;
+    //let mot_move = match QUIESCENCE {
+    //  false => self.move_order_table.get(&state_hash),
+    //  true => None,
+    //};
     let killer_move = match QUIESCENCE {
       false => self.killer_moves[depth as usize],
       true => None,
@@ -468,8 +469,8 @@ impl Engine {
         best_pair = (Some(m), next_pair.0);
       }
       if score > alpha && !QUIESCENCE {
-        self.tt_insert(state_hash, m, score, depth);
-        self.move_order_table.insert(state_hash, m);
+        //self.tt_insert(state_hash, m, score, depth);
+        //self.move_order_table.insert(state_hash, m);
       }
       alpha = alpha.max(score);
       if alpha >= beta {

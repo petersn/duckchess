@@ -7,6 +7,7 @@ use engine::mcts::PendingPath;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
+use tokio::io::AsyncBufReadExt;
 
 const PLAYOUT_CAP_RANDOMIZATION_P: f32 = 0.25;
 //const FULL_SEARCH_PLAYOUTS: u32 = 1000;
@@ -32,17 +33,21 @@ async fn main() {
   let inference_engine: &TensorFlowEngine<(usize, PendingPath)> =
     Box::leak(Box::new(TensorFlowEngine::new(&args.model_dir)));
 
-  let output_path = format!(
-    "{}/games-mcts-{:016x}.json",
-    args.output_dir,
-    rand::random::<u64>()
-  );
-  println!("Writing to {}", output_path);
+  let create_output_file = |output_dir: &str| {
+    let output_path = format!(
+      "{}/games-mcts-{:016x}.json",
+      output_dir,
+      rand::random::<u64>()
+    );
+    println!("Writing to {}", output_path);
+    std::fs::File::create(output_path).unwrap()
+  };
+  
   let output_file: &'static _ = Box::leak(Box::new(Mutex::new(
-    std::fs::File::create(output_path).unwrap(),
+    create_output_file(&args.output_dir)
   )));
 
-  let (tx_channels, rx_channels): (Vec<_>, Vec<_>) = (0..4
+  let (tx_channels, rx_channels): (Vec<_>, Vec<_>) = (0..5
     * TensorFlowEngine::<()>::DESIRED_BATCH_SIZE)
     .map(|_| tokio::sync::mpsc::unbounded_channel())
     .unzip();
@@ -93,6 +98,7 @@ async fn main() {
         let mut mcts = Mcts::new(task_id, seed, inference_engine);
         // This array tracks the moves that actually occur in the game.
         let mut moves: Vec<engine::rules::Move> = vec![];
+        let mut states = vec![];
         // This array says if the game move was uniformly random, or based on our tree search.
         let mut was_rand: Vec<bool> = vec![];
         // This array contains the training targets for the policy head.
@@ -148,6 +154,13 @@ async fn main() {
           match game_move {
             None => break,
             Some(game_move) => {
+              states.push(mcts.get_state().clone());
+              // Make sure the move is actually in the list of moves of the root.
+              let mut root_moves = vec![];
+              mcts.get_state().move_gen::<false>(&mut root_moves);
+              if !root_moves.contains(&game_move) {
+                panic!("move {} not in root moves: {:?}", game_move, root_moves);
+              }
               //println!("[{task_id}] Generated a move: {:?}", m);
               was_rand.push(pick_randomly);
               full_search.push(do_full_search);
@@ -180,6 +193,7 @@ async fn main() {
             "outcome": mcts.get_state().get_outcome().map(|o| o.to_str()),
             "final_state": mcts.get_state(),
             "moves": moves,
+            "states": states,
             "was_rand": was_rand,
             "train_dists": train_dists,
             "full_search": full_search,
@@ -200,6 +214,37 @@ async fn main() {
       }
     }));
   }
+  // Read lines of input from stdin to get instructions.
+  let mut stdin = tokio::io::BufReader::new(tokio::io::stdin()).lines();
+  loop {
+    let line = stdin.next_line().await.unwrap().unwrap();
+    let line = line.trim();
+    if line.starts_with("swap:::") {
+      // Split the line at the two :::s.
+      let mut parts = line.split(":::");
+      parts.next();
+      let new_model_path = parts.next().unwrap();
+      let new_output_dir = parts.next().unwrap();
+      assert!(parts.next().is_none());
+      println!("\x1b[94mLoading new model from {} writing to {}\x1b[0m", new_model_path, new_output_dir);
+      match inference_engine.swap_out_model(new_model_path) {
+        Ok(_) => {
+          println!("\x1b[94mLoaded new model\x1b[0m");
+          // We now swap out the output file.
+          let mut guard = output_file.lock().await;
+          *guard = create_output_file(new_output_dir);
+        }
+        Err(e) => println!("\x1b[91mFailed to load new model:\x1b[0m {}", e),
+      }
+    }
+    if line == "status" {
+      let mut file = output_file.lock().await;
+      //file.flush().unwrap();
+      let metadata = file.metadata().unwrap();
+      println!("{} bytes written", metadata.len());
+    }
+  }
+
   // Join all the tasks.
   for task in tasks {
     task.await.unwrap();

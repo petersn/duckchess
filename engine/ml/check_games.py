@@ -1,4 +1,5 @@
 import json
+import pprint
 import sys
 from tqdm import tqdm
 
@@ -21,8 +22,8 @@ for game_file in tqdm(sys.argv[1:]):
             assert version == "mcts-1"
             all_games.append(game)
 
-#for i, game in tqdm(enumerate(all_games)):
-for i in [37151, 57647]:
+for i, game in enumerate(tqdm(all_games)):
+#for i in [37151, 57647]:
     game = all_games[i]
     e = engine.Engine(0)
     for move_index, move in enumerate(game["moves"]):
@@ -37,6 +38,8 @@ for i in [37151, 57647]:
             print(move_index, len(game["moves"]))
             #print("Legal moves:", legal_moves)
             #print("Game:", game)
+            print("GAME LENGTH:", len(game["moves"]))
+            exit()
             break
         r = e.apply_move(json.dumps(move))
         if r is not None:
@@ -49,3 +52,23 @@ for i in [37151, 57647]:
         assert r is None, f"Move {move} failed: {r}"
         r = e.sanity_check()
         assert r is None, f"Move {move} failed sanity check: {r}"
+    # Check the final state.
+    final_state = json.loads(e.get_state())
+    if "zobrist" in final_state:
+        del final_state["zobrist"]
+    if "zobrist" in game["final_state"]:
+        del game["final_state"]["zobrist"]
+    #final_state.pop("zobrist")
+    #final_state.pop("moveHistory")
+    #game["finalState"].pop("zobrist")
+    #game["final_state"].pop("moveHistory")
+    if final_state != game["final_state"]:
+        print("Game", i, "has bad final state")
+        print("Expected:")
+        pprint.pprint(game["final_state"])
+        print("Got:")
+        pprint.pprint(final_state)
+        print("Moves:", game["moves"])
+        print("Turn:", final_state["turn"])
+        show_game.render_state(final_state)
+        #exit()

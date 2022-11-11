@@ -30,14 +30,14 @@ impl Player {
   }
 }
 
-#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CastlingRights {
   pub king_side:  bool,
   pub queen_side: bool,
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct BitBoard(pub u64);
 
 impl BitBoard {
@@ -267,32 +267,49 @@ impl State {
     }
   }
 
+  pub fn equal_states(&self, other: &Self) -> bool {
+    self.pawns == other.pawns
+      && self.knights == other.knights
+      && self.bishops == other.bishops
+      && self.rooks == other.rooks
+      && self.queens == other.queens
+      && self.kings == other.kings
+      && self.ducks == other.ducks
+      && self.en_passant == other.en_passant
+      && self.castling_rights == other.castling_rights
+      && self.turn == other.turn
+      && self.is_duck_move == other.is_duck_move
+  }
+
+  /// Returns a hash that will be equal for states that compare equal with `equal_states`.
   pub fn get_transposition_table_hash(&self) -> u64 {
-    return self.zobrist;
+    //return self.zobrist;
     const MULT: u64 = 0x243f6a8885a308d3;
     let mut x = 0;
     macro_rules! hash_u64 {
-      ($x:expr, $value:expr) => {{
-        $x ^= $value;
-        let x = x.wrapping_mul(MULT);
-        $x = x ^ (x >> 37);
+      ($value:expr) => {{
+        x ^= $value;
+        x = x.wrapping_mul(MULT);
+        x ^= x >> 37;
+        x = x.wrapping_mul(MULT);
+        x ^= x >> 37;
       }};
     }
     macro_rules! hash_piece {
-      ($x:ident, $piece:expr) => {{
+      ($piece:expr) => {{
         for i in [0, 1] {
-          hash_u64!($x, $piece[i].0);
+          hash_u64!($piece[i].0);
         }
       }};
     }
-    hash_piece!(x, self.pawns);
-    hash_piece!(x, self.knights);
-    hash_piece!(x, self.bishops);
-    hash_piece!(x, self.rooks);
-    hash_piece!(x, self.queens);
-    hash_piece!(x, self.kings);
-    hash_u64!(x, self.ducks.0);
-    hash_u64!(x, self.en_passant.0);
+    hash_piece!(self.pawns);
+    hash_piece!(self.knights);
+    hash_piece!(self.bishops);
+    hash_piece!(self.rooks);
+    hash_piece!(self.queens);
+    hash_piece!(self.kings);
+    hash_u64!(self.ducks.0);
+    hash_u64!(self.en_passant.0);
     // Intentionally skip move history.
     let bits = (self.castling_rights[0].king_side as u64)
       ^ (self.castling_rights[0].queen_side as u64) << 8
@@ -300,7 +317,7 @@ impl State {
       ^ (self.castling_rights[1].queen_side as u64) << 24
       ^ (self.turn as u64) << 32
       ^ (self.is_duck_move as u64) << 40;
-    hash_u64!(x, bits);
+    hash_u64!(bits);
     x
   }
 
@@ -815,6 +832,7 @@ impl State {
       }
     }
     if !piece_moved {
+      //panic!("no piece at from square");
       return Err("no piece at from position");
     }
     self.rooks[self.turn as usize].0 &= !remove_rooks;
@@ -828,6 +846,8 @@ impl State {
     } else {
       self.turn = self.turn.other_player();
     }
+
+    self.sanity_check().unwrap();
     Ok(undo_cookie)
   }
 

@@ -138,7 +138,10 @@ impl MctsNode {
   }
 
   fn new_child(&mut self, m: Move, child_index: NodeIndex) {
-    debug_assert!(!self.outgoing_edges.contains_key(&m));
+    // FIXME: Maybe this should be a debug assert?
+    assert!(!self.outgoing_edges.contains_key(&m));
+    // We now guarantee that this move is actually legal here.
+    assert!(self.moves.contains(&m));
     self.outgoing_edges.insert(m, child_index);
     // FIXME: I need to track the policy_explored more carefully, as evals might not be filled in yet!
     self.policy_explored = (self.policy_explored + self.posterior(m)).min(1.0);
@@ -348,12 +351,36 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     depth: u32,
   ) -> NodeIndex {
     //println!("Adding child at depth {} (path={:?}).", depth, path);
+    //// FIXME: Disable the transposition table!
+    //self.transposition_table.clear();
     // Check our transposition table to see if this new state has already been reached.
     let transposition_table_key = get_transposition_table_key(&state, depth);
     // We get a node, possibly new.
     let last_node_index = match self.transposition_table.entry(transposition_table_key) {
-      // If we have a transposition, just use it.
-      Entry::Occupied(entry) => *entry.get(),
+      Entry::Occupied(mut entry) => {
+        // To avoid making illegal moves due to hash collisions, we must check if the states match.
+        let transposition_node_index = *entry.get();
+        let transposition_node = &self.nodes[transposition_node_index];
+        match transposition_node.state.equal_states(&state) {
+          true => transposition_node_index,
+          false => {
+            use std::io::Write;
+            println!("\x1b[91m!!!!!!!!!!!!!!! Hash collision!\x1b[0m");
+            // Write a file to /tmp, because I *really* want to see this.
+            {
+              let mut f = std::fs::File::create("/tmp/mcts_hash_collision.txt").unwrap();
+              writeln!(f, "State 1:").unwrap();
+              writeln!(f, "{:?}", state).unwrap();
+              writeln!(f, "State 2:").unwrap();
+              writeln!(f, "{:?}", transposition_node.state).unwrap();
+              writeln!(f, "Hash key: {:?}", transposition_table_key).unwrap();
+            }
+            let node = MctsNode::new(state, depth);
+            let new_node_index = self.nodes.insert(node);
+            entry.insert(new_node_index)
+          }
+        }
+      }
       Entry::Vacant(entry) => {
         let node = MctsNode::new(state, depth);
         let new_node_index = self.nodes.insert(node);

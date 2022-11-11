@@ -12,12 +12,17 @@ impl Engine {
   #[new]
   fn new(seed: u64) -> Self {
     Self {
-      engine: search::Engine::new(seed),
+      engine: search::Engine::new(seed, 1024),
     }
   }
 
   fn get_state(&self) -> String {
     serde_json::to_string(self.engine.get_state()).unwrap()
+  }
+
+  fn set_state(&mut self, state: String) {
+    let new_state = serde_json::from_str(&state).unwrap();
+    self.engine.set_state(new_state);
   }
 
   fn get_state_into_array(&self, array_len: usize, array: usize) {
@@ -69,7 +74,7 @@ fn channel_count() -> usize {
 
 #[pyfunction]
 fn version() -> i64 {
-  1
+  2
 }
 
 #[pymodule]
