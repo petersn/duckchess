@@ -847,7 +847,7 @@ impl State {
       self.turn = self.turn.other_player();
     }
 
-    self.sanity_check().unwrap();
+    self.sanity_check()?;
     Ok(undo_cookie)
   }
 
