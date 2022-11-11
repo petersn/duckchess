@@ -195,8 +195,9 @@ technically statistically biases the games slightly towards being shorter.)
         steps = args.training_steps_const + args.training_steps_linear * (high_index - low_index + 1)
         assert steps > 0
         print("Steps:", steps)
-        # We start at a learning rate of 5e-4 and decay to 5e-5 by 10 models.
-        learning_rate = max(5e-5, 5e-4 * (0.1 ** ((current_model_number - 1) / 10)))
+        # We start at a learning rate of 3e-4 and decay exponentially to 3e-5 by 30 models.
+        lerp_coef = max(0, min(1, (current_model_number - 1) / 29))
+        learning_rate = math.exp( math.log(3e-4) * (1 - lerp_coef) + math.log(3e-5) * lerp_coef )
         print("\x1b[91mLearning rate:", learning_rate, "\x1b[0m")
 
         subprocess.check_call([
