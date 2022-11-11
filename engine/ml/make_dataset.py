@@ -44,6 +44,7 @@ def process_game_paths(paths):
         features_array.nbytes
         + policy_indices_array.nbytes
         + policy_probs_array.nbytes
+        #+ policy_array.nbytes
         + value_array.nbytes
     )
     print("Total storage:", byte_length / 1024 / 1024, "MiB")
@@ -121,7 +122,9 @@ def process_game_paths(paths):
             #    policy_slice[move["from"] ^ this_move_flip][move["to"] ^ this_move_flip] = p
             policy_dist.sort(key=lambda x: x[1], reverse=True)
             for j, (m, prob) in enumerate(policy_dist[:policy_truncation]):
-                policy_indices_array[entry, j] = engine.move_to_index(json.dumps(m))
+                # We have to take into the flip of the move.
+                possibly_flipped_move = {"from": m["from"] ^ this_move_flip, "to": m["to"] ^ this_move_flip}
+                policy_indices_array[entry, j] = engine.move_to_index(json.dumps(possibly_flipped_move))
                 policy_probs_array[entry, j] = prob
             #policy_array[entry] = engine.move_to_index(move_str)
             #engine.encode_move(move_str, policy.nbytes, policy.ctypes.data)

@@ -26,8 +26,9 @@ if __name__ == "__main__":
     parser.add_argument("--learning-rate", metavar="LR", type=float, default=5e-5, help="Learning rate.")
     parser.add_argument("--data-file", metavar="PATH", type=str, help="Saved .npz file of features/targets.")
     parser.add_argument("--save-every", metavar="STEPS", default=0, type=int, help="Save a model every n steps.")
+    parser.add_argument("--project-name", metavar="NAME", type=str, help="The project string to pass to wandb")
     args = parser.parse_args()
-    wandb.init(project="duck-chess-zero-run-008-duck-chess", name=args.new_path)
+    wandb.init(project=args.project_name, name=args.new_path)
     print("Arguments:", args)
 
     import make_dataset

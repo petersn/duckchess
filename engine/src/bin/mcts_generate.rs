@@ -183,7 +183,8 @@ async fn main() {
         }
         let total_steps = steps_performed.iter().sum::<u32>();
         println!(
-          "[{task_id}] Generated a game len={} total-steps={} steps-per-move={:.2}",
+          "[{task_id}] Generated a game outcome={:?} len={} total-steps={} steps-per-move={:.2}",
+          mcts.get_state().get_outcome(),
           moves.len(),
           total_steps,
           total_steps as f32 / moves.len() as f32

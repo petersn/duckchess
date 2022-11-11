@@ -141,6 +141,14 @@ technically statistically biases the games slightly towards being shorter.)
     args = parser.parse_args()
     print("Arguments:", args)
 
+    project_name = args.prefix
+    for c in "./":
+        if project_name.startswith(c):
+            project_name = project_name[1:]
+        if project_name.endswith(c):
+            project_name = project_name[:-1]
+    print("=== Project:", project_name)
+
     current_model_number = 1
 
     while True:
@@ -187,12 +195,18 @@ technically statistically biases the games slightly towards being shorter.)
         steps = args.training_steps_const + args.training_steps_linear * (high_index - low_index + 1)
         assert steps > 0
         print("Steps:", steps)
+        # We start at a learning rate of 5e-4 and decay to 5e-5 by 10 models.
+        learning_rate = max(5e-5, 5e-4 * (0.1 ** ((current_model_number - 1) / 10)))
+        print("\x1b[91mLearning rate:", learning_rate, "\x1b[0m")
+
         subprocess.check_call([
             "python", "ml/looper_train.py",
                 "--steps", str(steps),
                 "--games"] + games_paths + [
                 "--old-path", old_model,
                 "--new-path", new_model,
+                "--learning-rate", str(learning_rate),
+                "--project-name", project_name,
         ], close_fds=True)
 
         end = time.time()
