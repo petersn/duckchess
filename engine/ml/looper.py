@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-import os, glob, signal, subprocess, socket, atexit, time
+import os, glob, signal, subprocess, socket, atexit, time, math
 
 def count_games(paths):
     total_games = 0
