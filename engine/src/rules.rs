@@ -4,7 +4,7 @@ use serde::{ser::SerializeSeq, Deserialize, Serialize};
 
 use crate::nnue::{Nnue, UndoCookie, DUCK_LAYER};
 
-pub const IS_DUCK_CHESS: bool = false;
+pub const IS_DUCK_CHESS: bool = true;
 
 pub const MOVE_HISTORY_LEN: usize = 4;
 

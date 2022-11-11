@@ -27,7 +27,7 @@ if __name__ == "__main__":
     parser.add_argument("--data-file", metavar="PATH", type=str, help="Saved .npz file of features/targets.")
     parser.add_argument("--save-every", metavar="STEPS", default=0, type=int, help="Save a model every n steps.")
     args = parser.parse_args()
-    wandb.init(project="duck-chess-zero-run-007-regular-chess", name=args.new_path)
+    wandb.init(project="duck-chess-zero-run-008-duck-chess", name=args.new_path)
     print("Arguments:", args)
 
     import make_dataset
@@ -50,7 +50,7 @@ if __name__ == "__main__":
     #train_policy = torch.tensor(train_policy.reshape((-1, 64 * 64)))
     train_value = torch.tensor(train_value)
 
-    print("Got data:", train_features.shape, train_policy.shape, train_value.shape)
+    print("Got data:", train_features.shape, train_policy_indices.shape, train_policy_probs.shape, train_value.shape)
 
     wandb.config.update(args)
     wandb.config.update({

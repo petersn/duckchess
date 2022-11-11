@@ -69,7 +69,7 @@ def generate_games(prefix, model_number):
         message = f"swap:::{model_dir}:::{output_dir}\n"
         print("===== Sending message to game processes:", message.strip())
         for proc in game_processes:
-            proc.stdin.write(message)
+            proc.stdin.write(message.encode())
             proc.stdin.flush()
 
     # We now periodically check up on how many games we have.
@@ -136,7 +136,7 @@ technically statistically biases the games slightly towards being shorter.)
     parser.add_argument("--training-steps-const", metavar="N", type=int, default=500, help="Base number of training steps to perform per iteration.")
     parser.add_argument("--training-steps-linear", metavar="N", type=int, default=200, help="We also apply an additional N steps for each additional iteration included in the training window.")
     parser.add_argument("--training-window", metavar="N", type=int, default=20, help="When training include games from the past N iterations.")
-    parser.add_argument("--training-window-exclude", metavar="N", type=int, default=3, help="To help things get started faster we exclude games from the very first N iterations from later training game windows.")
+    #parser.add_argument("--training-window-exclude", metavar="N", type=int, default=3, help="To help things get started faster we exclude games from the very first N iterations from later training game windows.")
     parser.add_argument("--parallel-games-processes", metavar="N", type=int, default=2, help="Number of games processes to run in parallel.")
     args = parser.parse_args()
     print("Arguments:", args)
@@ -171,9 +171,11 @@ technically statistically biases the games slightly towards being shorter.)
             #print("\x1b[91mWeird, should this already exist?\x1b[0m", index_to_dir(current_model_number + 1))
             pass
 
-        print("=========================== Doing training:", old_model, "->", new_model)
+        effective_training_window_size = min(args.training_window, max(1, current_model_number // 2))
+        print("=========================== Doing training:", old_model, "->", new_model, "effective window size:", effective_training_window_size)
         # Figure out the directories of games to train on.
-        low_index = min(current_model_number, max(args.training_window_exclude + 1, current_model_number - args.training_window + 1))
+        #low_index = min(current_model_number, max(args.training_window_exclude + 1, current_model_number - args.training_window + 1))
+        low_index = max(1, current_model_number - effective_training_window_size + 1)
         high_index = current_model_number
         games_paths = [
             path

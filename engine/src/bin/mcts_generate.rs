@@ -98,6 +98,7 @@ async fn main() {
         let mut mcts = Mcts::new(task_id, seed, inference_engine);
         // This array tracks the moves that actually occur in the game.
         let mut moves: Vec<engine::rules::Move> = vec![];
+        // This array gives a few random example serialized states.
         let mut states = vec![];
         // This array says if the game move was uniformly random, or based on our tree search.
         let mut was_rand: Vec<bool> = vec![];
@@ -154,7 +155,12 @@ async fn main() {
           match game_move {
             None => break,
             Some(game_move) => {
-              states.push(mcts.get_state().clone());
+              states.push(
+                match rand::random::<f32>() < 0.01 {
+                  true => Some(mcts.get_state().clone()),
+                  false => None,
+                }
+              );
               // Make sure the move is actually in the list of moves of the root.
               let mut root_moves = vec![];
               mcts.get_state().move_gen::<false>(&mut root_moves);
