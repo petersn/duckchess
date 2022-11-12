@@ -154,9 +154,11 @@ async fn main() {
         let mut steps_performed: Vec<u32> = vec![];
 
         for move_number in 0..GAME_LEN_LIMIT {
-          // FIXME: This is dependent on regular chess vs duck chess!
-          //let index = (move_number / 2) % 2;
-          let index = move_number % 2;
+          // Getting this right is critical, or we don't see any progress.
+          let index = match engine::rules::IS_DUCK_CHESS {
+            true => (move_number / 2) % 2,
+            false => move_number % 2,
+          };
           let mcts = &mut mctses[index];
           let rx = &mut rxes[index];
 

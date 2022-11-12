@@ -76,6 +76,7 @@ pub const FEATURES_SIZE: usize = CHANNEL_COUNT * 64;
 pub fn featurize_state<T: From<u8>>(state: &State, array: &mut [T; FEATURES_SIZE]) {
   let mut layer_index = 0;
   let mut emit_bitboard = |bitboard: u64| {
+    // This swap_bytes is incredibly important, and is where vertically mirroring the board is implemented.
     let bitboard = match state.turn {
       Player::White => bitboard,
       Player::Black => bitboard.swap_bytes(),

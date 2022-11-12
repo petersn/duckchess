@@ -81,7 +81,7 @@ if __name__ == "__main__":
         orig_idx = train_policy_indices[indices]
         probs = train_policy_probs[indices]
         assert orig_idx.shape == probs.shape == (batch_size, 32)
-        # Remap -1 in orig_idx to 0.
+        # Remap -1 in orig_idx to 0. I think this is safe, as from=0 to=0 should never have prob?
         idx = torch.where(orig_idx == -1, torch.tensor(0, dtype=torch.int16), orig_idx)
         policy_block.index_add_(
             dim=0,
@@ -123,8 +123,13 @@ if __name__ == "__main__":
         policy_loss = cross_en(policy_output, target_policy)
         value_loss = mse_func(value_output, target_value)
         loss = policy_loss + value_loss
-        wandb.log({"loss": loss.item(), "policy_loss": policy_loss.item(), "value_loss": value_loss.item()})
         loss.backward()
+        wandb.log({
+            "loss": loss.item(),
+            "policy_loss": policy_loss.item(),
+            "value_loss": value_loss.item(),
+            "grad_norm": torch.nn.utils.clip_grad_norm_(model.parameters(), 10.0),
+        })
         optimizer.step()
         policy_loss_ewma.apply(policy_loss.item())
         value_loss_ewma.apply(value_loss.item())
