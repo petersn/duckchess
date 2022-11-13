@@ -10,14 +10,23 @@ import engine
 policy_truncation = 32
 
 def process_game_paths(paths):
-    all_games = []
-    for path in tqdm(paths):
-        with open(path) as f:
-            for line in f:
-                all_games.append(json.loads(line))
+    def games_iterator():
+        for path in tqdm(paths):
+            with open(path) as f:
+                for line in f:
+                    yield json.loads(line)
 
+    #all_games = []
+    #for path in tqdm(paths):
+    #    with open(path) as f:
+    #        for line in f:
+    #            all_games.append(json.loads(line))
+
+    # First we count all moves.
+    game_count = 0
     total_moves = 0
-    for game in all_games:
+    for game in games_iterator():
+        game_count += 1
         #if "version" not in game:
         #    continue
         version = game["version"]
@@ -31,7 +40,7 @@ def process_game_paths(paths):
         else:
             raise RuntimeError("Unknown game version: " + str(version))
 
-    print("Total games:", len(all_games))
+    print("Total games:", game_count)
     print("Total moves:", total_moves)
 
     features_array = np.zeros((total_moves, engine.channel_count(), 8, 8), dtype=np.int8)
@@ -50,7 +59,7 @@ def process_game_paths(paths):
     print("Total storage:", byte_length / 1024 / 1024, "MiB")
 
     entry = 0
-    for game in tqdm(all_games):
+    for game in games_iterator():
         #if "version" not in game:
         #    continue
         version = game["version"]
@@ -87,7 +96,6 @@ def process_game_paths(paths):
                     print(state)
                     show_game.render_state(state)
                     print(state["turn"])
-                    break
                     raise RuntimeError
 
             # Don't train on random moves, or fast search moves.
@@ -96,12 +104,10 @@ def process_game_paths(paths):
                 r = e.apply_move(move_str)
                 if r is not None:
                     print(f"Index = {i} Move {move_str} failed: {r}")
-                    break
                 assert r is None, f"Index = {i} Move {move_str} failed: {r}"
                 r = e.sanity_check()
                 if r is not None:
                     print(f"Index = {i} Sanity check failed: {r}")
-                    break
                 assert r is None, f"Index = {i} Move {move_str} failed sanity check: {r}"
                 #state = json.loads(e.get_state())
                 #show_game.render_state(state)
@@ -136,12 +142,10 @@ def process_game_paths(paths):
             r = e.apply_move(move_str)
             if r is not None:
                 print(f"Index = {i} Move {move_str} failed: {r}")
-                break
             assert r is None, f"Index = {i} Move {move_str} failed: {r}"
             r = e.sanity_check()
             if r is not None:
                 print(f"Index = {i} Move {move_str} failed sanity check: {r}")
-                break
             assert r is None, f"Index = {i} Move {move_str} failed sanity check: {r}"
             #state = json.loads(e.get_state())
             #show_game.render_state(state)

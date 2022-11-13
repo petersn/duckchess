@@ -100,6 +100,7 @@ if __name__ == "__main__":
             train_value[indices].cuda(),
         )
 
+    print("Attempting to create model.")
     model = model_pytorch.Network()
     model.cuda()
     print("Parameter count:", sum(p.numel() for p in model.parameters() if p.requires_grad))

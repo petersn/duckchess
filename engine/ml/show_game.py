@@ -76,19 +76,19 @@ if __name__ == "__main__":
     e = engine.Engine(0)
     for i, move in enumerate(game["moves"]):
         #print(game["moves"][:i + 1])
-        print("vvvvvvvvvvvvvvvvvvvv")
-        print("ABOUT TO APPLY:", move_squares[move["from"]] + move_squares[move["to"]])
-        print("PRESTATE:", game["states"][i])
-        if game["states"][i] != last_state:
-            print("\x1b[91mSTATE MISMATCH!!!!!!!!!!!!!\x1b[0m")
-            diff_json(game["states"][i], last_state)
-        render_state(game["states"][i])
-        new_engine = engine.Engine(0)
-        moves = new_engine.get_moves()
-        print(" ".join(move_squares[m["from"]] + move_squares[m["to"]] for m in map(json.loads, moves)))
-        print("^^^^^^^^^^^^^^^^^^^^")
-        #new_engine.set_state(json.dumps(game["states"][i]))
-        
+        #print("vvvvvvvvvvvvvvvvvvvv")
+        #print("ABOUT TO APPLY:", move_squares[move["from"]] + move_squares[move["to"]])
+        #print("PRESTATE:", game["states"][i])
+        #if game["states"][i] != last_state:
+        #    print("\x1b[91mSTATE MISMATCH!!!!!!!!!!!!!\x1b[0m")
+        #    diff_json(game["states"][i], last_state)
+        #render_state(game["states"][i])
+        #new_engine = engine.Engine(0)
+        #moves = new_engine.get_moves()
+        #print(" ".join(move_squares[m["from"]] + move_squares[m["to"]] for m in map(json.loads, moves)))
+        #print("^^^^^^^^^^^^^^^^^^^^")
+        ##new_engine.set_state(json.dumps(game["states"][i]))
+        #
         r = e.apply_move(json.dumps(move))
         if r is not None:
             print("BAD:", r)
