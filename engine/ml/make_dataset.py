@@ -10,10 +10,22 @@ import engine
 policy_truncation = 32
 
 def process_game_paths(paths):
-    def games_iterator():
-        for path in tqdm(paths):
-            with open(path) as f:
-                for line in f:
+    # Read all of the game files into RAM, to freeze them against edits.
+    game_file_contents = []
+    for path in tqdm(paths):
+        with open(path) as f:
+            game_file_contents.append(f.read())
+
+    def games_iterator(final_iter=False):
+        if final_iter:
+            # Consuem the game_file_contents to save memory.
+            game_file_contents.reverse()
+            while game_file_contents:
+                for line in game_file_contents.pop().splitlines():
+                    yield json.loads(line)
+        else:
+            for game_file_string in game_file_contents:
+                for line in game_file_string.splitlines():
                     yield json.loads(line)
 
     #all_games = []
@@ -25,7 +37,7 @@ def process_game_paths(paths):
     # First we count all moves.
     game_count = 0
     total_moves = 0
-    for game in games_iterator():
+    for game in games_iterator(final_iter=False):
         game_count += 1
         #if "version" not in game:
         #    continue
@@ -59,7 +71,7 @@ def process_game_paths(paths):
     print("Total storage:", byte_length / 1024 / 1024, "MiB")
 
     entry = 0
-    for game in games_iterator():
+    for game in games_iterator(final_iter=True):
         #if "version" not in game:
         #    continue
         version = game["version"]
