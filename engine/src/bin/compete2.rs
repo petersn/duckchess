@@ -9,6 +9,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
 
 const GAME_LEN_LIMIT: usize = 300;
+const BATCH_SIZE: usize = 64;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -37,9 +38,9 @@ async fn main() {
   let model2_dir: &'static str = Box::leak(String::into_boxed_str(args.model2_dir));
 
   let inference_engine1: &TensorFlowEngine<(usize, PendingPath)> =
-    Box::leak(Box::new(TensorFlowEngine::new(model1_dir)));
+    Box::leak(Box::new(TensorFlowEngine::new(BATCH_SIZE, model1_dir)));
   let inference_engine2: &TensorFlowEngine<(usize, PendingPath)> =
-    Box::leak(Box::new(TensorFlowEngine::new(model2_dir)));
+    Box::leak(Box::new(TensorFlowEngine::new(BATCH_SIZE, model2_dir)));
 
   let output_path = format!(
     "{}/games-mcts-{:016x}.json",
@@ -52,11 +53,11 @@ async fn main() {
   )));
   println!(
     "Starting up with batch size: {}",
-    TensorFlowEngine::<()>::DESIRED_BATCH_SIZE
+    BATCH_SIZE
   );
 
   let (tx_channels, mut rx_channels): (Vec<_>, Vec<_>) = (0..4
-    * TensorFlowEngine::<()>::DESIRED_BATCH_SIZE)
+    * BATCH_SIZE)
     .map(|_| tokio::sync::mpsc::unbounded_channel())
     .unzip();
   let tx_channels: &'static _ = Box::leak(Box::new(tx_channels));

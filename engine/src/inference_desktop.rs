@@ -12,7 +12,7 @@ use crate::inference::{
 use crate::mcts;
 use crate::rules::{Move, State};
 
-pub const MAX_BATCH_SIZE: usize = 128;
+//pub const self.max_batch_size: usize = 128;
 
 //struct ReturnChannels {
 //  next_buffer: usize,
@@ -28,6 +28,7 @@ pub struct Model {
 }
 
 pub struct TensorFlowEngine<Cookie> {
+  max_batch_size: usize,
   model:         Mutex<Arc<Model>>,
   input_blocks:  Mutex<VecDeque<InputBlock<Cookie>>>,
   //input_tensors:   [&'static SyncUnsafeCell<Tensor<f32>>; BUFFER_COUNT],
@@ -78,7 +79,7 @@ fn load_model(model_dir: &str) -> Result<Model, String> {
 }
 
 impl<Cookie> TensorFlowEngine<Cookie> {
-  pub fn new(model_dir: &str) -> TensorFlowEngine<Cookie> {
+  pub fn new(max_batch_size: usize, model_dir: &str) -> TensorFlowEngine<Cookie> {
     //// Initialize model_dir, input tensor, and an empty graph
     //let input_tensors = (0..BUFFER_COUNT)
     //  .map(|_| {
@@ -93,6 +94,7 @@ impl<Cookie> TensorFlowEngine<Cookie> {
     //let eval_count: &'static _ = Box::leak(Box::new(std::sync::atomic::AtomicUsize::new(0)));
 
     TensorFlowEngine {
+      max_batch_size,
       model: Mutex::new(Arc::new(load_model(model_dir).unwrap())),
       //input_tensors: input_tensors[..].try_into().unwrap(),
       //return_channels: tokio::sync::Mutex::new(ReturnChannels {
@@ -113,7 +115,7 @@ impl<Cookie> TensorFlowEngine<Cookie> {
 
   pub fn batch_ready(&self) -> bool {
     let input_blocks = self.input_blocks.lock().unwrap();
-    input_blocks.front().map(|b| b.cookies.len() == MAX_BATCH_SIZE).unwrap_or(false)
+    input_blocks.front().map(|b| b.cookies.len() == self.max_batch_size).unwrap_or(false)
   }
 
   pub fn swap_out_model(&self, model_dir: &str) -> Result<(), String> {
@@ -125,12 +127,12 @@ impl<Cookie> TensorFlowEngine<Cookie> {
 }
 
 impl<Cookie> inference::InferenceEngine<Cookie> for TensorFlowEngine<Cookie> {
-  const DESIRED_BATCH_SIZE: usize = MAX_BATCH_SIZE;
+  const DESIRED_BATCH_SIZE: usize = 128;
 
   fn add_work(&self, state: &crate::rules::State, cookie: Cookie) -> bool {
     //println!("\x1b[93mAdding work...\x1b[0m");
     let mut input_blocks = self.input_blocks.lock().unwrap();
-    let ready = inference::add_to_input_blocks(MAX_BATCH_SIZE, &mut input_blocks, state, cookie);
+    let ready = inference::add_to_input_blocks(self.max_batch_size, &mut input_blocks, state, cookie);
     // FIXME: This notifies too much.
     if ready {
       //println!("\x1b[91mNotifying...\x1b[0m");
@@ -192,7 +194,7 @@ impl<Cookie> inference::InferenceEngine<Cookie> for TensorFlowEngine<Cookie> {
       }
     };
     let block_len = last_block.cookies.len();
-    assert!(block_len <= MAX_BATCH_SIZE);
+    assert!(block_len <= self.max_batch_size);
     // Create the input tensor.
     let input_data = &last_block.data[..block_len * FEATURES_SIZE];
     let input_tensor = Tensor::new(&[block_len as u64, CHANNEL_COUNT as u64, 8, 8])

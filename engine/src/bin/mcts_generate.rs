@@ -31,7 +31,7 @@ async fn main() {
   let args = Args::parse();
 
   let inference_engine: &TensorFlowEngine<(usize, PendingPath)> =
-    Box::leak(Box::new(TensorFlowEngine::new(&args.model_dir)));
+    Box::leak(Box::new(TensorFlowEngine::new(TensorFlowEngine::<()>::DESIRED_BATCH_SIZE, &args.model_dir)));
 
   let create_output_file = |output_dir: &str| {
     let output_path = format!(

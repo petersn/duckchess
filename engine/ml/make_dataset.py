@@ -18,13 +18,14 @@ def process_game_paths(paths):
 
     def games_iterator(final_iter=False):
         if final_iter:
-            # Consuem the game_file_contents to save memory.
-            game_file_contents.reverse()
-            while game_file_contents:
-                for line in game_file_contents.pop().splitlines():
+            # Consume the game_file_contents to save memory.
+            for i in tqdm(range(len(game_file_contents))):
+                game_file_string = game_file_contents[i]
+                game_file_contents[i] = None
+                for line in game_file_string.splitlines():
                     yield json.loads(line)
         else:
-            for game_file_string in game_file_contents:
+            for game_file_string in tqdm(game_file_contents):
                 for line in game_file_string.splitlines():
                     yield json.loads(line)
 
