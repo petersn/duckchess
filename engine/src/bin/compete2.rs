@@ -1,3 +1,5 @@
+use std::sync::atomic::AtomicU64;
+
 use clap::Parser;
 use engine::inference::InferenceEngine;
 use engine::inference::ModelOutputs;
@@ -8,7 +10,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
 
 const GAME_LEN_LIMIT: usize = 300;
-const BATCH_SIZE: usize = 64;
+const BATCH_SIZE: usize = 128;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -28,11 +30,49 @@ struct Args {
   #[arg(short, long)]
   output_dir: String,
 
-  #[arg(short, long, default_value="default")]
-  search_params1: SearchParams,
+  #[arg(long)]
+  randomize_search_params: bool,
 
-  #[arg(short, long, default_value="default")]
-  search_params2: SearchParams,
+  //#[arg(short, long, default_value="default")]
+  //search_params1: SearchParams,
+
+  //#[arg(short, long, default_value="default")]
+  //search_params2: SearchParams,
+
+  #[arg(long)]
+  game_limit: Option<u64>,
+}
+
+fn generate_random_search_params() -> SearchParams {
+  // Pick alpha randomly from [0.5, 1.0, 2.0, 4.0]
+  let exploration_alpha = match rand::random::<u32>() % 3 {
+    0 => 0.5,
+    //1 => 1.0,
+    1 => 0.25, //2.0,
+    2 => 0.125, //4.0,
+    _ => unreachable!(),
+  };
+  // Pick duck_alpha likewise.
+  let duck_exploration_alpha = match rand::random::<u32>() % 3 {
+    0 => 0.5,
+    //1 => 1.0,
+    1 => 0.25, //2.0,
+    2 => 0.125, //4.0,
+    _ => unreachable!(),
+  };
+  // Pick FPU randomly as either 0.0 or 0.2.
+  let first_play_urgency = match rand::random::<u32>() % 4 {
+    0 => 0.0,
+    1 => 0.1,
+    2 => 0.2,
+    3 => 0.3,
+    _ => unreachable!(),
+  };
+  SearchParams {
+    exploration_alpha,
+    duck_exploration_alpha,
+    first_play_urgency,
+  }
 }
 
 #[tokio::main]
@@ -47,8 +87,9 @@ async fn main() {
   let inference_engine2: &TensorFlowEngine<(usize, PendingPath)> =
     Box::leak(Box::new(TensorFlowEngine::new(BATCH_SIZE, model2_dir)));
 
-  let search_params1: &'static SearchParams = Box::leak(Box::new(args.search_params1));
-  let search_params2: &'static SearchParams = Box::leak(Box::new(args.search_params2));
+  let randomize_search_params: &'static _ = Box::leak(Box::new(args.randomize_search_params));
+  //let search_params1: &'static SearchParams = Box::leak(Box::new(args.search_params1));
+  //let search_params2: &'static SearchParams = Box::leak(Box::new(args.search_params2));
 
   let output_path = format!(
     "{}/games-mcts-{:016x}.json",
@@ -59,12 +100,14 @@ async fn main() {
   let output_file: &'static _ = Box::leak(Box::new(Mutex::new(
     std::fs::File::create(output_path).unwrap(),
   )));
-  println!("Model 1: {} Search parameters 1: {:?}", model1_dir, search_params1);
-  println!("Model 2: {} Search parameters 2: {:?}", model2_dir, search_params2);
+  let game_count: &'static _ = Box::leak(Box::new(AtomicU64::new(0)));
+  let game_limit: &'static _ = Box::leak(Box::new(args.game_limit));
+  //println!("Model 1: {} Search parameters 1: {:?}", model1_dir, search_params1);
+  //println!("Model 2: {} Search parameters 2: {:?}", model2_dir, search_params2);
   println!("Starting up with batch size: {}", BATCH_SIZE);
 
   let (tx_channels, mut rx_channels): (Vec<_>, Vec<_>) =
-    (0..4 * BATCH_SIZE).map(|_| tokio::sync::mpsc::unbounded_channel()).unzip();
+    (0..5 * BATCH_SIZE).map(|_| tokio::sync::mpsc::unbounded_channel()).unzip();
   let tx_channels: &'static _ = Box::leak(Box::new(tx_channels));
 
   let mut tasks = Vec::new();
@@ -129,11 +172,28 @@ async fn main() {
         engine1_is_white = !engine1_is_white;
         let seed1 = rand::random::<u64>();
         let seed2 = rand::random::<u64>();
+        let (search_params1, search_params2) = match randomize_search_params {
+          false => (SearchParams::default(), SearchParams::default()),
+          true => {
+            // Pick two random search parameter sets.
+            let search_params1 = generate_random_search_params();
+            // Generate search_params2 until we get an unequal set.
+            let mut search_params2 = search_params1.clone();
+            while search_params1 == search_params2 {
+              search_params2 = generate_random_search_params();
+            }
+            (search_params1, search_params2)
+          }
+        };
         let mcts1 = Mcts::new(2 * task_id + 0, seed1, inference_engine1, search_params1.clone());
         let mcts2 = Mcts::new(2 * task_id + 1, seed2, inference_engine2, search_params2.clone());
         let (white_engine_name, black_engine_name) = match engine1_is_white {
           true => (model1_dir, model2_dir),
           false => (model2_dir, model1_dir),
+        };
+        let (white_search_params, black_search_params) = match engine1_is_white {
+          true => (search_params1, search_params2),
+          false => (search_params2, search_params1),
         };
         let mut mctses = match engine1_is_white {
           true => [mcts1, mcts2],
@@ -230,8 +290,8 @@ async fn main() {
             "game_len_limit": GAME_LEN_LIMIT,
             "seed1": seed1,
             "seed2": seed2,
-            "search_params1": search_params1,
-            "search_params2": search_params2,
+            "search_params_white": white_search_params,
+            "search_params_black": black_search_params,
             "is_duck_chess": engine::rules::IS_DUCK_CHESS,
             "version": "mcts-1",
           });
@@ -239,6 +299,11 @@ async fn main() {
           file.write_all(s.as_bytes()).unwrap();
           file.write_all(b"\n").unwrap();
           file.flush().unwrap();
+          let gc = 1 + game_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+          if let Some(gl) = *game_limit && gc >= gl {
+            println!("Reached game limit of {}", gl);
+            std::process::exit(0);
+          }
         }
       }
     }));
@@ -247,4 +312,5 @@ async fn main() {
   for task in tasks {
     task.await.unwrap();
   }
+  println!("Done!");
 }

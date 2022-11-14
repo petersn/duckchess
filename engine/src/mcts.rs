@@ -23,7 +23,7 @@ slotmap::new_key_type! {
   //pub struct EdgeIndex;
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SearchParams {
   pub exploration_alpha:      f32,
   pub duck_exploration_alpha: f32,
@@ -58,7 +58,7 @@ impl std::str::FromStr for SearchParams {
       let value_f32: f32 = value.parse().map_err(|_| format!("Invalid value for {}: {}", key, value))?;
       match key {
         "alpha" => params.exploration_alpha = value_f32,
-        "duck_alpha" => params.duck_exploration_alpha = value_f32,
+        "duckalpha" => params.duck_exploration_alpha = value_f32,
         "fpu" => params.first_play_urgency = value_f32,
         _ => return Err(format!("Invalid key: {}", key)),
       }
