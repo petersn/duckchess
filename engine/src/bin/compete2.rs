@@ -28,10 +28,10 @@ struct Args {
   #[arg(short, long)]
   output_dir: String,
 
-  #[arg(short, long)]
+  #[arg(short, long, default_value="default")]
   search_params1: SearchParams,
 
-  #[arg(short, long)]
+  #[arg(short, long, default_value="default")]
   search_params2: SearchParams,
 }
 

@@ -45,6 +45,9 @@ impl std::str::FromStr for SearchParams {
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     let mut params = Self::default();
+    if s == "default" {
+      return Ok(params);
+    }
     for part in s.split(':') {
       let mut parts = part.split('=');
       let key = parts.next().ok_or_else(|| format!("Missing key in {}", part))?;
