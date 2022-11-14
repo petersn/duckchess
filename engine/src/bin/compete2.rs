@@ -33,40 +33,19 @@ struct Args {
   #[arg(long)]
   randomize_search_params: bool,
 
-  //#[arg(short, long, default_value="default")]
-  //search_params1: SearchParams,
-
-  //#[arg(short, long, default_value="default")]
-  //search_params2: SearchParams,
-
   #[arg(long)]
   game_limit: Option<u64>,
 }
 
 fn generate_random_search_params() -> SearchParams {
-  // Pick alpha randomly from [0.5, 1.0, 2.0, 4.0]
-  let exploration_alpha = match rand::random::<u32>() % 3 {
-    0 => 0.5,
-    //1 => 1.0,
-    1 => 0.25, //2.0,
-    2 => 0.125, //4.0,
-    _ => unreachable!(),
+  let exploration_alpha = match rand::random::<u32>() % 4 {
+    0 => 0.25, 1 => 0.5, 2 => 1.0, 3 => 2.0, _ => unreachable!(),
   };
-  // Pick duck_alpha likewise.
-  let duck_exploration_alpha = match rand::random::<u32>() % 3 {
-    0 => 0.5,
-    //1 => 1.0,
-    1 => 0.25, //2.0,
-    2 => 0.125, //4.0,
-    _ => unreachable!(),
+  let duck_exploration_alpha = match rand::random::<u32>() % 4 {
+    0 => 0.25, 1 => 0.5, 2 => 1.0, 3 => 2.0, _ => unreachable!(),
   };
-  // Pick FPU randomly as either 0.0 or 0.2.
   let first_play_urgency = match rand::random::<u32>() % 4 {
-    0 => 0.0,
-    1 => 0.1,
-    2 => 0.2,
-    3 => 0.3,
-    _ => unreachable!(),
+    0 => 0.0, 1 => 0.1, 2 => 0.2, 3 => 0.4, _ => unreachable!(),
   };
   SearchParams {
     exploration_alpha,

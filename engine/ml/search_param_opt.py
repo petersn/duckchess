@@ -11,10 +11,12 @@ from threading import Lock
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 
+# FIXME: This whole file is very busted right now.
+
 # We perform a tournament.
 prefix = "run-011-duck-chess/"
 model_dir = prefix + "step-065/model-keras/"
-output_dir = "hyper-opt-games"
+output_dir = "hyper-opt-games-200visits"
 playouts = 200
 game_limit = 200
 regular_alphas = [0.5, 1.0, 2.0, 4.0]

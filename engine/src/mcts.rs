@@ -30,11 +30,16 @@ pub struct SearchParams {
   pub first_play_urgency:     f32,
 }
 
+// These parameters were tuned with search_param_opt.py
+// I tuned them against both 200 visit games, and 1000 visit games.
+// They seemed to behave very similarly. In both cases it seems like
+// it wants an even lower alpha than these values, but I'm uncomfortable
+// going quite as low as seems to be best.
 impl Default for SearchParams {
   fn default() -> Self {
     Self {
-      exploration_alpha:      1.0,
-      duck_exploration_alpha: 0.5,
+      exploration_alpha:      0.5,
+      duck_exploration_alpha: 0.25,
       first_play_urgency:     0.2,
     }
   }
