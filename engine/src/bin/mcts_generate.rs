@@ -10,10 +10,10 @@ use tokio::sync::Mutex;
 use tokio::io::AsyncBufReadExt;
 
 const PLAYOUT_CAP_RANDOMIZATION_P: f32 = 0.25;
-//const FULL_SEARCH_PLAYOUTS: u32 = 1000;
-//const SMALL_SEARCH_PLAYOUTS: u32 = 200;
-const FULL_SEARCH_PLAYOUTS: u32 = 600;
-const SMALL_SEARCH_PLAYOUTS: u32 = 100;
+const FULL_SEARCH_PLAYOUTS: u32 = 1000;
+const SMALL_SEARCH_PLAYOUTS: u32 = 200;
+//const FULL_SEARCH_PLAYOUTS: u32 = 600;
+//const SMALL_SEARCH_PLAYOUTS: u32 = 100;
 const GAME_LEN_LIMIT: usize = 300;
 
 #[derive(Parser, Debug)]
