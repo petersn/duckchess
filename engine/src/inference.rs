@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::rules::{GameOutcome, Player, State, MOVE_HISTORY_LEN};
+use crate::{rules::{GameOutcome, Player, State, MOVE_HISTORY_LEN}, inference_desktop::Model};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Evaluation {
@@ -135,46 +135,83 @@ pub fn featurize_state<T: From<u8>>(state: &State, array: &mut [T; FEATURES_SIZE
   assert_eq!(layer_index, CHANNEL_COUNT);
 }
 
+pub type QuantizedProbability = u16;
+
+fn quantize_probability(probability: f32) -> QuantizedProbability {
+  assert!(0.0 <= probability && probability <= 1.0);
+  (probability * (QuantizedProbability::MAX as f32)) as QuantizedProbability
+}
+
+fn dequantize_probability(probability: QuantizedProbability) -> f32 {
+  (probability as f32) / (QuantizedProbability::MAX as f32)
+}
+
 #[derive(Clone)]
 pub struct ModelOutputs {
   // policy[64 * from + to] is a probability 0 to 1.
-  pub policy: Box<[f32; POLICY_LEN]>,
+  pub quantized_policy: Box<[QuantizedProbability; POLICY_LEN]>,
   // value is a valuation for the current player from -1 to +1.
   pub value:  Evaluation,
 }
 
+#[derive(Clone)]
+pub struct FullPrecisionModelOutputs {
+  pub policy: Box<[f32; POLICY_LEN]>,
+  pub value:  Evaluation,
+}
+
 impl ModelOutputs {
-  pub fn renormalize(&mut self, moves: &[crate::rules::Move]) {
+  pub fn get_policy(&self, index: usize) -> f32 {
+    dequantize_probability(self.quantized_policy[index])
+  }
+
+  pub fn set_policy(&mut self, index: usize, value: f32) {
+    self.quantized_policy[index] = quantize_probability(value);
+  }
+
+  pub fn quantize_from(mut full_prec: FullPrecisionModelOutputs, moves: &[crate::rules::Move]) -> ModelOutputs {
     let mut temp = Box::new([0.0; POLICY_LEN]);
-    let mut sum = 0.0;
+    let mut sum: f32 = 0.0;
+    // Copy over just the moves.
     for m in moves {
       let idx = m.to_index() as usize;
-      let val = self.policy[idx];
+      let val = full_prec.policy[idx];
       temp[idx] = val;
       sum += val;
     }
+    // Renormalize to sum to 1.
     let rescale = 1.0 / (1e-16 + sum);
     for i in 0..POLICY_LEN {
-      self.policy[i] = temp[i] * rescale;
+      full_prec.policy[i] = temp[i] * rescale;
     }
     // Check that the output policy is normalized.
-    let sum = self.policy.iter().sum::<f32>();
+    let sum = full_prec.policy.iter().sum::<f32>();
     debug_assert!(sum <= 1.001);
     let deficiency = (1.0 - sum).max(0.0);
     for m in moves {
       let idx = m.to_index() as usize;
-      self.policy[idx] += deficiency / moves.len() as f32;
+      full_prec.policy[idx] += deficiency / moves.len() as f32;
     }
-    let sum = self.policy.iter().sum::<f32>();
+    let sum = full_prec.policy.iter().sum::<f32>();
     if !moves.is_empty() && (sum - 1.0).abs() > 1e-5 {
       println!("Renormalization failed: sum is {}", sum);
       for m in moves {
         let idx = m.to_index() as usize;
-        println!("  {:?} -> {}", m, self.policy[idx]);
+        println!("  {:?} -> {}", m, full_prec.policy[idx]);
       }
       panic!();
     }
     debug_assert!(moves.is_empty() || (sum - 1.0).abs() < 1e-5);
+    // Finally, quantize and emit.
+    let mut quantized_policy = Box::new([0; POLICY_LEN]);
+    for i in 0..POLICY_LEN {
+      quantized_policy[i] = quantize_probability(full_prec.policy[i]);
+    }
+    ModelOutputs {
+      quantized_policy,
+      value: full_prec.value,
+    }
+
     //if (sum - 1.0).abs() > 1e-2 {
     //  panic!("\x1b[91m>>>\x1b0m Renormalized policy sum is {}, not 1.0", sum);
     //}
@@ -273,10 +310,10 @@ impl<'a, Cookie> InferenceResults<'a, Cookie> {
     }
   }
 
-  pub fn get(&self, index: usize) -> ModelOutputs {
+  pub fn get(&self, index: usize) -> FullPrecisionModelOutputs {
     //println!("Value: {}", self.values[index]);
     debug_assert!(-1.0 <= self.values[index] && self.values[index] <= 1.0);
-    ModelOutputs {
+    FullPrecisionModelOutputs {
       policy: make_perspective_policy(self.players[index], self.policies[index]),
       value:  Evaluation {
         expected_score:     (self.values[index] + 1.0) / 2.0,

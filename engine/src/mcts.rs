@@ -5,7 +5,7 @@ use std::future::Pending;
 
 use slotmap::SlotMap;
 
-use crate::inference::{Evaluation, InferenceEngine, ModelOutputs, POLICY_LEN};
+use crate::inference::{Evaluation, InferenceEngine, ModelOutputs, POLICY_LEN, FullPrecisionModelOutputs};
 use crate::rng::Rng;
 //use crate::inference::{ModelOutputs, POLICY_LEN};
 use crate::rules::{GameOutcome, Move, Player, State};
@@ -92,14 +92,17 @@ pub struct MctsNode {
 
 impl MctsNode {
   fn new(state: State, depth: u32) -> Self {
-    let mut outputs = ModelOutputs {
-      policy: Box::new([1.0; POLICY_LEN]),
-      value:  Evaluation::from_terminal_state(&state).unwrap_or(Evaluation::EVEN_EVAL),
-    };
     let needs_eval = state.get_outcome().is_none();
     let mut moves = vec![];
     state.move_gen::<false>(&mut moves);
-    outputs.renormalize(&moves);
+    let outputs = ModelOutputs::quantize_from(
+      FullPrecisionModelOutputs {
+        policy: Box::new([1.0; POLICY_LEN]),
+        value:  Evaluation::from_terminal_state(&state).unwrap_or(Evaluation::EVEN_EVAL),
+      },
+      &moves,
+    );
+    //outputs.renormalize(&moves);
     Self {
       depth,
       state,
@@ -225,14 +228,15 @@ impl MctsNode {
       noise[idx] = new_noise;
       noise_sum += new_noise;
       // Apply the new policy softmax temperature.
-      let new_policy = self.outputs.policy[idx].powf(1.0 / ROOT_SOFTMAX_TEMP);
-      self.outputs.policy[idx] = new_policy;
+      let new_policy = self.outputs.get_policy(idx).powf(1.0 / ROOT_SOFTMAX_TEMP);
+      self.outputs.set_policy(idx, new_policy);
       policy_sum += new_policy;
     }
     // Mix policy with noise.
     for i in 0..noise.len() {
-      self.outputs.policy[i] = (1.0 - DIRICHLET_WEIGHT) * self.outputs.policy[i] / policy_sum
-        + DIRICHLET_WEIGHT * noise[i] / noise_sum;
+      let mixed_policy = (1.0 - DIRICHLET_WEIGHT) * self.outputs.get_policy(i) / policy_sum
+      + DIRICHLET_WEIGHT * noise[i] / noise_sum;
+      self.outputs.set_policy(i, mixed_policy);
     }
     //// Make sure the policy is zero on illegal moves.
     //for i in 0..noise.len() {
@@ -244,10 +248,10 @@ impl MctsNode {
     //    }
     //  }
     //  if !is_move {
-    //    if self.outputs.policy[i] != 0.0 {
+    //    if self.outputs.get_policy(i) != 0.0 {
     //      println!(
     //        "Invalid policy: {:?} at move {:?}",
-    //        self.outputs.policy[i],
+    //        self.outputs.get_policy(i),
     //        Move::from_index(i as u16)
     //      );
     //      println!("  sums: {:?} {:?}", policy_sum, noise_sum);
@@ -257,11 +261,11 @@ impl MctsNode {
     //      println!("  backup: {:?}", backup_policy);
     //      panic!()
     //    }
-    //    assert_eq!(self.outputs.policy[i], 0.0);
+    //    assert_eq!(self.outputs.get_policy(i), 0.0);
     //  }
     //}
     // Assert normalization.
-    let sum = self.outputs.policy.iter().sum::<f32>();
+    //let sum = self.outputs.quantized_policy.iter().sum::<u32>();
     //let count_nonzero = self.outputs.policy.iter().filter(|&&x| x != 0.0).count();
     //// FIXME: Something is busted here, normalization keeps failing dramatically!
     //if (sum - 1.0).abs() >= 1e-3 {
@@ -273,11 +277,11 @@ impl MctsNode {
     //  println!("  state: {:?}", self.state);
     //  //println!("  policy: {:?}", self.outputs.policy);
     //}
-    debug_assert!((sum - 1.0).abs() < 1e-3);
+    //debug_assert!((sum - 1.0).abs() < 1e-3);
   }
 
   pub fn posterior(&self, m: Move) -> f32 {
-    self.outputs.policy[m.to_index() as usize]
+    self.outputs.get_policy(m.to_index() as usize)
   }
 }
 
@@ -475,15 +479,15 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     last_node_index
   }
 
-  pub fn process_path(&mut self, pending_path: PendingPath, model_outputs: ModelOutputs) {
+  pub fn process_path(&mut self, pending_path: PendingPath, model_outputs: FullPrecisionModelOutputs) {
     assert!(self.in_flight_count > 0);
     // FIXME: I need to ignore the path if it includes GCed nodes.
     let node_index = pending_path.path.last().unwrap();
     let node = &mut self.nodes[*node_index];
     node.needs_eval = false;
-    node.outputs = model_outputs;
+    node.outputs = ModelOutputs::quantize_from(model_outputs, &node.moves);
     //crate::log(&format!("Outputs: {:?}", node.outputs.value));
-    node.outputs.renormalize(&node.moves);
+    //node.outputs.renormalize(&node.moves);
     self.adjust_scores_on_path::<true>(pending_path.path, "inference");
     self.in_flight_count -= 1;
   }
