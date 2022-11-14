@@ -1,6 +1,6 @@
 use std::arch::wasm32::*;
-use js_sys::{Array, Atomics, Int32Array, SharedArrayBuffer, Uint8Array};
 
+use js_sys::{Array, Atomics, Int32Array, SharedArrayBuffer, Uint8Array};
 use wasm_bindgen::prelude::*;
 
 use crate::inference::{FEATURES_SIZE, POLICY_LEN};
@@ -273,7 +273,10 @@ pub fn test_threads() {
 pub fn test_shared_mem(shared_mem: Int32Array, my_value: i32) {
   log("Version 3");
   let loaded_value = shared_mem.get_index(0);
-  log(&format!("[worker={}] Loaded value: {}", my_value, loaded_value));
+  log(&format!(
+    "[worker={}] Loaded value: {}",
+    my_value, loaded_value
+  ));
   shared_mem.set_index(0, my_value);
   /*
   // Cast the shared memory to slice of std::sync::atomic::AtomicI32.

@@ -10,9 +10,9 @@ use crate::rng::Rng;
 //use crate::inference::{ModelOutputs, POLICY_LEN};
 use crate::rules::{GameOutcome, Move, Player, State};
 
-const EXPLORATION_ALPHA: f32 = 1.0;
-const DUCK_EXPLORATION_ALPHA: f32 = 0.5;
-const FIRST_PLAY_URGENCY: f32 = 0.2;
+//const EXPLORATION_ALPHA: f32 = 1.0;
+//const DUCK_EXPLORATION_ALPHA: f32 = 0.5;
+//const FIRST_PLAY_URGENCY: f32 = 0.2;
 const ROOT_SOFTMAX_TEMP: f32 = 1.2;
 const DIRICHLET_ALPHA: f32 = 0.1;
 const DIRICHLET_WEIGHT: f32 = 0.25;
@@ -21,6 +21,47 @@ const DIRICHLET_WEIGHT: f32 = 0.25;
 slotmap::new_key_type! {
   pub struct NodeIndex;
   //pub struct EdgeIndex;
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SearchParams {
+  pub exploration_alpha:      f32,
+  pub duck_exploration_alpha: f32,
+  pub first_play_urgency:     f32,
+}
+
+impl Default for SearchParams {
+  fn default() -> Self {
+    Self {
+      exploration_alpha:      1.0,
+      duck_exploration_alpha: 0.5,
+      first_play_urgency:     0.2,
+    }
+  }
+}
+
+impl std::str::FromStr for SearchParams {
+  type Err = String;
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    let mut params = Self::default();
+    for part in s.split(':') {
+      let mut parts = part.split('=');
+      let key = parts.next().ok_or_else(|| format!("Missing key in {}", part))?;
+      let value = parts.next().ok_or_else(|| format!("Missing value in {}", part))?;
+      if parts.next().is_some() {
+        return Err(format!("Extra = in {}", part));
+      }
+      let value_f32: f32 = value.parse().map_err(|_| format!("Invalid value for {}: {}", key, value))?;
+      match key {
+        "alpha" => params.exploration_alpha = value_f32,
+        "duck_alpha" => params.duck_exploration_alpha = value_f32,
+        "fpu" => params.first_play_urgency = value_f32,
+        _ => return Err(format!("Invalid key: {}", key)),
+      }
+    }
+    Ok(params)
+  }
 }
 
 #[derive(Clone)]
@@ -85,6 +126,7 @@ impl MctsNode {
 
   fn total_action_score(
     &self,
+    search_params: &SearchParams,
     sqrt_policy_explored: f32,
     nodes: &SlotMap<NodeIndex, MctsNode>,
     m: Move,
@@ -94,7 +136,7 @@ impl MctsNode {
       None => (
         (effective_visits as f32).sqrt(),
         (self.get_subtree_value().expected_score_for_player(self.state.turn)
-          - FIRST_PLAY_URGENCY * sqrt_policy_explored)
+          - search_params.first_play_urgency * sqrt_policy_explored)
           .max(0.0),
       ),
       Some(child_index) => {
@@ -106,14 +148,18 @@ impl MctsNode {
       }
     };
     let alpha = match self.state.is_duck_move {
-      true => DUCK_EXPLORATION_ALPHA,
-      false => EXPLORATION_ALPHA,
+      true => search_params.duck_exploration_alpha,
+      false => search_params.exploration_alpha,
     };
     let u = alpha * self.posterior(m) * u;
     q + u
   }
 
-  fn select_action(&self, nodes: &SlotMap<NodeIndex, MctsNode>) -> Option<Move> {
+  fn select_action(
+    &self,
+    search_params: &SearchParams,
+    nodes: &SlotMap<NodeIndex, MctsNode>,
+  ) -> Option<Move> {
     //println!("select_action from: {:?}", self.depth);
     if self.moves.is_empty() {
       return None;
@@ -122,7 +168,7 @@ impl MctsNode {
     let mut best_score = -std::f32::INFINITY;
     let mut best_move = None;
     for m in &self.moves {
-      let score = self.total_action_score(sqrt_policy_explored, nodes, *m);
+      let score = self.total_action_score(search_params, sqrt_policy_explored, nodes, *m);
       //println!(
       //  "    score: {:?} for move: {:?}  (posterior: {})",
       //  score,
@@ -245,6 +291,7 @@ pub struct PendingPath {
 pub struct Mcts<'a, Infer: InferenceEngine<(usize, PendingPath)>> {
   // This ID is used to identify evaluation requests from this MCTS instance.
   pub id:                  usize,
+  pub search_params:       SearchParams,
   pub inference_engine:    &'a Infer,
   pub in_flight_count:     usize,
   pub rng:                 Rng,
@@ -257,9 +304,15 @@ pub struct Mcts<'a, Infer: InferenceEngine<(usize, PendingPath)>> {
 // TODO: Implement speculatively finding good candidate states to evaluate and cache.
 
 impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
-  pub fn new(id: usize, seed: u64, inference_engine: &'a Infer) -> Mcts<Infer> {
+  pub fn new(
+    id: usize,
+    seed: u64,
+    inference_engine: &'a Infer,
+    search_params: SearchParams,
+  ) -> Mcts<Infer> {
     let mut this = Self {
       id,
+      search_params,
       inference_engine,
       in_flight_count: 0,
       rng: Rng::new(seed),
@@ -313,7 +366,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
           .max_by_key(|(_, node_index)| self.nodes[**node_index].visits)
           .map(|(m, _)| *m),
         // Otherwise select according to PUCT.
-        false => node.select_action(&self.nodes),
+        false => node.select_action(&self.search_params, &self.nodes),
       };
       match m {
         // None means we have no legal moves at the leaf (terminal).

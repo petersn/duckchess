@@ -197,9 +197,9 @@ enum NodeType {
 }
 
 struct TTEntry {
-  zobrist: u64,
-  depth: u16,
-  score: Evaluation,
+  zobrist:   u64,
+  depth:     u16,
+  score:     Evaluation,
   best_move: Option<Move>,
   node_type: NodeType,
 }
@@ -220,9 +220,9 @@ impl Engine {
     let mut transposition_table = Vec::with_capacity(tt_size);
     for _ in 0..tt_size {
       transposition_table.push(TTEntry {
-        zobrist: 0,
-        depth: 0,
-        score: 0,
+        zobrist:   0,
+        depth:     0,
+        score:     0,
         best_move: None,
         node_type: NodeType::Exact,
       });
@@ -295,7 +295,14 @@ impl Engine {
     }
   }
 
-  fn tt_insert(&mut self, zobrist: u64, depth: u16, score: Evaluation, best_move: Option<Move>, node_type: NodeType) {
+  fn tt_insert(
+    &mut self,
+    zobrist: u64,
+    depth: u16,
+    score: Evaluation,
+    best_move: Option<Move>,
+    node_type: NodeType,
+  ) {
     let index = (zobrist % self.transposition_table.len() as u64) as usize;
     let entry = &mut self.transposition_table[index];
     entry.zobrist = zobrist;

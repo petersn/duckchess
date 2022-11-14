@@ -1,6 +1,6 @@
 use std::cell::RefCell;
-use std::sync::Arc;
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::sync::Mutex;
 
 use tensorflow::{Graph, Operation, SavedModelBundle, SessionOptions, SessionRunArgs, Tensor};
@@ -29,12 +29,12 @@ pub struct Model {
 
 pub struct TensorFlowEngine<Cookie> {
   max_batch_size: usize,
-  model:         Mutex<Arc<Model>>,
-  input_blocks:  Mutex<VecDeque<InputBlock<Cookie>>>,
+  model:          Mutex<Arc<Model>>,
+  input_blocks:   Mutex<VecDeque<InputBlock<Cookie>>>,
   //input_tensors:   [&'static SyncUnsafeCell<Tensor<f32>>; BUFFER_COUNT],
   //return_channels: tokio::sync::Mutex<ReturnChannels>,
-  pub semaphore: tokio::sync::Semaphore,
-  eval_count:    std::sync::atomic::AtomicUsize,
+  pub semaphore:  tokio::sync::Semaphore,
+  eval_count:     std::sync::atomic::AtomicUsize,
 }
 
 fn load_model(model_dir: &str) -> Result<Model, String> {
@@ -44,7 +44,9 @@ fn load_model(model_dir: &str) -> Result<Model, String> {
   let bundle = SavedModelBundle::load(&SessionOptions::new(), &["serve"], &mut graph, model_dir)
     .map_err(|e| format!("Failed to load saved model: {}", e))?;
   // Get signature metadata from the model bundle
-  let signature = bundle.meta_graph_def().get_signature("serving_default")
+  let signature = bundle
+    .meta_graph_def()
+    .get_signature("serving_default")
     .map_err(|e| format!("Failed to get signature: {}", e))?;
   // Print all inputs.
   println!("Inputs:");
@@ -57,18 +59,24 @@ fn load_model(model_dir: &str) -> Result<Model, String> {
     println!("  {}: {:?}", name, tensor_info);
   }
   // Get input/output info.
-  let input_info = signature.get_input("inp_features")
+  let input_info = signature
+    .get_input("inp_features")
     .map_err(|e| format!("Failed to get input info: {}", e))?;
-  let policy_info = signature.get_output("out_policy")
+  let policy_info = signature
+    .get_output("out_policy")
     .map_err(|e| format!("Failed to get policy info: {}", e))?;
-  let value_info = signature.get_output("out_value")
+  let value_info = signature
+    .get_output("out_value")
     .map_err(|e| format!("Failed to get value info: {}", e))?;
   // Get input/output ops from graph.
-  let input_op = graph.operation_by_name_required(&input_info.name().name)
+  let input_op = graph
+    .operation_by_name_required(&input_info.name().name)
     .map_err(|e| format!("Failed to get input op: {}", e))?;
-  let policy_op = graph.operation_by_name_required(&policy_info.name().name)
+  let policy_op = graph
+    .operation_by_name_required(&policy_info.name().name)
     .map_err(|e| format!("Failed to get policy op: {}", e))?;
-  let value_op = graph.operation_by_name_required(&value_info.name().name)
+  let value_op = graph
+    .operation_by_name_required(&value_info.name().name)
     .map_err(|e| format!("Failed to get value op: {}", e))?;
   Ok(Model {
     bundle,
@@ -132,7 +140,8 @@ impl<Cookie> inference::InferenceEngine<Cookie> for TensorFlowEngine<Cookie> {
   fn add_work(&self, state: &crate::rules::State, cookie: Cookie) -> bool {
     //println!("\x1b[93mAdding work...\x1b[0m");
     let mut input_blocks = self.input_blocks.lock().unwrap();
-    let ready = inference::add_to_input_blocks(self.max_batch_size, &mut input_blocks, state, cookie);
+    let ready =
+      inference::add_to_input_blocks(self.max_batch_size, &mut input_blocks, state, cookie);
     // FIXME: This notifies too much.
     if ready {
       //println!("\x1b[91mNotifying...\x1b[0m");

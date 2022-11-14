@@ -4,10 +4,11 @@ use engine::inference::ModelOutputs;
 use engine::inference_desktop::TensorFlowEngine;
 use engine::mcts::Mcts;
 use engine::mcts::PendingPath;
+use engine::mcts::SearchParams;
+use tokio::io::AsyncBufReadExt;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
-use tokio::io::AsyncBufReadExt;
 
 const PLAYOUT_CAP_RANDOMIZATION_P: f32 = 0.25;
 const FULL_SEARCH_PLAYOUTS: u32 = 1000;
@@ -24,14 +25,22 @@ struct Args {
 
   #[arg(short, long)]
   model_dir: String,
+
+  #[arg(short, long)]
+  search_params: SearchParams,
 }
 
 #[tokio::main]
 async fn main() {
   let args = Args::parse();
 
-  let inference_engine: &TensorFlowEngine<(usize, PendingPath)> =
-    Box::leak(Box::new(TensorFlowEngine::new(TensorFlowEngine::<()>::DESIRED_BATCH_SIZE, &args.model_dir)));
+  let inference_engine: &TensorFlowEngine<(usize, PendingPath)> = Box::leak(Box::new(
+    TensorFlowEngine::new(TensorFlowEngine::<()>::DESIRED_BATCH_SIZE, &args.model_dir),
+  ));
+
+  let search_params: &'static SearchParams = Box::leak(Box::new(args.search_params));
+
+  println!("Search params: {:?}", search_params);
 
   let create_output_file = |output_dir: &str| {
     let output_path = format!(
@@ -42,10 +51,9 @@ async fn main() {
     println!("Writing to {}", output_path);
     std::fs::File::create(output_path).unwrap()
   };
-  
-  let output_file: &'static _ = Box::leak(Box::new(Mutex::new(
-    create_output_file(&args.output_dir)
-  )));
+
+  let output_file: &'static _ =
+    Box::leak(Box::new(Mutex::new(create_output_file(&args.output_dir))));
 
   let (tx_channels, rx_channels): (Vec<_>, Vec<_>) = (0..5
     * TensorFlowEngine::<()>::DESIRED_BATCH_SIZE)
@@ -95,7 +103,7 @@ async fn main() {
       use std::io::Write;
       loop {
         let seed = rand::random::<u64>();
-        let mut mcts = Mcts::new(task_id, seed, inference_engine);
+        let mut mcts = Mcts::new(task_id, seed, inference_engine, search_params.clone());
         // This array tracks the moves that actually occur in the game.
         let mut moves: Vec<engine::rules::Move> = vec![];
         // This array gives a few random example serialized states.
@@ -155,12 +163,10 @@ async fn main() {
           match game_move {
             None => break,
             Some(game_move) => {
-              states.push(
-                match rand::random::<f32>() < 0.01 {
-                  true => Some(mcts.get_state().clone()),
-                  false => None,
-                }
-              );
+              states.push(match rand::random::<f32>() < 0.01 {
+                true => Some(mcts.get_state().clone()),
+                false => None,
+              });
               // Make sure the move is actually in the list of moves of the root.
               let mut root_moves = vec![];
               mcts.get_state().move_gen::<false>(&mut root_moves);
@@ -210,6 +216,7 @@ async fn main() {
             "small_search_playouts": SMALL_SEARCH_PLAYOUTS,
             "game_len_limit": GAME_LEN_LIMIT,
             "seed": seed,
+            "search_params": search_params,
             "is_duck_chess": engine::rules::IS_DUCK_CHESS,
             "version": "mcts-1",
           });
@@ -233,7 +240,10 @@ async fn main() {
       let new_model_path = parts.next().unwrap();
       let new_output_dir = parts.next().unwrap();
       assert!(parts.next().is_none());
-      println!("\x1b[94mLoading new model from {} writing to {}\x1b[0m", new_model_path, new_output_dir);
+      println!(
+        "\x1b[94mLoading new model from {} writing to {}\x1b[0m",
+        new_model_path, new_output_dir
+      );
       match inference_engine.swap_out_model(new_model_path) {
         Ok(_) => {
           println!("\x1b[94mLoaded new model\x1b[0m");

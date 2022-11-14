@@ -2,8 +2,7 @@ use clap::Parser;
 use engine::inference::InferenceEngine;
 use engine::inference::ModelOutputs;
 use engine::inference_desktop::TensorFlowEngine;
-use engine::mcts::Mcts;
-use engine::mcts::PendingPath;
+use engine::mcts::{Mcts, PendingPath, SearchParams};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
@@ -28,6 +27,12 @@ struct Args {
 
   #[arg(short, long)]
   output_dir: String,
+
+  #[arg(short, long)]
+  search_params1: SearchParams,
+
+  #[arg(short, long)]
+  search_params2: SearchParams,
 }
 
 #[tokio::main]
@@ -42,6 +47,9 @@ async fn main() {
   let inference_engine2: &TensorFlowEngine<(usize, PendingPath)> =
     Box::leak(Box::new(TensorFlowEngine::new(BATCH_SIZE, model2_dir)));
 
+  let search_params1: &'static SearchParams = Box::leak(Box::new(args.search_params1));
+  let search_params2: &'static SearchParams = Box::leak(Box::new(args.search_params2));
+
   let output_path = format!(
     "{}/games-mcts-{:016x}.json",
     args.output_dir,
@@ -51,15 +59,12 @@ async fn main() {
   let output_file: &'static _ = Box::leak(Box::new(Mutex::new(
     std::fs::File::create(output_path).unwrap(),
   )));
-  println!(
-    "Starting up with batch size: {}",
-    BATCH_SIZE
-  );
+  println!("Model 1: {} Search parameters 1: {:?}", model1_dir, search_params1);
+  println!("Model 2: {} Search parameters 2: {:?}", model2_dir, search_params2);
+  println!("Starting up with batch size: {}", BATCH_SIZE);
 
-  let (tx_channels, mut rx_channels): (Vec<_>, Vec<_>) = (0..4
-    * BATCH_SIZE)
-    .map(|_| tokio::sync::mpsc::unbounded_channel())
-    .unzip();
+  let (tx_channels, mut rx_channels): (Vec<_>, Vec<_>) =
+    (0..4 * BATCH_SIZE).map(|_| tokio::sync::mpsc::unbounded_channel()).unzip();
   let tx_channels: &'static _ = Box::leak(Box::new(tx_channels));
 
   let mut tasks = Vec::new();
@@ -124,8 +129,8 @@ async fn main() {
         engine1_is_white = !engine1_is_white;
         let seed1 = rand::random::<u64>();
         let seed2 = rand::random::<u64>();
-        let mcts1 = Mcts::new(2 * task_id + 0, seed1, inference_engine1);
-        let mcts2 = Mcts::new(2 * task_id + 1, seed2, inference_engine2);
+        let mcts1 = Mcts::new(2 * task_id + 0, seed1, inference_engine1, search_params1.clone());
+        let mcts2 = Mcts::new(2 * task_id + 1, seed2, inference_engine2, search_params2.clone());
         let (white_engine_name, black_engine_name) = match engine1_is_white {
           true => (model1_dir, model2_dir),
           false => (model2_dir, model1_dir),
@@ -225,6 +230,9 @@ async fn main() {
             "game_len_limit": GAME_LEN_LIMIT,
             "seed1": seed1,
             "seed2": seed2,
+            "search_params1": search_params1,
+            "search_params2": search_params2,
+            "is_duck_chess": engine::rules::IS_DUCK_CHESS,
             "version": "mcts-1",
           });
           let s = serde_json::to_string(&obj).unwrap();

@@ -2,18 +2,12 @@ use std::collections::hash_map::DefaultHasher;
 
 use crate::{
   inference::Evaluation,
-  rules::{Move, State, Player, GameOutcome}, nnue_data::{
-    INTEGER_SCALE,
-    PARAMS_MAIN_EMBED_WEIGHT,
-    PARAMS_WHITE_MAIN_WEIGHT,
-    PARAMS_WHITE_MAIN_BIAS,
-    PARAMS_WHITE_DUCK_WEIGHT,
-    PARAMS_WHITE_DUCK_BIAS,
-    PARAMS_BLACK_MAIN_WEIGHT,
-    PARAMS_BLACK_MAIN_BIAS,
-    PARAMS_BLACK_DUCK_WEIGHT,
-    PARAMS_BLACK_DUCK_BIAS,
+  nnue_data::{
+    INTEGER_SCALE, PARAMS_BLACK_DUCK_BIAS, PARAMS_BLACK_DUCK_WEIGHT, PARAMS_BLACK_MAIN_BIAS,
+    PARAMS_BLACK_MAIN_WEIGHT, PARAMS_MAIN_EMBED_WEIGHT, PARAMS_WHITE_DUCK_BIAS,
+    PARAMS_WHITE_DUCK_WEIGHT, PARAMS_WHITE_MAIN_BIAS, PARAMS_WHITE_MAIN_WEIGHT,
   },
+  rules::{GameOutcome, Move, Player, State},
 };
 
 const LINEAR_STATE_SIZE: usize = 64;
@@ -68,7 +62,7 @@ impl Nnue {
           this.add_layer((64 * layer_number + pos as usize) as u16);
         }
       }
-    } 
+    }
     this
   }
 
@@ -121,15 +115,15 @@ impl Nnue {
       Some(GameOutcome::Draw) => {
         self.value = 0;
         return;
-      },
+      }
       Some(GameOutcome::Win(winner)) => {
         self.value = match winner == state.turn {
           true => 1_000_000_000,
           false => -1_000_000_000,
         };
         return;
-      },
-      None => {},
+      }
+      None => {}
     }
     let (mat, bias) = match (state.turn, state.is_duck_move) {
       (Player::White, false) => (PARAMS_WHITE_MAIN_WEIGHT, PARAMS_WHITE_MAIN_BIAS),
