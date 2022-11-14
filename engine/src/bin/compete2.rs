@@ -10,7 +10,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
 
 const GAME_LEN_LIMIT: usize = 300;
-const BATCH_SIZE: usize = 128;
+const BATCH_SIZE: usize = 64;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -86,7 +86,7 @@ async fn main() {
   println!("Starting up with batch size: {}", BATCH_SIZE);
 
   let (tx_channels, mut rx_channels): (Vec<_>, Vec<_>) =
-    (0..5 * BATCH_SIZE).map(|_| tokio::sync::mpsc::unbounded_channel()).unzip();
+    (0..4 * BATCH_SIZE).map(|_| tokio::sync::mpsc::unbounded_channel()).unzip();
   let tx_channels: &'static _ = Box::leak(Box::new(tx_channels));
 
   let mut tasks = Vec::new();
