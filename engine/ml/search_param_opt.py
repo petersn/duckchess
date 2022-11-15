@@ -51,7 +51,7 @@ def process_pair(pair):
     print(f"Working on {sp1} vs {sp2} on GPU {gpu}")
     subprocess.check_call(
         [
-            prefix + "/compete2",
+            prefix + "/compete",
             "--playouts", str(playouts),
             #"--search-params1", sp1,
             #"--search-params2", sp2,

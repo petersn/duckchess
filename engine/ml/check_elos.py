@@ -21,7 +21,7 @@ def generate_games(output_dir, model_a, model_b, game_count):
     proc = subprocess.Popen(
         [
             #"cargo", "run", "--bin", "compete", "--release", "--", "--playouts", "400",
-            prefix + "/compete2", "--playouts", "100",
+            prefix + "/compete", "--playouts", "100",
             "--model1-dir", model_a,
             "--model2-dir", model_b,
             "--output-dir", output_dir,
