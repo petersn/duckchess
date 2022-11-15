@@ -59,12 +59,12 @@ async function initWorker() {
   const sharedArrayBuffer = new SharedArrayBuffer(4 * 1024 * 1024);
   const wasm = await init();
 
-  for (let i = 0; i < 0; i++) {
-    //const start1 = performance.now();
-    //const nodes1 = perft();
-    //const end1 = performance.now();
-    //console.log('Perft', nodes1, 'nodes in', end1 - start1, 'ms');
-    //console.log('mega nodes per second', nodes1 / (end1 - start1) / 1000);
+  for (let i = 0; i < 2; i++) {
+    const start1 = performance.now();
+    const nodes1 = perft();
+    const end1 = performance.now();
+    console.log('Perft', nodes1, 'nodes in', end1 - start1, 'ms');
+    console.log('mega nodes per second', nodes1 / (end1 - start1) / 1000);
 
     const start2 = performance.now();
     const nodes2 = perft_nnue();
@@ -72,13 +72,14 @@ async function initWorker() {
     console.log('Perft NNUE', nodes2, 'nodes in', end2 - start2, 'ms');
     console.log('mega nodes per second', nodes2 / (end2 - start2) / 1000);
 
-    //const start3 = performance.now();
-    //const nodes3 = perft_eval();
-    //const end3 = performance.now();
-    //console.log('Perft eval', nodes3, 'nodes in', end3 - start3, 'ms');
-    //console.log('mega nodes per second', nodes3 / (end3 - start3) / 1000);
+    const start3 = performance.now();
+    const nodes3 = perft_eval();
+    const end3 = performance.now();
+    console.log('Perft eval', nodes3, 'nodes in', end3 - start3, 'ms');
+    console.log('mega nodes per second', nodes3 / (end3 - start3) / 1000);
     console.log('------------------');
   }
+  return;
 
   let array = new Int32Array(sharedArrayBuffer);
   setInterval(() => {
