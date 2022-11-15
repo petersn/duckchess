@@ -29,7 +29,7 @@ fn work(depth: u16, output_dir: &str) {
     let mut moves = vec![];
     let mut was_rand = vec![];
     //let mut engine = engine::search::Engine::new(rand::random());
-    let mut engine = engine::search::Engine::new(0);
+    let mut engine = engine::search::Engine::new(0, 1024);
     let start_time = std::time::Instant::now();
     //for move_index in 0..300 {
     for move_index in 0..10 {

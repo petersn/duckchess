@@ -1,13 +1,21 @@
+use clap::Parser;
 use engine::{inference::InferenceEngine, inference_desktop::TensorFlowEngine};
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+  #[arg(short, long)]
+  model: String,
+}
+
 fn main() {
-  let inference_engine = TensorFlowEngine::new("/tmp/keras");
+  let args = Args::parse();
+
+  let inference_engine = TensorFlowEngine::new(1, &args.model);
   let state = engine::rules::State::starting_state();
 
-  let mut sm = slotmap::SlotMap::with_key();
-  let cookie = sm.insert(0);
-  inference_engine.add_work(&state, cookie);
+  inference_engine.add_work(&state, 'a');
   inference_engine.predict(|outputs| {
-    println!("cookies: {:?}", outputs.cookies);
+    println!("outputs: {:#?}", outputs);
   });
 }

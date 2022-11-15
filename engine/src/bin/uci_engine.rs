@@ -1,10 +1,17 @@
-use std::{collections::HashMap, io::BufRead};
+use std::{collections::HashMap, io::BufRead, cell::RefCell};
 
 fn main() {
   let stdin = std::io::stdin();
-  let mut options = HashMap::new();
-  let seed: u64 = rand::random();
-  let mut engine = engine::search::Engine::new(seed);
+  let mut options = RefCell::new(HashMap::<String, String>::from([
+    ("Hash".to_string(), "16".to_string()),
+  ]));
+
+  let make_new_engine = || {
+    let seed: u64 = rand::random();
+    let hash_mib = options.borrow()["Hash"].parse::<usize>().unwrap();
+    engine::search::Engine::new(seed, hash_mib * 1024 * 1024)
+  };
+  let mut engine = make_new_engine();
 
   for line in stdin.lock().lines().map(|r| r.unwrap()) {
     let tokens = line.split_whitespace().collect::<Vec<_>>();
@@ -15,24 +22,26 @@ fn main() {
       "uci" => {
         println!("id name DuckChessZero");
         println!("id author Peter Schmidt-Nielsen");
+        println!("");
+        println!("option name Hash type spin default 16 min 1 max 1048576");
         println!("uciok");
       }
       "isready" => println!("readyok"),
       "quit" => break,
       "ucinewgame" => {
         println!("info string New game");
-        engine = engine::search::Engine::new(seed);
+        engine = make_new_engine();
       }
       "setoption" => {
         assert_eq!(tokens[1], "name");
         assert_eq!(tokens[3], "value");
         let name = tokens[2];
         let value = tokens[4];
-        options.insert(name.to_string(), value.to_string());
+        options.borrow_mut().insert(name.to_string(), value.to_string());
       }
       "position" => {
         assert_eq!(tokens[1], "startpos");
-        engine = engine::search::Engine::new(seed);
+        engine = make_new_engine();
         if tokens.len() > 2 {
           assert_eq!(tokens[2], "moves");
           let moves = &tokens[3..];

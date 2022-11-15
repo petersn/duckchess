@@ -1,11 +1,21 @@
+use clap::Parser;
 use engine::inference::InferenceEngine;
 use engine::inference_desktop::TensorFlowEngine;
-use engine::mcts::Mcts;
+use engine::mcts::{Mcts, SearchParams};
 use engine::rules::Move;
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+  #[arg(short, long)]
+  model: String,
+}
+
 fn main() {
-  let inference_engine = TensorFlowEngine::new("/tmp/keras");
-  let mut mcts = Mcts::new(0, 0, &inference_engine);
+  let args = Args::parse();
+
+  let inference_engine = TensorFlowEngine::new(128, &args.model);
+  let mut mcts = Mcts::new(0, 0, &inference_engine, SearchParams::default());
 
   macro_rules! inference {
     () => {
@@ -52,7 +62,7 @@ fn main() {
   //let s = r#"{"pawns": [[0, 0, 0, 0, 32, 64, 23, 0], [0, 119, 0, 72, 0, 0, 0, 0]], "knights": [[0, 0, 0, 0, 0, 2, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0]], "bishops": [[0, 0, 0, 0, 0, 0, 0, 4], [32, 0, 0, 0, 0, 0, 0, 0]], "rooks": [[0, 0, 0, 0, 0, 0, 0, 1], [1, 0, 0, 0, 0, 0, 0, 128]], "queens": [[0, 0, 0, 0, 0, 0, 0, 8], [8, 0, 0, 0, 0, 0, 0, 0]], "kings": [[0, 0, 0, 0, 0, 0, 0, 16], [16, 0, 0, 0, 0, 0, 0, 0]], "ducks": [0, 0, 0, 0, 0, 0, 0, 0], "enPassant": [0, 0, 0, 0, 0, 0, 0, 0], "castlingRights": [{"kingSide": false, "queenSide": true}, {"kingSide": false, "queenSide": true}], "turn": "black", "isDuckMove": false, "moveHistory": [{"from": 47, "to": 63}, {"from": 53, "to": 37}, {"from": 7, "to": 47}, {"from": 63, "to": 47}]}"#;
   //let state: engine::rules::State = serde_json::from_str(s).unwrap();
   let moves = r#"[{"from": 6, "to": 21}, {"from": 54, "to": 46}, {"from": 21, "to": 31}, {"from": 51, "to": 35}, {"from": 1, "to": 18}, {"from": 62, "to": 47}, {"from": 11, "to": 27}, {"from": 57, "to": 51}, {"from": 15, "to": 23}, {"from": 47, "to": 30}, {"from": 23, "to": 30}, {"from": 55, "to": 47}, {"from": 18, "to": 35}, {"from": 51, "to": 45}, {"from": 31, "to": 37}, {"from": 45, "to": 35}, {"from": 37, "to": 47}, {"from": 35, "to": 41}, {"from": 2, "to": 38}, {"from": 61, "to": 47}, {"from": 38, "to": 47}, {"from": 63, "to": 47}, {"from": 7, "to": 47}, {"from": 53, "to": 37}, {"from": 47, "to": 63}]"#;
-  let moves: Vec<engine::rules::Move> = serde_json::from_str(moves).unwrap();
+  let moves: Vec<Move> = serde_json::from_str(moves).unwrap();
   //mcts.set_state(state);
   for m in moves {
     mcts.apply_move(m);

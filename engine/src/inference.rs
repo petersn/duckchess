@@ -286,6 +286,7 @@ fn make_perspective_policy(player: Player, policy: &[f32; POLICY_LEN]) -> Box<[f
   result
 }
 
+#[derive(Debug)]
 pub struct InferenceResults<'a, Cookie> {
   pub length:   usize,
   pub cookies:  &'a [Cookie],
