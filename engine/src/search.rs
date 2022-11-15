@@ -376,8 +376,10 @@ impl Engine {
 
     //if mot_move.is_some() || killer_move.is_some() {
     moves.sort_by(|a, b| {
-      let mut a_score = (100.0 * nnue.outputs[a.to as usize]) as i32;
-      let mut b_score = (100.0 * nnue.outputs[b.to as usize]) as i32;
+      //let mut a_score = (100.0 * nnue.outputs[a.to as usize]) as i32;
+      //let mut b_score = (100.0 * nnue.outputs[b.to as usize]) as i32;
+      let mut a_score = 0;
+      let mut b_score = 0;
       if let Some(mot_move) = mot_move {
         if a == mot_move {
           a_score += 10_000;
