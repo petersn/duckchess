@@ -978,7 +978,7 @@ static DUMMY_PARAMS_MAIN_EMBED_WEIGHT: SixteenByteAligned<[[i8; 256], 960]> = Si
   ],
 };
 
-pub static PARAMS_MAIN_EMBED_BIAS: &'static [i16; 256] = &DUMMY_PARAMS_MAIN_EMBED_BIAS.data
+pub static PARAMS_MAIN_EMBED_BIAS: &'static [i16; 256] = &DUMMY_PARAMS_MAIN_EMBED_BIAS.data;
 
 static DUMMY_PARAMS_MAIN_EMBED_BIAS: SixteenByteAligned<[i16, 256]> = SixteenByteAligned {
   _align: [],
@@ -1011,7 +1011,7 @@ static DUMMY_PARAMS_WHITE_MAIN_0_WEIGHT: SixteenByteAligned<[[i8; 256], 16]> = S
   ],
 };
 
-pub static PARAMS_WHITE_MAIN_0_BIAS: &'static [i16; 16] = &DUMMY_PARAMS_WHITE_MAIN_0_BIAS.data
+pub static PARAMS_WHITE_MAIN_0_BIAS: &'static [i16; 16] = &DUMMY_PARAMS_WHITE_MAIN_0_BIAS.data;
 
 static DUMMY_PARAMS_WHITE_MAIN_0_BIAS: SixteenByteAligned<[i16, 16]> = SixteenByteAligned {
   _align: [],
@@ -1060,7 +1060,7 @@ static DUMMY_PARAMS_WHITE_MAIN_1_WEIGHT: SixteenByteAligned<[[i8; 16], 32]> = Si
   ],
 };
 
-pub static PARAMS_WHITE_MAIN_1_BIAS: &'static [i16; 32] = &DUMMY_PARAMS_WHITE_MAIN_1_BIAS.data
+pub static PARAMS_WHITE_MAIN_1_BIAS: &'static [i16; 32] = &DUMMY_PARAMS_WHITE_MAIN_1_BIAS.data;
 
 static DUMMY_PARAMS_WHITE_MAIN_1_BIAS: SixteenByteAligned<[i16, 32]> = SixteenByteAligned {
   _align: [],
@@ -1078,7 +1078,7 @@ static DUMMY_PARAMS_WHITE_MAIN_2_WEIGHT: SixteenByteAligned<[[i8; 32], 1]> = Six
   ],
 };
 
-pub static PARAMS_WHITE_MAIN_2_BIAS: &'static [i16; 1] = &DUMMY_PARAMS_WHITE_MAIN_2_BIAS.data
+pub static PARAMS_WHITE_MAIN_2_BIAS: &'static [i16; 1] = &DUMMY_PARAMS_WHITE_MAIN_2_BIAS.data;
 
 static DUMMY_PARAMS_WHITE_MAIN_2_BIAS: SixteenByteAligned<[i16, 1]> = SixteenByteAligned {
   _align: [],
@@ -1111,7 +1111,7 @@ static DUMMY_PARAMS_BLACK_MAIN_0_WEIGHT: SixteenByteAligned<[[i8; 256], 16]> = S
   ],
 };
 
-pub static PARAMS_BLACK_MAIN_0_BIAS: &'static [i16; 16] = &DUMMY_PARAMS_BLACK_MAIN_0_BIAS.data
+pub static PARAMS_BLACK_MAIN_0_BIAS: &'static [i16; 16] = &DUMMY_PARAMS_BLACK_MAIN_0_BIAS.data;
 
 static DUMMY_PARAMS_BLACK_MAIN_0_BIAS: SixteenByteAligned<[i16, 16]> = SixteenByteAligned {
   _align: [],
@@ -1160,7 +1160,7 @@ static DUMMY_PARAMS_BLACK_MAIN_1_WEIGHT: SixteenByteAligned<[[i8; 16], 32]> = Si
   ],
 };
 
-pub static PARAMS_BLACK_MAIN_1_BIAS: &'static [i16; 32] = &DUMMY_PARAMS_BLACK_MAIN_1_BIAS.data
+pub static PARAMS_BLACK_MAIN_1_BIAS: &'static [i16; 32] = &DUMMY_PARAMS_BLACK_MAIN_1_BIAS.data;
 
 static DUMMY_PARAMS_BLACK_MAIN_1_BIAS: SixteenByteAligned<[i16, 32]> = SixteenByteAligned {
   _align: [],
@@ -1178,7 +1178,7 @@ static DUMMY_PARAMS_BLACK_MAIN_2_WEIGHT: SixteenByteAligned<[[i8; 32], 1]> = Six
   ],
 };
 
-pub static PARAMS_BLACK_MAIN_2_BIAS: &'static [i16; 1] = &DUMMY_PARAMS_BLACK_MAIN_2_BIAS.data
+pub static PARAMS_BLACK_MAIN_2_BIAS: &'static [i16; 1] = &DUMMY_PARAMS_BLACK_MAIN_2_BIAS.data;
 
 static DUMMY_PARAMS_BLACK_MAIN_2_BIAS: SixteenByteAligned<[i16, 1]> = SixteenByteAligned {
   _align: [],
@@ -1211,7 +1211,7 @@ static DUMMY_PARAMS_WHITE_DUCK_0_WEIGHT: SixteenByteAligned<[[i8; 256], 16]> = S
   ],
 };
 
-pub static PARAMS_WHITE_DUCK_0_BIAS: &'static [i16; 16] = &DUMMY_PARAMS_WHITE_DUCK_0_BIAS.data
+pub static PARAMS_WHITE_DUCK_0_BIAS: &'static [i16; 16] = &DUMMY_PARAMS_WHITE_DUCK_0_BIAS.data;
 
 static DUMMY_PARAMS_WHITE_DUCK_0_BIAS: SixteenByteAligned<[i16, 16]> = SixteenByteAligned {
   _align: [],
@@ -1260,7 +1260,7 @@ static DUMMY_PARAMS_WHITE_DUCK_1_WEIGHT: SixteenByteAligned<[[i8; 16], 32]> = Si
   ],
 };
 
-pub static PARAMS_WHITE_DUCK_1_BIAS: &'static [i16; 32] = &DUMMY_PARAMS_WHITE_DUCK_1_BIAS.data
+pub static PARAMS_WHITE_DUCK_1_BIAS: &'static [i16; 32] = &DUMMY_PARAMS_WHITE_DUCK_1_BIAS.data;
 
 static DUMMY_PARAMS_WHITE_DUCK_1_BIAS: SixteenByteAligned<[i16, 32]> = SixteenByteAligned {
   _align: [],
@@ -1278,7 +1278,7 @@ static DUMMY_PARAMS_WHITE_DUCK_2_WEIGHT: SixteenByteAligned<[[i8; 32], 1]> = Six
   ],
 };
 
-pub static PARAMS_WHITE_DUCK_2_BIAS: &'static [i16; 1] = &DUMMY_PARAMS_WHITE_DUCK_2_BIAS.data
+pub static PARAMS_WHITE_DUCK_2_BIAS: &'static [i16; 1] = &DUMMY_PARAMS_WHITE_DUCK_2_BIAS.data;
 
 static DUMMY_PARAMS_WHITE_DUCK_2_BIAS: SixteenByteAligned<[i16, 1]> = SixteenByteAligned {
   _align: [],
@@ -1311,7 +1311,7 @@ static DUMMY_PARAMS_BLACK_DUCK_0_WEIGHT: SixteenByteAligned<[[i8; 256], 16]> = S
   ],
 };
 
-pub static PARAMS_BLACK_DUCK_0_BIAS: &'static [i16; 16] = &DUMMY_PARAMS_BLACK_DUCK_0_BIAS.data
+pub static PARAMS_BLACK_DUCK_0_BIAS: &'static [i16; 16] = &DUMMY_PARAMS_BLACK_DUCK_0_BIAS.data;
 
 static DUMMY_PARAMS_BLACK_DUCK_0_BIAS: SixteenByteAligned<[i16, 16]> = SixteenByteAligned {
   _align: [],
@@ -1360,7 +1360,7 @@ static DUMMY_PARAMS_BLACK_DUCK_1_WEIGHT: SixteenByteAligned<[[i8; 16], 32]> = Si
   ],
 };
 
-pub static PARAMS_BLACK_DUCK_1_BIAS: &'static [i16; 32] = &DUMMY_PARAMS_BLACK_DUCK_1_BIAS.data
+pub static PARAMS_BLACK_DUCK_1_BIAS: &'static [i16; 32] = &DUMMY_PARAMS_BLACK_DUCK_1_BIAS.data;
 
 static DUMMY_PARAMS_BLACK_DUCK_1_BIAS: SixteenByteAligned<[i16, 32]> = SixteenByteAligned {
   _align: [],
@@ -1378,7 +1378,7 @@ static DUMMY_PARAMS_BLACK_DUCK_2_WEIGHT: SixteenByteAligned<[[i8; 32], 1]> = Six
   ],
 };
 
-pub static PARAMS_BLACK_DUCK_2_BIAS: &'static [i16; 1] = &DUMMY_PARAMS_BLACK_DUCK_2_BIAS.data
+pub static PARAMS_BLACK_DUCK_2_BIAS: &'static [i16; 1] = &DUMMY_PARAMS_BLACK_DUCK_2_BIAS.data;
 
 static DUMMY_PARAMS_BLACK_DUCK_2_BIAS: SixteenByteAligned<[i16, 1]> = SixteenByteAligned {
   _align: [],
