@@ -2,7 +2,7 @@ include!(concat!(env!("OUT_DIR"), "/tables.rs"));
 
 use serde::{ser::SerializeSeq, Deserialize, Serialize};
 
-use crate::nnue::{Nnue, UndoCookie, DUCK_LAYER};
+use crate::nnue::{Nnue, UndoCookie, DUCK_LAYER, NO_LAYER};
 
 pub const IS_DUCK_CHESS: bool = true;
 
@@ -611,7 +611,7 @@ impl State {
     let nnue = if NNUE {
       nnue.unwrap()
     } else {
-      // Make a fake dangling referenc that we won't use.
+      // Make a fake dangling reference that we won't use.
       unsafe { &mut *(0x1 as *mut Nnue) }
     };
     if m.from > 63 || m.to > 63 {
@@ -637,8 +637,9 @@ impl State {
         self.ducks.0 &= !from_mask;
         self.ducks.0 |= to_mask;
 
-        assert_eq!(undo_cookie.sub_layers[0], u16::MAX);
-        assert_eq!(undo_cookie.add_layers[0], u16::MAX);
+        assert_eq!(undo_cookie.sub_layers[0], NO_LAYER);
+        assert_eq!(undo_cookie.add_layers[0], NO_LAYER);
+        // The very second move of the game has no duck being moved, so skips the subtraction.
         if extant_duck {
           undo_cookie.sub_layers[0] = 64 * DUCK_LAYER as u16 + m.from as u16;
           if NNUE {
@@ -699,7 +700,7 @@ impl State {
       // Capture pieces on the target square.
       them.0 &= !to_mask;
       if them.0 & to_mask != 0 {
-        assert_eq!(undo_cookie.sub_layers[1], u16::MAX);
+        assert_eq!(undo_cookie.sub_layers[1], NO_LAYER);
         undo_cookie.sub_layers[1] = 64 * their_nnue_layer as u16 + m.to as u16;
         if NNUE {
           nnue.sub_layer(undo_cookie.sub_layers[1]);
@@ -713,8 +714,8 @@ impl State {
         us.0 &= !from_mask;
         us.0 |= to_mask;
 
-        assert_eq!(undo_cookie.sub_layers[0], u16::MAX);
-        assert_eq!(undo_cookie.add_layers[0], u16::MAX);
+        assert_eq!(undo_cookie.sub_layers[0], NO_LAYER);
+        assert_eq!(undo_cookie.add_layers[0], NO_LAYER);
         undo_cookie.sub_layers[0] = 64 * our_nnue_layer as u16 + m.from as u16;
         undo_cookie.add_layers[0] = 64 * our_nnue_layer as u16 + m.to as u16;
         if NNUE {
@@ -731,7 +732,7 @@ impl State {
               match self.turn {
                 Player::White => {
                   them.0 &= !(1 << (m.to - 8));
-                  assert_eq!(undo_cookie.sub_layers[1], u16::MAX);
+                  assert_eq!(undo_cookie.sub_layers[1], NO_LAYER);
                   undo_cookie.sub_layers[1] = 64 * their_nnue_layer as u16 + (m.to - 8) as u16;
                   if NNUE {
                     nnue.sub_layer(undo_cookie.sub_layers[1]);
@@ -740,7 +741,7 @@ impl State {
                 }
                 Player::Black => {
                   them.0 &= !(1 << (m.to + 8));
-                  assert_eq!(undo_cookie.sub_layers[1], u16::MAX);
+                  assert_eq!(undo_cookie.sub_layers[1], NO_LAYER);
                   undo_cookie.sub_layers[1] = 64 * their_nnue_layer as u16 + (m.to + 8) as u16;
                   if NNUE {
                     nnue.sub_layer(undo_cookie.sub_layers[1]);
@@ -767,18 +768,20 @@ impl State {
             new_queens = promotion_mask;
 
             let our_queen_layer = 2 * 4 + self.turn as usize;
-            // The first thing we do is undo our nnue/zobrist change that adds the pawn.
-            assert_ne!(undo_cookie.add_layers[0], u16::MAX);
-            if NNUE {
-              nnue.sub_layer(undo_cookie.add_layers[0]);
+            if promotion_mask != 0 {
+              // The first thing we do is undo our nnue/zobrist change that adds the pawn.
+              assert_ne!(undo_cookie.add_layers[0], NO_LAYER);
+              if NNUE {
+                nnue.sub_layer(undo_cookie.add_layers[0]);
+              }
+              self.zobrist ^= ZOBRIST[undo_cookie.add_layers[0] as usize];
+              // Now we change it to be a queen.
+              undo_cookie.add_layers[0] = 64 * our_queen_layer as u16 + m.to as u16;
+              if NNUE {
+                nnue.add_layer(undo_cookie.add_layers[0]);
+              }
+              self.zobrist ^= ZOBRIST[undo_cookie.add_layers[0] as usize];
             }
-            self.zobrist ^= ZOBRIST[undo_cookie.add_layers[0] as usize];
-            // Now we change it to be a queen.
-            undo_cookie.add_layers[0] = 64 * our_queen_layer as u16 + m.to as u16;
-            if NNUE {
-              nnue.sub_add_layers(undo_cookie.sub_layers[0], undo_cookie.add_layers[0]);
-            }
-            self.zobrist ^= ZOBRIST[undo_cookie.add_layers[0] as usize];
             //match promotion {
             //  PromotablePiece::Queen => new_queens = promotion_mask,
             //  PromotablePiece::Rook => new_rooks = promotion_mask,
@@ -807,8 +810,8 @@ impl State {
               new_rooks = 1 << rook_to;
 
               let our_rook_layer = 2 * 3 + self.turn as usize;
-              assert_eq!(undo_cookie.sub_layers[1], u16::MAX);
-              assert_eq!(undo_cookie.add_layers[1], u16::MAX);
+              assert_eq!(undo_cookie.sub_layers[1], NO_LAYER);
+              assert_eq!(undo_cookie.add_layers[1], NO_LAYER);
               undo_cookie.sub_layers[1] = 64 * our_rook_layer as u16 + rook_from as u16;
               undo_cookie.add_layers[1] = 64 * our_rook_layer as u16 + rook_to as u16;
               if NNUE {
@@ -851,18 +854,18 @@ impl State {
     Ok(undo_cookie)
   }
 
-  pub fn undo(&mut self, cookie: UndoCookie) {
-    for sub in cookie.sub_layers {
-      if sub != u16::MAX {
-        self.zobrist ^= ZOBRIST[sub as usize];
-      }
-    }
-    for add in cookie.add_layers {
-      if add != u16::MAX {
-        self.zobrist ^= ZOBRIST[add as usize];
-      }
-    }
-  }
+  // pub fn undo(&mut self, cookie: UndoCookie) {
+  //   for sub in cookie.sub_layers {
+  //     if sub != NO_LAYER {
+  //       self.zobrist ^= ZOBRIST[sub as usize];
+  //     }
+  //   }
+  //   for add in cookie.add_layers {
+  //     if add != NO_LAYER {
+  //       self.zobrist ^= ZOBRIST[add as usize];
+  //     }
+  //   }
+  // }
 
   pub fn sanity_check(&self) -> Result<(), &'static str> {
     let mut all_pieces = self.ducks.0;

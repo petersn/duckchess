@@ -15,17 +15,20 @@ const LINEAR_STATE_SIZE: usize = 64;
 // 6 layers for our pieces, 6 for theirs, 1 for the duck.
 pub const DUCK_LAYER: usize = 12;
 
-#[derive(Debug)]
+pub type LayerIndex = u16;
+pub const NO_LAYER: LayerIndex = LayerIndex::MAX;
+
+#[derive(Clone, Copy, Debug)]
 pub struct UndoCookie {
-  pub sub_layers: [u16; 2],
-  pub add_layers: [u16; 2],
+  pub sub_layers: [LayerIndex; 2],
+  pub add_layers: [LayerIndex; 2],
 }
 
 impl UndoCookie {
   pub fn new() -> UndoCookie {
     UndoCookie {
-      sub_layers: [u16::MAX; 2],
-      add_layers: [u16::MAX; 2],
+      sub_layers: [NO_LAYER; 2],
+      add_layers: [NO_LAYER; 2],
     }
   }
 }
