@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::{rules::{GameOutcome, Player, State, MOVE_HISTORY_LEN}, inference_desktop::Model};
+use crate::rules::{GameOutcome, Player, State, MOVE_HISTORY_LEN};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Evaluation {

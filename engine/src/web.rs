@@ -9,6 +9,7 @@ use crate::mcts::PendingPath;
 use crate::{inference, inference_web, mcts, rules::Move, search};
 
 const MAX_STEPS_BEFORE_INFERENCE: usize = 40 * MAX_BATCH_SIZE;
+const WEB_TRANSPOSITION_TABLE_SIZE: usize = 1 << 20;
 
 #[wasm_bindgen]
 extern "C" {
@@ -127,8 +128,8 @@ pub fn new_engine(seed: u64) -> Engine {
   log(&format!("Created (1) inference engine"));
   Engine {
     inference_engine: tfjs_inference_engine,
-    engine:           search::Engine::new(seed),
-    mcts:             mcts::Mcts::new(0, seed, tfjs_inference_engine),
+    engine:           search::Engine::new(seed, WEB_TRANSPOSITION_TABLE_SIZE),
+    mcts:             mcts::Mcts::new(0, seed, tfjs_inference_engine, SearchParams::default()),
     //input_array: Box::new([0.0; MAX_BATCH_SIZE * FEATURES_SIZE]),
     //policy_array: Box::new([0.0; MAX_BATCH_SIZE * POLICY_LEN]),
     //value_array: Box::new([0.0; MAX_BATCH_SIZE]),
