@@ -77,6 +77,11 @@ fn version() -> i64 {
   2
 }
 
+#[pyfunction]
+fn is_duck_chess() -> bool {
+  crate::rules::IS_DUCK_CHESS
+}
+
 #[pymodule]
 fn engine(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
   m.add_function(wrap_pyfunction!(index_to_move, m)?)?;
