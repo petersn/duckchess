@@ -349,21 +349,21 @@ impl Engine {
     beta: Evaluation,
   ) -> (Evaluation, (Option<Move>, Option<Move>)) {
     // Check the transposition table.
-    if let Some(entry) = self.probe_tt(state) {
-      if entry.depth >= depth {
-        match entry.node_type {
-          NodeType::Exact => return (entry.score, (entry.best_move, None)),
-          NodeType::LowerBound => {
-            alpha = max(alpha, entry.score);
-          }
-          NodeType::UpperBound => {
-            if entry.score <= alpha {
-              return (entry.score, (entry.best_move, None));
-            }
-          }
-        }
-      }
-    }
+    // if let Some(entry) = self.probe_tt(state) {
+    //   if entry.depth >= depth {
+    //     match entry.node_type {
+    //       NodeType::Exact => return (entry.score, (entry.best_move, None)),
+    //       NodeType::LowerBound => {
+    //         alpha = max(alpha, entry.score);
+    //       }
+    //       NodeType::UpperBound => {
+    //         if entry.score <= alpha {
+    //           return (entry.score, (entry.best_move, None));
+    //         }
+    //       }
+    //     }
+    //   }
+    // }
   
     // Evaluate the nnue to get a score.
     let mut get_eval = || {

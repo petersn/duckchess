@@ -38,6 +38,9 @@ const VECTOR_LENGTH_I16: usize = 8;
 //     This function is only used for maintaining the accumulator, and thus
 //     we use non-saturating arithmetic, to guarantee invertibility.
 //
+//   fn vec_narrow_pair(a: VecI16, b: VecI16) -> VecI8;
+//     Saturatingly narrow the sixteen input elements into one vector.
+//
 //   fn vec_matmul_sat_fma(accum: VecI16, a: VecI8, b: VecI8) -> VecI16;
 //     This function is used for implementing fast matrix multiplication.
 //     The only guarantee is that the saturating horizontal sum of the result
@@ -62,6 +65,9 @@ cfg_if::cfg_if! {
 
     #[inline(always)]
     fn veci16_sub(a: VecI16, b: VecI16) -> VecI16 { unsafe { _mm_sub_epi16(a, b) } }
+
+    #[inline(always)]
+    fn vec_narrow_pair(a: VecI16, b: VecI16) -> VecI8 { unsafe { _mm_packs_epi16(a, b) } }
 
     #[inline(always)]
     fn vec_matmul_sat_fma(accum: VecI16, a: VecI8, b: VecI8) -> VecI16 {
@@ -93,13 +99,28 @@ cfg_if::cfg_if! {
     fn veci16_sub(a: VecI16, b: VecI16) -> VecI16 { unsafe { vsubq_s16(a, b) } }
 
     #[inline(always)]
+    fn vec_narrow_pair(a: VecI16, b: VecI16) -> VecI8 {
+      unsafe { vqmovn_high_s16(vqmovn_s16(a), b) }
+    }
+
+    #[inline(always)]
     fn vec_matmul_sat_fma(accum: VecI16, a: VecI8, b: VecI8) -> VecI16 {
-      compile_error!("TODO: Implement vec_matmul_sat_fma for aarch64");
+      unsafe {
+        let low_mul = vmull_s8(vget_low_s8(a), vget_low_s8(b));
+        let high_mul = vmull_high_s8(a, b);
+        vqaddq_s16(accum, vqaddq_s16(low_mul, high_mul))
+      }
     }
 
     #[inline(always)]
     fn veci16_horizontal_sat_sum(a: VecI16) -> i16 {
-      compile_error!("TODO: Implement veci16_horizontal_sat_sum for aarch64");
+      unsafe {
+        let a = vpaddlq_s16(a);
+        let a = vpaddlq_s32(a);
+        let a = vaddvq_s64(a);
+        // Narrow to 16 bits saturatingly.
+        a.clamp(i16::MIN as i64, i16::MAX as i64) as i16
+      }
     }
   } else if #[cfg(target_arch = "wasm32")] {
     use std::arch::wasm32::*;
@@ -114,6 +135,11 @@ cfg_if::cfg_if! {
 
     #[inline(always)]
     fn veci16_sub(a: VecI16, b: VecI16) -> VecI16 { unsafe { i16x8_sub(a, b) } }
+
+    #[inline(always)]
+    fn vec_narrow_pair(a: VecI16, b: VecI16) -> VecI8 {
+      unsafe { i8x16_narrow_i16x8(a, b) }
+    }
 
     #[inline(always)]
     fn vec_matmul_sat_fma(accum: VecI16, a: VecI8, b: VecI8) -> VecI16 {
@@ -310,10 +336,13 @@ impl Nnue {
     // The horizontal sum of all of the entries in accum[i] represents the output of layer 0.
     let mut accums0 = [veci16_zeros(); 16];
     let weights0 = get_weights2d_i8!(mat0, 256, 16);
-    for i in 0..LINEAR_STATE_VECTOR_COUNT {
+    for i in 0..LINEAR_STATE_VECTOR_COUNT / 2 {
+      let v0: VecI16 = self.linear_state[2 * i + 0];
+      let v1: VecI16 = self.linear_state[2 * i + 1];
+      let v = vec_narrow_pair(v0, v1);
       for j in 0..16 {
         let block = weights0[j][i];
-        accums0[j] = vec_matmul_sat_fma(accums0[j], self.linear_state[i], block);
+        accums0[j] = vec_matmul_sat_fma(accums0[j], v, block);
       }
     }
     // We now horizontally sum the accums0, add the bias, and apply the activation function.
