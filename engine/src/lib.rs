@@ -1,6 +1,7 @@
 pub mod inference;
 pub mod mcts;
 pub mod nnue;
+#[rustfmt::skip]
 pub mod nnue_data;
 pub mod pgn4_parse;
 pub mod rng;
