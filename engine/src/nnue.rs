@@ -2,7 +2,6 @@
 /// 1. A SIMD implementation for x86_64.
 /// 2. A SIMD implementation for aarch64.
 /// 3. A SIMD implementation for wasm32.
-
 use std::collections::hash_map::DefaultHasher;
 
 #[rustfmt::skip]
@@ -155,9 +154,7 @@ macro_rules! get_weights2d_i8 {
 macro_rules! get_bias1d_i16 {
   ($biases:expr, $inner:expr) => {{
     static_assertions::const_assert_eq!($inner % VECTOR_LENGTH_I16, 0);
-    unsafe {
-      &*($biases as *const i16 as *const [VecI16; $inner / VECTOR_LENGTH_I16])
-    }
+    unsafe { &*($biases as *const i16 as *const [VecI16; $inner / VECTOR_LENGTH_I16]) }
   }};
 }
 

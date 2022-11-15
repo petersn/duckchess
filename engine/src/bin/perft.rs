@@ -1,4 +1,4 @@
-use engine::nnue::{UndoCookie, Nnue};
+use engine::nnue::{Nnue, UndoCookie};
 use engine::rules::{Move, State};
 
 // Implement perft recursively
@@ -70,8 +70,5 @@ fn main() {
   let elapsed = start_time.elapsed().as_secs_f32();
   println!("{} nodes", nodes);
   println!("{} seconds", elapsed);
-  println!(
-    "{} Mnodes/second",
-    1e-6 * nodes as f32 / elapsed
-  );
+  println!("{} Mnodes/second", 1e-6 * nodes as f32 / elapsed);
 }
