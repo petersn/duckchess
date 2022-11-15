@@ -13,6 +13,9 @@ fn perft(nnue: &mut Nnue, state: &State, depth: usize) -> u64 {
     //let nnue_hash = nnue.get_debugging_hash();
     let mut child = state.clone();
     let undo_cookie = child.apply_move::<true>(m, Some(nnue)).unwrap();
+    //if depth == 1 {
+    //  let eval = nnue.evaluate(&child);
+    //}
     let eval = nnue.evaluate(&child);
     count += perft(nnue, &child, depth - 1);
     nnue.undo(undo_cookie);
@@ -31,7 +34,7 @@ fn main() {
   let start_time = std::time::Instant::now();
   let state = State::starting_state();
   let mut nnue = Nnue::new(&state);
-  let nodes = perft(&mut nnue, &state, 4);
+  let nodes = perft(&mut nnue, &state, 5);
   // let mut nodes = 0;
   // let mut moves = vec![];
   // let mut stack = vec![StackEntry {
