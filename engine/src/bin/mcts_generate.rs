@@ -26,7 +26,7 @@ struct Args {
   #[arg(short, long)]
   model_dir: String,
 
-  #[arg(short, long, default_value="default")]
+  #[arg(short, long, default_value = "default")]
   search_params: SearchParams,
 }
 

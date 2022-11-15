@@ -39,13 +39,25 @@ struct Args {
 
 fn generate_random_search_params() -> SearchParams {
   let exploration_alpha = match rand::random::<u32>() % 4 {
-    0 => 0.25, 1 => 0.5, 2 => 1.0, 3 => 2.0, _ => unreachable!(),
+    0 => 0.25,
+    1 => 0.5,
+    2 => 1.0,
+    3 => 2.0,
+    _ => unreachable!(),
   };
   let duck_exploration_alpha = match rand::random::<u32>() % 4 {
-    0 => 0.25, 1 => 0.5, 2 => 1.0, 3 => 2.0, _ => unreachable!(),
+    0 => 0.25,
+    1 => 0.5,
+    2 => 1.0,
+    3 => 2.0,
+    _ => unreachable!(),
   };
   let first_play_urgency = match rand::random::<u32>() % 4 {
-    0 => 0.0, 1 => 0.1, 2 => 0.2, 3 => 0.4, _ => unreachable!(),
+    0 => 0.0,
+    1 => 0.1,
+    2 => 0.2,
+    3 => 0.4,
+    _ => unreachable!(),
   };
   SearchParams {
     exploration_alpha,
@@ -164,8 +176,18 @@ async fn main() {
             (search_params1, search_params2)
           }
         };
-        let mcts1 = Mcts::new(2 * task_id + 0, seed1, inference_engine1, search_params1.clone());
-        let mcts2 = Mcts::new(2 * task_id + 1, seed2, inference_engine2, search_params2.clone());
+        let mcts1 = Mcts::new(
+          2 * task_id + 0,
+          seed1,
+          inference_engine1,
+          search_params1.clone(),
+        );
+        let mcts2 = Mcts::new(
+          2 * task_id + 1,
+          seed2,
+          inference_engine2,
+          search_params2.clone(),
+        );
         let (white_engine_name, black_engine_name) = match engine1_is_white {
           true => (model1_dir, model2_dir),
           false => (model2_dir, model1_dir),

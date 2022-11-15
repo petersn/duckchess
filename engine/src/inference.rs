@@ -151,7 +151,7 @@ pub struct ModelOutputs {
   // policy[64 * from + to] is a probability 0 to 1.
   pub quantized_policy: Box<[QuantizedProbability; POLICY_LEN]>,
   // value is a valuation for the current player from -1 to +1.
-  pub value:  Evaluation,
+  pub value:            Evaluation,
 }
 
 #[derive(Clone)]
@@ -169,7 +169,10 @@ impl ModelOutputs {
     self.quantized_policy[index] = quantize_probability(value);
   }
 
-  pub fn quantize_from(mut full_prec: FullPrecisionModelOutputs, moves: &[crate::rules::Move]) -> ModelOutputs {
+  pub fn quantize_from(
+    mut full_prec: FullPrecisionModelOutputs,
+    moves: &[crate::rules::Move],
+  ) -> ModelOutputs {
     let mut temp = Box::new([0.0; POLICY_LEN]);
     let mut sum: f32 = 0.0;
     // Copy over just the moves.

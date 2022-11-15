@@ -5,7 +5,9 @@ use std::future::Pending;
 
 use slotmap::SlotMap;
 
-use crate::inference::{Evaluation, InferenceEngine, ModelOutputs, POLICY_LEN, FullPrecisionModelOutputs};
+use crate::inference::{
+  Evaluation, FullPrecisionModelOutputs, InferenceEngine, ModelOutputs, POLICY_LEN,
+};
 use crate::rng::Rng;
 //use crate::inference::{ModelOutputs, POLICY_LEN};
 use crate::rules::{GameOutcome, Move, Player, State};
@@ -60,7 +62,8 @@ impl std::str::FromStr for SearchParams {
       if parts.next().is_some() {
         return Err(format!("Extra = in {}", part));
       }
-      let value_f32: f32 = value.parse().map_err(|_| format!("Invalid value for {}: {}", key, value))?;
+      let value_f32: f32 =
+        value.parse().map_err(|_| format!("Invalid value for {}: {}", key, value))?;
       match key {
         "alpha" => params.exploration_alpha = value_f32,
         "duckalpha" => params.duck_exploration_alpha = value_f32,
@@ -235,7 +238,7 @@ impl MctsNode {
     // Mix policy with noise.
     for i in 0..noise.len() {
       let mixed_policy = (1.0 - DIRICHLET_WEIGHT) * self.outputs.get_policy(i) / policy_sum
-      + DIRICHLET_WEIGHT * noise[i] / noise_sum;
+        + DIRICHLET_WEIGHT * noise[i] / noise_sum;
       self.outputs.set_policy(i, mixed_policy);
     }
     //// Make sure the policy is zero on illegal moves.
@@ -479,7 +482,11 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     last_node_index
   }
 
-  pub fn process_path(&mut self, pending_path: PendingPath, model_outputs: FullPrecisionModelOutputs) {
+  pub fn process_path(
+    &mut self,
+    pending_path: PendingPath,
+    model_outputs: FullPrecisionModelOutputs,
+  ) {
     assert!(self.in_flight_count > 0);
     // FIXME: I need to ignore the path if it includes GCed nodes.
     let node_index = pending_path.path.last().unwrap();
