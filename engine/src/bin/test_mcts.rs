@@ -21,7 +21,7 @@ fn main() {
     () => {
       mcts.get_state().sanity_check().unwrap();
       inference_engine.predict(|inference_results| {
-        for (i, (cookie, pending_path)) in inference_results.cookies.into_iter().enumerate() {
+        for (i, (_cookie, pending_path)) in inference_results.cookies.into_iter().enumerate() {
           mcts.process_path(pending_path.clone(), inference_results.get(i));
         }
       });

@@ -1,13 +1,10 @@
 use clap::Parser;
 use engine::inference::InferenceEngine;
-use engine::inference::ModelOutputs;
 use engine::inference_desktop::TensorFlowEngine;
 use engine::mcts::Mcts;
 use engine::mcts::PendingPath;
 use engine::mcts::SearchParams;
 use tokio::io::AsyncBufReadExt;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
 
 const PLAYOUT_CAP_RANDOMIZATION_P: f32 = 0.25;
@@ -255,15 +252,10 @@ async fn main() {
       }
     }
     if line == "status" {
-      let mut file = output_file.lock().await;
+      let file = output_file.lock().await;
       //file.flush().unwrap();
       let metadata = file.metadata().unwrap();
       println!("{} bytes written", metadata.len());
     }
-  }
-
-  // Join all the tasks.
-  for task in tasks {
-    task.await.unwrap();
   }
 }

@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -7,18 +6,8 @@ use tensorflow::{Graph, Operation, SavedModelBundle, SessionOptions, SessionRunA
 
 use crate::inference;
 use crate::inference::{
-  featurize_state, InferenceResults, InputBlock, CHANNEL_COUNT, FEATURES_SIZE, POLICY_LEN,
+  InferenceResults, InputBlock, CHANNEL_COUNT, FEATURES_SIZE, POLICY_LEN,
 };
-use crate::mcts;
-use crate::rules::{Move, State};
-
-//pub const self.max_batch_size: usize = 128;
-
-//struct ReturnChannels {
-//  next_buffer: usize,
-//  slot_index:  usize,
-//  channels:    [Option<tokio::sync::oneshot::Sender<ModelOutputs>>; BUFFER_COUNT * BATCH_SIZE],
-//}
 
 pub struct Model {
   bundle:    SavedModelBundle,
@@ -138,52 +127,14 @@ impl<Cookie> inference::InferenceEngine<Cookie> for TensorFlowEngine<Cookie> {
   const DESIRED_BATCH_SIZE: usize = 128;
 
   fn add_work(&self, state: &crate::rules::State, cookie: Cookie) -> bool {
-    //println!("\x1b[93mAdding work...\x1b[0m");
     let mut input_blocks = self.input_blocks.lock().unwrap();
     let ready =
       inference::add_to_input_blocks(self.max_batch_size, &mut input_blocks, state, cookie);
     // FIXME: This notifies too much.
     if ready {
-      //println!("\x1b[91mNotifying...\x1b[0m");
       self.semaphore.add_permits(1);
     }
     ready
-    /*
-    // Allocate a slot.
-    let (rx, work) = {
-      let mut guard = self.return_channels.lock().await;
-      //println!("[{worker_id}] \x1b[93m >>> LOCKED\x1b[0m");
-      let slot_index = guard.slot_index;
-      guard.slot_index = (guard.slot_index + 1) % (BUFFER_COUNT * BATCH_SIZE);
-      // Make sure we haven't overflowed.
-      assert!(guard.channels[slot_index].is_none());
-      // Featurize.
-      let array: &mut [f32] = unsafe {
-        let input_tensor: *mut Tensor<f32> = self.input_tensors[slot_index / BATCH_SIZE].get();
-        const SLOT_SIZE: usize = 64 * CHANNEL_COUNT;
-        let offset = (slot_index % BATCH_SIZE) * SLOT_SIZE;
-        &mut input_tensor.as_mut().unwrap()[offset..offset + SLOT_SIZE]
-      };
-      featurize_state::<f32>(state, array.try_into().unwrap());
-
-      //println!("[{worker_id}] Allocated slot {} (next_buffer={})", slot_index, guard.next_buffer);
-
-      let work = match slot_index % BATCH_SIZE == BATCH_SIZE - 1 {
-        true => {
-          let buffer = guard.next_buffer;
-          guard.next_buffer = (guard.next_buffer + 1) % BUFFER_COUNT;
-          Some(buffer)
-        }
-        false => None,
-      };
-
-      // Insert a new channel.
-      let (tx, rx) = tokio::sync::oneshot::channel();
-      guard.channels[slot_index] = Some(tx);
-      //println!("[{worker_id}] \x1b[93m <<< UNLOCKING\x1b[0m");
-      (rx, work)
-    };
-    */
   }
 
   fn predict(&self, use_outputs: impl FnOnce(InferenceResults<Cookie>)) -> usize {
@@ -193,7 +144,6 @@ impl<Cookie> inference::InferenceEngine<Cookie> for TensorFlowEngine<Cookie> {
       drop(guard);
       cloned
     };
-    //println!("\x1b[92mPredicting...\x1b[0m");
     // Pop the last input block, which is inside the mutex.
     let last_block = {
       let mut guard = self.input_blocks.lock().unwrap();
@@ -237,46 +187,9 @@ impl<Cookie> inference::InferenceEngine<Cookie> for TensorFlowEngine<Cookie> {
       &value_output[..],
     ));
     block_len
-
-    /*
-    if let Some(buffer) = work {
-      //println!("[{worker_id}] >>>>>>>>>> Running inference");
-      // If we're the last slot, run the batch.
-      let (policy_output, value_output) = {
-
-        (policy_output, value_output)
-      };
-      self.eval_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-      let mut guard = self.return_channels.lock().await;
-      //let mut guard = self.return_channels.lock().await;
-      //println!("[{worker_id}] \x1b[92m >>> LOCKING: {buffer}\x1b[0m");
-      // Acquire the lock.
-      let relevant_return_channels =
-        &mut guard.channels[buffer * BATCH_SIZE..(buffer + 1) * BATCH_SIZE];
-
-      for (i, channel) in relevant_return_channels.iter_mut().enumerate() {
-        let tx = channel.take().unwrap();
-        tx.send(ModelOutputs {
-          policy: policy_output[i * POLICY_LEN..(i + 1) * POLICY_LEN].try_into().unwrap(),
-          value:  value_output[i],
-        })
-        .map_err(|_| ())
-        .expect("failed to send");
-      }
-      //println!("[{worker_id}] \x1b[92m <<< UNLOCKING: {buffer}\x1b[0m");
-      drop(guard);
-    }
-
-    //println!("[{worker_id}] \x1b[91mBlocking on inference:\x1b[0m {}", slot_index);
-    let r = rx.await.unwrap();
-    //println!("[{worker_id}] \x1b[94mUnblocked on inference:\x1b[0m {}", slot_index);
-    r
-     */
   }
 
   fn clear(&self) {
-    println!("\x1b[92m>>>>>>>>>>>>>>>>>>> Clearing...\x1b[0m");
     self.input_blocks.lock().unwrap().clear();
   }
 }

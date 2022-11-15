@@ -1,6 +1,3 @@
-use std::collections::{hash_map::DefaultHasher, HashMap};
-use std::hash::{Hash, Hasher};
-
 use crate::nnue::{Nnue, UndoCookie};
 use crate::rng::Rng;
 use crate::rules::{iter_bits, GameOutcome, Move, Player, State};
@@ -196,6 +193,10 @@ enum NodeType {
   UpperBound,
 }
 
+struct MoveOrderEntry {
+  m: Move,
+}
+
 struct TTEntry {
   zobrist:   u64,
   depth:     u16,
@@ -209,6 +210,7 @@ pub struct Engine {
   pub total_eval:      f32,
   rng:                 Rng,
   state:               State,
+  move_order_table:    Vec<MoveOrderEntry>,
   transposition_table: Vec<TTEntry>,
   killer_moves:        [Option<Move>; 100],
 }
@@ -216,7 +218,12 @@ pub struct Engine {
 impl Engine {
   pub fn new(seed: u64, tt_size: usize) -> Self {
     let state = State::starting_state();
-    let nnue = Nnue::new(&state);
+    let mut move_order_table = Vec::with_capacity(tt_size);
+    for _ in 0..tt_size {
+      move_order_table.push(MoveOrderEntry {
+        m: Move::INVALID,
+      });
+    }
     let mut transposition_table = Vec::with_capacity(tt_size);
     for _ in 0..tt_size {
       transposition_table.push(TTEntry {
@@ -232,6 +239,7 @@ impl Engine {
       total_eval: 0.0,
       rng: Rng::new(seed),
       state,
+      move_order_table,
       transposition_table,
       killer_moves: [None; 100],
     }
@@ -271,13 +279,15 @@ impl Engine {
     let mut p = (0, (None, None));
     //for d in 1..=depth {
     for d in 1..=depth {
-      p = self.pvs::<false, false>(
+      let nnue_hash = nnue.get_debugging_hash();
+      p = self.pvs::<false, true>(
         d,
         &start_state,
         &mut nnue,
         VERY_NEGATIVE_EVAL,
         VERY_POSITIVE_EVAL,
       );
+      assert_eq!(nnue_hash, nnue.get_debugging_hash());
       //log(&format!(
       //  "Depth {}: {} (nodes={})",
       //  d, p.0, self.nodes_searched
@@ -286,13 +296,31 @@ impl Engine {
     p
   }
 
-  fn tt_lookup(&self, state: &State) -> Option<&TTEntry> {
+  fn probe_tt(&self, state: &State) -> Option<&TTEntry> {
     let index = (state.zobrist % self.transposition_table.len() as u64) as usize;
     let entry = &self.transposition_table[index];
     match entry.zobrist == state.zobrist {
       true => Some(entry),
       false => None,
     }
+  }
+
+  fn probe_move_order_table(&self, state: &State) -> Option<Move> {
+    let index = (state.zobrist % self.move_order_table.len() as u64) as usize;
+    let entry = &self.move_order_table[index];
+    match entry.m == Move::INVALID {
+      true => None,
+      false => Some(entry.m),
+    }
+  }
+
+  fn move_order_table_insert(&mut self, state: &State, m: Move) {
+    let index = (state.zobrist % self.move_order_table.len() as u64) as usize;
+    self.move_order_table[index].m = m;
+  }
+
+  fn probe_killer_moves(&self, depth: u16) -> Option<Move> {
+    self.killer_moves.get(depth as usize).copied().unwrap_or(None)
   }
 
   fn tt_insert(
@@ -320,16 +348,27 @@ impl Engine {
     mut alpha: Evaluation,
     beta: Evaluation,
   ) -> (Evaluation, (Option<Move>, Option<Move>)) {
+    // Check the transposition table.
+    if let Some(entry) = self.probe_tt(state) {
+      if entry.depth >= depth {
+        match entry.node_type {
+          NodeType::Exact => return (entry.score, (entry.best_move, None)),
+          NodeType::LowerBound => {
+            alpha = max(alpha, entry.score);
+          }
+          NodeType::UpperBound => {
+            if entry.score <= alpha {
+              return (entry.score, (entry.best_move, None));
+            }
+          }
+        }
+      }
+    }
+  
     // Evaluate the nnue to get a score.
-    let nnue_evaluation = if NNUE {
-      nnue.evaluate(state);
-      nnue.value
-    } else {
-      0
-    };
-    let get_eval = || {
+    let mut get_eval = || {
       if NNUE {
-        nnue_evaluation
+        (nnue.evaluate(state).expected_score * 1000.0) as i32
       } else {
         evaluate_state(state)
       }
@@ -362,20 +401,19 @@ impl Engine {
     assert!(!moves.is_empty());
 
     // Reorder based on our move order table.
-    let state_hash: u64 = state.get_transposition_table_hash();
+    //let state_hash: u64 = state.get_transposition_table_hash();
 
-    let mot_move: Option<&Move> = None;
-    //let mot_move = match QUIESCENCE {
-    //  false => self.move_order_table.get(&state_hash),
-    //  true => None,
-    //};
+    let mot_move = match QUIESCENCE {
+      false => self.probe_move_order_table(&state),
+      true => None,
+    };
     let killer_move = match QUIESCENCE {
-      false => self.killer_moves[depth as usize],
+      false => self.probe_killer_moves(depth),
       true => None,
     };
 
     //if mot_move.is_some() || killer_move.is_some() {
-    moves.sort_by(|a, b| {
+    moves.sort_by(|&a, &b| {
       //let mut a_score = (100.0 * nnue.outputs[a.to as usize]) as i32;
       //let mut b_score = (100.0 * nnue.outputs[b.to as usize]) as i32;
       let mut a_score = 0;
@@ -389,10 +427,10 @@ impl Engine {
         }
       }
       if let Some(killer_move) = killer_move {
-        if *a == killer_move {
+        if a == killer_move {
           a_score += 10_000;
         }
-        if *b == killer_move {
+        if b == killer_move {
           b_score += 10_000;
         }
       }
@@ -408,7 +446,7 @@ impl Engine {
 
     // If we're in a QUIESCENCE search then we're allowed to pass.
     if QUIESCENCE {
-      alpha = alpha.max(nnue_evaluation + random_bonus);
+      alpha = alpha.max(get_eval());
       if alpha >= beta {
         moves.clear();
       }
@@ -480,6 +518,7 @@ impl Engine {
       if score > alpha && !QUIESCENCE {
         //self.tt_insert(state_hash, m, score, depth);
         //self.move_order_table.insert(state_hash, m);
+        self.move_order_table_insert(&state, m);
       }
       alpha = alpha.max(score);
       if alpha >= beta {
@@ -489,6 +528,8 @@ impl Engine {
       first = false;
     }
 
-    make_terminal_scores_slightly_less_extreme((alpha, best_pair))
+    let (score, move_pair) = make_terminal_scores_slightly_less_extreme((alpha, best_pair));
+    self.tt_insert(state.zobrist, depth, score, move_pair.0, NodeType::Exact);
+    (score, move_pair)
   }
 }

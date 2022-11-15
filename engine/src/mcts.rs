@@ -1,7 +1,6 @@
 use core::panic;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::future::Pending;
 
 use slotmap::SlotMap;
 
@@ -10,7 +9,7 @@ use crate::inference::{
 };
 use crate::rng::Rng;
 //use crate::inference::{ModelOutputs, POLICY_LEN};
-use crate::rules::{GameOutcome, Move, Player, State};
+use crate::rules::{Move, State};
 
 //const EXPLORATION_ALPHA: f32 = 1.0;
 //const DUCK_EXPLORATION_ALPHA: f32 = 0.5;
@@ -419,8 +418,6 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     depth: u32,
   ) -> NodeIndex {
     //println!("Adding child at depth {} (path={:?}).", depth, path);
-    //// FIXME: Disable the transposition table!
-    //self.transposition_table.clear();
     // Check our transposition table to see if this new state has already been reached.
     let transposition_table_key = get_transposition_table_key(&state, depth);
     // We get a node, possibly new.
@@ -727,7 +724,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     self.print_tree(self.root, 0);
   }
 
-  fn print_tree(&self, root: NodeIndex, desired_state: u32) {
+  fn print_tree(&self, root: NodeIndex, _desired_state: u32) {
     let mut already_printed_set = std::collections::HashSet::new();
     let mut stack = vec![(None, root, 0)];
     while !stack.is_empty() {
@@ -776,7 +773,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     let mut already_printed_set = std::collections::HashSet::new();
     let mut stack = vec![(None, self.root, 0)];
     while !stack.is_empty() {
-      let (m, node_index, depth) = stack.pop().unwrap();
+      let (_m, node_index, depth) = stack.pop().unwrap();
       let node = &self.nodes[node_index];
       let already_printed = already_printed_set.contains(&node_index);
       already_printed_set.insert(node_index);

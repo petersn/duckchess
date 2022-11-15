@@ -28,21 +28,17 @@ fn work(depth: u16, output_dir: &str) {
   loop {
     let mut moves = vec![];
     let mut was_rand = vec![];
-    //let mut engine = engine::search::Engine::new(rand::random());
-    let mut engine = engine::search::Engine::new(0, 1024);
-    let start_time = std::time::Instant::now();
-    //for move_index in 0..300 {
-    for move_index in 0..10 {
-      // FIXME: Fixing for testing.
+    let mut engine = engine::search::Engine::new(rand::random(), 1024);
+    //let start_time = std::time::Instant::now();
+    for move_index in 0..300 {
+      // Pick a uniformly random move with some probability.
       let r: f32 = rand::random();
-      let random_move = move_index == 0 || if move_index < 6 { r < 0.5 } else { r < 0.01 };
-      let random_move = false; // FIXME: Disabling for determinism.
+      let random_move = move_index == 0 || if move_index < 6 { r < 0.5 } else { r < 0.005 };
       let p = match random_move {
         true => engine.get_moves().choose(&mut rng).map(|x| *x),
         false => engine.run(depth).1 .0,
       };
       if let Some(m) = p {
-        println!("{}: {}", move_index, m);
         was_rand.push(random_move);
         moves.push(m);
         engine.apply_move(m).unwrap();
@@ -50,12 +46,12 @@ fn work(depth: u16, output_dir: &str) {
         break;
       }
     }
-    let elapsed = start_time.elapsed().as_secs_f32();
-    println!("Elapsed: {:.3}s", elapsed);
-    println!("Nodes: {}", engine.nodes_searched);
-    println!("Nodes/s: {}", engine.nodes_searched as f32 / elapsed);
-    println!("Total eval: {}", engine.total_eval);
-    return;
+    //let elapsed = start_time.elapsed().as_secs_f32();
+    // println!("Elapsed: {:.3}s", elapsed);
+    // println!("Nodes: {}", engine.nodes_searched);
+    // println!("Nodes/s: {}", engine.nodes_searched as f32 / elapsed);
+    // println!("Total eval: {}", engine.total_eval);
+
     let outcome = engine.get_outcome().map(|o| o.to_str());
     println!(
       "Game generated: moves={} outcome={:?}",

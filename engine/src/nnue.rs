@@ -4,11 +4,10 @@
 /// 3. A SIMD implementation for wasm32.
 use std::collections::hash_map::DefaultHasher;
 
+use crate::inference::Evaluation;
 #[rustfmt::skip]
 use crate::{
-  inference::Evaluation,
   nnue_data::{
-    INTEGER_SCALE_I8, INTEGER_SCALE_I16,
     PARAMS_MAIN_EMBED_WEIGHT, PARAMS_MAIN_EMBED_BIAS,
     PARAMS_WHITE_MAIN_0_WEIGHT, PARAMS_WHITE_MAIN_0_BIAS,
     PARAMS_WHITE_MAIN_1_WEIGHT, PARAMS_WHITE_MAIN_1_BIAS,
@@ -23,7 +22,7 @@ use crate::{
     PARAMS_BLACK_DUCK_1_WEIGHT, PARAMS_BLACK_DUCK_1_BIAS,
     PARAMS_BLACK_DUCK_2_WEIGHT, PARAMS_BLACK_DUCK_2_BIAS,
   },
-  rules::{GameOutcome, Move, Player, State},
+  rules::{Player, State},
 };
 
 const VECTOR_LENGTH_I8: usize = 16;
@@ -184,8 +183,7 @@ impl UndoCookie {
 
 pub struct Nnue {
   pub linear_state: [VecI16; LINEAR_STATE_VECTOR_COUNT],
-  pub outputs:      [i16; 64 + 1],
-  pub value:        i32,
+  //pub outputs:      [i16; 64 + 1],
 }
 
 impl Nnue {
@@ -193,8 +191,7 @@ impl Nnue {
     let linear_state = get_bias1d_i16!(PARAMS_MAIN_EMBED_BIAS, LINEAR_STATE_SIZE);
     let mut this = Self {
       linear_state: *linear_state,
-      outputs:      [0; 64 + 1],
-      value:        0,
+      //outputs:      [0; 64 + 1],
     };
     for turn in [Player::Black, Player::White] {
       for (piece_layer_number, piece_array) in [
@@ -271,22 +268,11 @@ impl Nnue {
     }
   }
 
-  pub fn evaluate(&mut self, state: &State) {
-    // First, check if the state is terminal.
-    match state.get_outcome() {
-      Some(GameOutcome::Draw) => {
-        self.value = 0;
-        return;
-      }
-      Some(GameOutcome::Win(winner)) => {
-        self.value = match winner == state.turn {
-          true => 1_000_000_000,
-          false => -1_000_000_000,
-        };
-        return;
-      }
-      None => {}
+  pub fn evaluate(&mut self, state: &State) -> Evaluation {
+    if let Some(terminal_eval) = Evaluation::from_terminal_state(state) {
+      return terminal_eval;
     }
+
     let (mat0, bias0, mat1, bias1, mat2, bias2) = match (state.turn, state.is_duck_move) {
       (Player::White, false) => (
         PARAMS_WHITE_MAIN_0_WEIGHT,
@@ -358,23 +344,12 @@ impl Nnue {
     final_accum = vec_matmul_sat_fma(final_accum, layer1_simd[0], weights2[0][0]);
     final_accum = vec_matmul_sat_fma(final_accum, layer1_simd[1], weights2[0][1]);
     let final_accum = veci16_horizontal_sat_sum(final_accum) + bias2[0];
-    // // Compute the final output.
 
-    // // Rescale and ReLU the linear state.
-    // let mut scratch = [0.0; LINEAR_STATE_SIZE];
-    // for i in 0..LINEAR_STATE_SIZE {
-    //   scratch[i] = self.linear_state[i].max(0) as f32 / INTEGER_SCALE;
-    // }
-    // // Compute the final output.
-    // for i in 0..65 {
-    //   let mut sum = bias[i];
-    //   for j in 0..LINEAR_STATE_SIZE {
-    //     sum += mat[j][i] * scratch[j];
-    //   }
-    //   self.outputs[i] = sum;
-    // }
-    // Rescale the value output as an integer.
+    let network_output = (final_accum as f32 / 1024.0).tanh();
     //self.value = (self.outputs[64].tanh() * 1000.0) as i32;
-    self.value = final_accum as i32;
+    Evaluation {
+      expected_score: (network_output + 1.0) / 2.0,
+      perspective_player: state.turn,
+    }
   }
 }

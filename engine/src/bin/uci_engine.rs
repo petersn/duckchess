@@ -2,7 +2,7 @@ use std::{collections::HashMap, io::BufRead, cell::RefCell};
 
 fn main() {
   let stdin = std::io::stdin();
-  let mut options = RefCell::new(HashMap::<String, String>::from([
+  let options = RefCell::new(HashMap::<String, String>::from([
     ("Hash".to_string(), "16".to_string()),
   ]));
 
@@ -53,11 +53,11 @@ fn main() {
       }
       "go" => {
         let mut depth = 3;
-        let mut infinite = false;
+        let mut _infinite = false;
         for i in 1..tokens.len() {
           match tokens[i] {
             "depth" => depth = tokens[i + 1].parse().unwrap(),
-            "infinite" => infinite = true,
+            "infinite" => _infinite = true,
             _ => (),
           }
         }

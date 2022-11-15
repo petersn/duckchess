@@ -88,6 +88,7 @@ fn engine(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
   m.add_function(wrap_pyfunction!(move_to_index, m)?)?;
   m.add_function(wrap_pyfunction!(channel_count, m)?)?;
   m.add_function(wrap_pyfunction!(version, m)?)?;
+  m.add_function(wrap_pyfunction!(is_duck_chess, m)?)?;
   m.add_class::<Engine>()?;
   Ok(())
 }

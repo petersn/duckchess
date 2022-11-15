@@ -2,11 +2,8 @@ use std::sync::atomic::AtomicU64;
 
 use clap::Parser;
 use engine::inference::InferenceEngine;
-use engine::inference::ModelOutputs;
 use engine::inference_desktop::TensorFlowEngine;
 use engine::mcts::{Mcts, PendingPath, SearchParams};
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
 
 const GAME_LEN_LIMIT: usize = 300;

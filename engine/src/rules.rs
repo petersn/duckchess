@@ -113,6 +113,8 @@ pub struct Move {
 }
 
 impl Move {
+  pub const INVALID: Move = Move { from: Square::MAX, to: Square::MAX };
+
   pub fn to_index(&self) -> u16 {
     let from = self.from as u16;
     let to = self.to as u16;
