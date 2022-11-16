@@ -9,7 +9,7 @@ import multiprocessing
 from tqdm import tqdm
 import engine
 
-MAX_INDICIES = 34
+MAX_INDICIES = 66
 
 class AnnealedLeakyClippedRelu(torch.nn.Module):
     def __init__(self, leak=0.1):
@@ -24,12 +24,12 @@ class AnnealedLeakyClippedRelu(torch.nn.Module):
 
 class Nnue(torch.nn.Module):
     # For each of 128 possible black or white king positions we have:
-    #   * five white non-king pieces * 64 squares
-    #   * five black non-king pieces * 64 squares
+    #   * six white pieces * 64 squares
+    #   * six black pieces * 64 squares
     #   * the duck * 64 squares
-    # Finally, we have 128 additional biases.
 
-    FEATURE_COUNT = 2 * 64 * ((5 + 5 + 1) * 64) + 64 + 64
+    #FEATURE_COUNT = 2 * 64 * ((5 + 5 + 1) * 64) + 64 + 64
+    FEATURE_COUNT = 2 * 64 * ((6 + 6 + 1) * 64)
     ACCUM_SIZE = 256
 
     def __init__(self):
@@ -98,6 +98,7 @@ def process_one_path(path):
             new_feature_indices = e.get_nnue_feature_indices()
             if new_feature_indices is None:
                 continue
+            assert len(new_feature_indices) <= MAX_INDICIES
             state = json.loads(e.get_state())
             examples.append((
                 new_feature_indices,

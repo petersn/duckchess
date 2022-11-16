@@ -69,42 +69,44 @@ impl Engine {
 
     #[rustfmt::skip]
     let mut feature_indices = vec![
-      128 * 11 * 64 +  0 + white_king_pos,
-      128 * 11 * 64 + 64 + black_king_pos,
+    //  128 * 11 * 64 +  0 + white_king_pos,
+    //  128 * 11 * 64 + 64 + black_king_pos,
     ];
 
     // For each of 128 possible black or white king positions we have:
-    //   * five white non-king pieces * 64 squares
-    //   * five black non-king pieces * 64 squares
+    //   * six white pieces * 64 squares
+    //   * six black pieces * 64 squares
     //   * the duck * 64 squares
-    // Finally, we have 128 additional biases.
 
-    let king_pos_stride: usize = 11 * 64;
+    let king_pos_stride: usize = 13 * 64;
     let white_king_offset: usize = king_pos_stride * white_king_pos;
     let black_king_offset: usize = 64 * king_pos_stride + king_pos_stride * black_king_pos;
 
-    for (turn, king_offset) in [(Player::Black, black_king_offset), (Player::White, white_king_offset)] {
-      for (piece_layer_number, piece_array) in [
-        &state.pawns,
-        &state.knights,
-        &state.bishops,
-        &state.rooks,
-        &state.queens,
-      ]
-      .into_iter()
-      .enumerate()
-      {
-        let layer_number = piece_layer_number + 5 * turn as usize;
-        let mut bitboard = piece_array[turn as usize].0;
-        // Get all of the pieces.
-        while let Some(pos) = crate::rules::iter_bits(&mut bitboard) {
-          feature_indices.push(king_offset + layer_number * 64 + pos as usize);
+    for king_offset in [black_king_offset, white_king_offset] {
+      for turn in [Player::Black, Player::White] {
+        for (piece_layer_number, piece_array) in [
+          &state.pawns,
+          &state.knights,
+          &state.bishops,
+          &state.rooks,
+          &state.queens,
+          &state.kings,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+          let layer_number = piece_layer_number + 6 * turn as usize;
+          let mut bitboard = piece_array[turn as usize].0;
+          // Get all of the pieces.
+          while let Some(pos) = crate::rules::iter_bits(&mut bitboard) {
+            feature_indices.push(king_offset + layer_number * 64 + pos as usize);
+          }
         }
       }
-      // Include the duck
+      // Include the duck.
       let mut bitboard = state.ducks.0;
       while let Some(pos) = crate::rules::iter_bits(&mut bitboard) {
-        feature_indices.push(king_offset + 10 * 64 + pos as usize);
+        feature_indices.push(king_offset + 12 * 64 + pos as usize);
       }
     }
 

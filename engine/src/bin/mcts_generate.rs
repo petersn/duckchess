@@ -12,7 +12,7 @@ const FULL_SEARCH_PLAYOUTS: u32 = 1000;
 const SMALL_SEARCH_PLAYOUTS: u32 = 200;
 //const FULL_SEARCH_PLAYOUTS: u32 = 600;
 //const SMALL_SEARCH_PLAYOUTS: u32 = 100;
-const GAME_LEN_LIMIT: usize = 300;
+const GAME_LEN_LIMIT: usize = 500;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
