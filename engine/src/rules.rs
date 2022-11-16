@@ -184,7 +184,7 @@ impl GameOutcome {
   }
 }
 
-fn get_square(bitboard: u64) -> Square {
+pub fn get_square(bitboard: u64) -> Square {
   bitboard.trailing_zeros() as Square
 }
 
