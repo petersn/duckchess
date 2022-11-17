@@ -2,7 +2,7 @@ include!(concat!(env!("OUT_DIR"), "/tables.rs"));
 
 use serde::{ser::SerializeSeq, Deserialize, Serialize};
 
-use crate::nnue::{Nnue, UndoCookie, DUCK_LAYER, NO_LAYER};
+use crate::nnue::{Nnue, NnueAdjustment, PlayerPieceSquare};
 
 pub const IS_DUCK_CHESS: bool = true;
 
@@ -28,6 +28,17 @@ impl Player {
       Player::Black => Player::White,
     }
   }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PieceKind {
+  Pawn = 0,
+  King = 1,
+  Rook = 2,
+  Knight = 3,
+  Bishop = 4,
+  Queen = 5,
+  Duck = 6,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -102,7 +113,7 @@ pub enum PromotablePiece {
   Bishop,
 }
 
-type Square = u8;
+pub type Square = u8;
 type SquareDelta = u8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -265,7 +276,7 @@ impl State {
       turn:            Player::White,
       is_duck_move:    false,
       move_history:    [None; MOVE_HISTORY_LEN],
-      zobrist:         0,
+      zobrist:         0, // FIXME: Compute this properly.
     }
   }
 
@@ -620,18 +631,18 @@ impl State {
     }
   }
 
+  pub fn adjust_zobrist(&mut self, adjustment: &NnueAdjustment) {
+    //match adjustment {
+    //  
+    //}
+  }
+
   pub fn apply_move<const NNUE: bool>(
     &mut self,
     m: Move,
     nnue: Option<&mut Nnue>,
-  ) -> Result<UndoCookie, &'static str> {
-    let mut undo_cookie = UndoCookie::new();
-    let nnue = if NNUE {
-      nnue.unwrap()
-    } else {
-      // Make a fake dangling reference that we won't use.
-      unsafe { &mut *(0x1 as *mut Nnue) }
-    };
+  ) -> Result<NnueAdjustment, &'static str> {
+    //let mut undo_cookie = UndoCookie::new();
     if m.from > 63 || m.to > 63 {
       return Err("from/to out of range");
     }
@@ -655,25 +666,32 @@ impl State {
         self.ducks.0 &= !from_mask;
         self.ducks.0 |= to_mask;
 
-        assert_eq!(undo_cookie.sub_layers[0], NO_LAYER);
-        assert_eq!(undo_cookie.add_layers[0], NO_LAYER);
-        // The very second move of the game has no duck being moved, so skips the subtraction.
-        if extant_duck {
-          undo_cookie.sub_layers[0] = 64 * DUCK_LAYER as u16 + m.from as u16;
-          if NNUE {
-            nnue.sub_layer(undo_cookie.sub_layers[0]);
-          }
-          self.zobrist ^= ZOBRIST[undo_cookie.sub_layers[0] as usize];
-        }
-        undo_cookie.add_layers[0] = 64 * DUCK_LAYER as u16 + m.to as u16;
-        if NNUE {
-          nnue.add_layer(undo_cookie.add_layers[0]);
-        }
-        self.zobrist ^= ZOBRIST[undo_cookie.add_layers[0] as usize];
-
+        let to_pps = PlayerPieceSquare {
+          player: self.turn,
+          piece_kind:  PieceKind::Duck,
+          square: m.to,
+        };
+        let adjustment = match extant_duck {
+          true => NnueAdjustment::Normal {
+            from: PlayerPieceSquare {
+              player: self.turn,
+              piece_kind:  PieceKind::Duck,
+              square: m.from,
+            },
+            to: to_pps,
+            capture: None,
+          },
+          false => NnueAdjustment::DuckCreation { to: to_pps }
+        };
+        // Swap the turn.
         self.is_duck_move = false;
         self.turn = self.turn.other_player();
-        return Ok(undo_cookie);
+        // Update incremental state.
+        if NNUE {
+          nnue.unwrap().apply_adjustment::<false>(&self, &adjustment);
+        }
+        self.adjust_zobrist(&adjustment);
+        return Ok(adjustment);
       }
       return Err("no duck at from position");
     }
@@ -683,64 +701,56 @@ impl State {
     let mut remove_rooks = 0;
     let mut new_queens = 0;
     let mut new_rooks = 0;
+    // Compute the adjustment.
+    let mut from_pps = None;
+    let mut to_pps = None;
+    let mut capture_pps = None;
+    let mut king_involved = false;
     //let mut new_bishops = 0;
     //let mut new_knights = 0;
 
-    #[derive(Debug)]
-    enum PieceKind {
-      Pawn,
-      King,
-      Rook,
-      Knight,
-      Bishop,
-      Queen,
-    }
-    let mut piece_moved = false;
-    for (piece_layer_number, (piece_kind, piece_array)) in [
+    for (piece_kind, piece_array) in [
       (PieceKind::Pawn, &mut self.pawns),
       (PieceKind::Knight, &mut self.knights),
       (PieceKind::Bishop, &mut self.bishops),
       (PieceKind::Rook, &mut self.rooks),
       (PieceKind::Queen, &mut self.queens),
       (PieceKind::King, &mut self.kings),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-      let our_nnue_layer = piece_layer_number + 6 * self.turn as usize;
-      let their_nnue_layer = piece_layer_number + 6 * self.turn.other_player() as usize;
-
+    ] {
       let (a, b) = piece_array.split_at_mut(1);
       let (us, them) = match self.turn {
         Player::White => (&mut b[0], &mut a[0]),
         Player::Black => (&mut a[0], &mut b[0]),
       };
       // Capture pieces on the target square.
-      them.0 &= !to_mask;
       if them.0 & to_mask != 0 {
-        assert_eq!(undo_cookie.sub_layers[1], NO_LAYER);
-        undo_cookie.sub_layers[1] = 64 * their_nnue_layer as u16 + m.to as u16;
-        if NNUE {
-          nnue.sub_layer(undo_cookie.sub_layers[1]);
+        capture_pps = Some(PlayerPieceSquare {
+          player: self.turn.other_player(),
+          piece_kind,
+          square: m.to,
+        });
+        if piece_kind == PieceKind::King {
+          king_involved = true;
         }
-        self.zobrist ^= ZOBRIST[undo_cookie.sub_layers[1] as usize];
       }
+      them.0 &= !to_mask;
+
       // Check if this is the kind of piece we're moving.
       if us.0 & from_mask != 0 {
-        piece_moved = true;
         // Move our piece.
         us.0 &= !from_mask;
         us.0 |= to_mask;
 
-        assert_eq!(undo_cookie.sub_layers[0], NO_LAYER);
-        assert_eq!(undo_cookie.add_layers[0], NO_LAYER);
-        undo_cookie.sub_layers[0] = 64 * our_nnue_layer as u16 + m.from as u16;
-        undo_cookie.add_layers[0] = 64 * our_nnue_layer as u16 + m.to as u16;
-        if NNUE {
-          nnue.sub_add_layers(undo_cookie.sub_layers[0], undo_cookie.add_layers[0]);
-        }
-        self.zobrist ^= ZOBRIST[undo_cookie.sub_layers[0] as usize];
-        self.zobrist ^= ZOBRIST[undo_cookie.add_layers[0] as usize];
+        from_pps = Some(PlayerPieceSquare {
+          player: self.turn,
+          piece_kind,
+          square: m.from,
+        });
+        to_pps = Some(PlayerPieceSquare {
+          player: self.turn,
+          piece_kind,
+          square: m.to,
+        });
 
         // Handle special rules for special pieces.
         match (piece_kind, m.from) {
@@ -750,21 +760,19 @@ impl State {
               match self.turn {
                 Player::White => {
                   them.0 &= !(1 << (m.to - 8));
-                  assert_eq!(undo_cookie.sub_layers[1], NO_LAYER);
-                  undo_cookie.sub_layers[1] = 64 * their_nnue_layer as u16 + (m.to - 8) as u16;
-                  if NNUE {
-                    nnue.sub_layer(undo_cookie.sub_layers[1]);
-                  }
-                  self.zobrist ^= ZOBRIST[undo_cookie.sub_layers[1] as usize];
+                  capture_pps = Some(PlayerPieceSquare {
+                    player: Player::Black,
+                    piece_kind: PieceKind::Pawn,
+                    square: m.to - 8,
+                  });
                 }
                 Player::Black => {
                   them.0 &= !(1 << (m.to + 8));
-                  assert_eq!(undo_cookie.sub_layers[1], NO_LAYER);
-                  undo_cookie.sub_layers[1] = 64 * their_nnue_layer as u16 + (m.to + 8) as u16;
-                  if NNUE {
-                    nnue.sub_layer(undo_cookie.sub_layers[1]);
-                  }
-                  self.zobrist ^= ZOBRIST[undo_cookie.sub_layers[1] as usize];
+                  capture_pps = Some(PlayerPieceSquare {
+                    player: Player::White,
+                    piece_kind: PieceKind::Pawn,
+                    square: m.to + 8,
+                  });
                 }
               }
             }
@@ -787,18 +795,11 @@ impl State {
 
             let our_queen_layer = 2 * 4 + self.turn as usize;
             if promotion_mask != 0 {
-              // The first thing we do is undo our nnue/zobrist change that adds the pawn.
-              assert_ne!(undo_cookie.add_layers[0], NO_LAYER);
-              if NNUE {
-                nnue.sub_layer(undo_cookie.add_layers[0]);
-              }
-              self.zobrist ^= ZOBRIST[undo_cookie.add_layers[0] as usize];
-              // Now we change it to be a queen.
-              undo_cookie.add_layers[0] = 64 * our_queen_layer as u16 + m.to as u16;
-              if NNUE {
-                nnue.add_layer(undo_cookie.add_layers[0]);
-              }
-              self.zobrist ^= ZOBRIST[undo_cookie.add_layers[0] as usize];
+              to_pps = Some(PlayerPieceSquare {
+                player: self.turn,
+                piece_kind: PieceKind::Queen,
+                square: m.to,
+              });
             }
             //match promotion {
             //  PromotablePiece::Queen => new_queens = promotion_mask,
@@ -811,6 +812,7 @@ impl State {
             //}
           }
           (PieceKind::King, _) => {
+            king_involved = true;
             self.castling_rights[self.turn as usize] = CastlingRights {
               king_side:  false,
               queen_side: false,
@@ -826,17 +828,6 @@ impl State {
               };
               remove_rooks = 1 << rook_from;
               new_rooks = 1 << rook_to;
-
-              let our_rook_layer = 2 * 3 + self.turn as usize;
-              assert_eq!(undo_cookie.sub_layers[1], NO_LAYER);
-              assert_eq!(undo_cookie.add_layers[1], NO_LAYER);
-              undo_cookie.sub_layers[1] = 64 * our_rook_layer as u16 + rook_from as u16;
-              undo_cookie.add_layers[1] = 64 * our_rook_layer as u16 + rook_to as u16;
-              if NNUE {
-                nnue.sub_add_layers(undo_cookie.sub_layers[1], undo_cookie.add_layers[1]);
-              }
-              self.zobrist ^= ZOBRIST[undo_cookie.sub_layers[1] as usize];
-              self.zobrist ^= ZOBRIST[undo_cookie.add_layers[1] as usize];
             }
           }
           (PieceKind::Rook, 0) | (PieceKind::Rook, 56) => {
@@ -849,27 +840,41 @@ impl State {
           (PieceKind::Knight, _) => {}
           (PieceKind::Bishop, _) => {}
           (PieceKind::Queen, _) => {}
+          (PieceKind::Duck, _) => return Err("can't move duck on non-duck move"),
         }
       }
     }
-    if !piece_moved {
-      //panic!("no piece at from square");
-      return Err("no piece at from position");
-    }
+
     self.rooks[self.turn as usize].0 &= !remove_rooks;
     //self.knights[self.turn as usize].0 |= new_knights;
     //self.bishops[self.turn as usize].0 |= new_bishops;
     self.rooks[self.turn as usize].0 |= new_rooks;
     self.queens[self.turn as usize].0 |= new_queens;
 
+    // We must apply the NNUE adjustment after we have updated the board state.
+    let adjustment = match king_involved {
+      true => NnueAdjustment::KingInvolved,
+      false => NnueAdjustment::Normal {
+        from: from_pps.ok_or("no piece at from position")?,
+        to: to_pps.ok_or("failed to compute dest piece")?,
+        capture: capture_pps,
+      }
+    };
+
+    // Swap the turn.
     if IS_DUCK_CHESS {
       self.is_duck_move = true;
     } else {
       self.turn = self.turn.other_player();
     }
 
+    if NNUE {
+      nnue.unwrap().apply_adjustment::<false>(&self, &adjustment);
+    }
+    self.adjust_zobrist(&adjustment);
+
     self.sanity_check()?;
-    Ok(undo_cookie)
+    Ok(adjustment)
   }
 
   // pub fn undo(&mut self, cookie: UndoCookie) {

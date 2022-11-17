@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{inference, rules::{Move, Player}, search};
+use crate::{inference, rules::{Move, Player}, search, nnue};
 
 #[pyclass]
 struct Engine {
@@ -55,62 +55,8 @@ impl Engine {
     self.engine.get_outcome().map(|o| o.to_str())
   }
 
-  fn get_nnue_feature_indices(&self) -> Option<Vec<usize>> {
-    let state = self.engine.get_state();
-
-    // Check if the state is terminal, and if so, refuse to featurize.
-    if state.get_outcome().is_some() {
-      return None;
-    }
-
-    // Figure out where each player's king is.
-    let black_king_pos = crate::rules::get_square(state.kings[Player::Black as usize].0) as usize;
-    let white_king_pos = crate::rules::get_square(state.kings[Player::White as usize].0) as usize;
-
-    #[rustfmt::skip]
-    let mut feature_indices = vec![
-    //  128 * 11 * 64 +  0 + white_king_pos,
-    //  128 * 11 * 64 + 64 + black_king_pos,
-    ];
-
-    // For each of 128 possible black or white king positions we have:
-    //   * six white pieces * 64 squares
-    //   * six black pieces * 64 squares
-    //   * the duck * 64 squares
-
-    let king_pos_stride: usize = 13 * 64;
-    let white_king_offset: usize = king_pos_stride * white_king_pos;
-    let black_king_offset: usize = 64 * king_pos_stride + king_pos_stride * black_king_pos;
-
-    for king_offset in [black_king_offset, white_king_offset] {
-      for turn in [Player::Black, Player::White] {
-        for (piece_layer_number, piece_array) in [
-          &state.pawns,
-          &state.knights,
-          &state.bishops,
-          &state.rooks,
-          &state.queens,
-          &state.kings,
-        ]
-        .into_iter()
-        .enumerate()
-        {
-          let layer_number = piece_layer_number + 6 * turn as usize;
-          let mut bitboard = piece_array[turn as usize].0;
-          // Get all of the pieces.
-          while let Some(pos) = crate::rules::iter_bits(&mut bitboard) {
-            feature_indices.push(king_offset + layer_number * 64 + pos as usize);
-          }
-        }
-      }
-      // Include the duck.
-      let mut bitboard = state.ducks.0;
-      while let Some(pos) = crate::rules::iter_bits(&mut bitboard) {
-        feature_indices.push(king_offset + 12 * 64 + pos as usize);
-      }
-    }
-
-    Some(feature_indices)
+  fn get_nnue_feature_indices(&self) -> Option<Vec<nnue::LayerIndex>> {
+    nnue::get_state_layers(self.engine.get_state())
   }
 }
 

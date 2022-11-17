@@ -202,6 +202,7 @@ fn run_perft<const NNUE: bool, const EVAL: bool>() -> usize {
       nnue.evaluate(&entry.state);
     }
     if entry.depth == 4 {
+      // ...
     } else {
       entry.state.move_gen::<false>(&mut moves);
       for (i, m) in moves.iter().enumerate() {

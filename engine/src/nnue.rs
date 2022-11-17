@@ -6,7 +6,7 @@ use std::collections::{hash_map::DefaultHasher, HashMap};
 
 use crate::inference::Evaluation;
 #[rustfmt::skip]
-use crate::rules::{Player, State};
+use crate::rules::{Player, PieceKind, Square, State};
 
 #[repr(C, align(64))]
 struct AlignedData<T> {
@@ -76,12 +76,12 @@ impl<'a> NnueWeights<'a> {
     self.get_weight::<VecI16>(VECTOR_LENGTH_I16, name, "i16", shape_check, shift_check)
   }
 
-  fn get_veci8_2d<const inner: usize>(&self, name: &str, shape_check: &[usize], shift_check: usize) -> &'a [[VecI8; inner]] {
-    self.get_weight::<[VecI8; inner]>(VECTOR_LENGTH_I8 * inner, name, "i8", shape_check, shift_check)
+  fn get_veci8_2d<const INNER: usize>(&self, name: &str, shape_check: &[usize], shift_check: usize) -> &'a [[VecI8; INNER]] {
+    self.get_weight::<[VecI8; INNER]>(VECTOR_LENGTH_I8 * INNER, name, "i8", shape_check, shift_check)
   }
 
-  fn get_veci16_2d<const inner: usize>(&self, name: &str, shape_check: &[usize], shift_check: usize) -> &'a [[VecI16; inner]] {
-    self.get_weight::<[VecI16; inner]>(VECTOR_LENGTH_I16 * inner, name, "i16", shape_check, shift_check)
+  fn get_veci16_2d<const INNER: usize>(&self, name: &str, shape_check: &[usize], shift_check: usize) -> &'a [[VecI16; INNER]] {
+    self.get_weight::<[VecI16; INNER]>(VECTOR_LENGTH_I16 * INNER, name, "i16", shape_check, shift_check)
   }
 
   fn get_i8(&self, name: &str, shape_check: &[usize], shift_check: usize) -> &'a [i8] {
@@ -236,46 +236,175 @@ cfg_if::cfg_if! {
   }
 }
 
-// We cast weights from &[[i8; inner]; outer] to a &[[VecI8; inner / VECTOR_LENGTH_I8]; outer].
-macro_rules! get_weights2d_i8 {
-  ($weights:expr, $inner:expr, $outer:expr) => {{
-    static_assertions::const_assert_eq!($inner % VECTOR_LENGTH_I8, 0);
-    unsafe {
-      &*($weights as *const [i8; $inner] as *const [[VecI8; $inner / VECTOR_LENGTH_I8]; $outer])
-    }
-  }};
-}
+// // We cast weights from &[[i8; inner]; outer] to a &[[VecI8; inner / VECTOR_LENGTH_I8]; outer].
+// macro_rules! get_weights2d_i8 {
+//   ($weights:expr, $inner:expr, $outer:expr) => {{
+//     static_assertions::const_assert_eq!($inner % VECTOR_LENGTH_I8, 0);
+//     unsafe {
+//       &*($weights as *const [i8; $inner] as *const [[VecI8; $inner / VECTOR_LENGTH_I8]; $outer])
+//     }
+//   }};
+// }
 
-// We cast biases from &[i16; inner] to a &[VecI16; inner / VECTOR_LENGTH_I16].
-macro_rules! get_bias1d_i16 {
-  ($biases:expr, $inner:expr) => {{
-    static_assertions::const_assert_eq!($inner % VECTOR_LENGTH_I16, 0);
-    unsafe { &*($biases as *const i16 as *const [VecI16; $inner / VECTOR_LENGTH_I16]) }
-  }};
-}
+// // We cast biases from &[i16; inner] to a &[VecI16; inner / VECTOR_LENGTH_I16].
+// macro_rules! get_bias1d_i16 {
+//   ($biases:expr, $inner:expr) => {{
+//     static_assertions::const_assert_eq!($inner % VECTOR_LENGTH_I16, 0);
+//     unsafe { &*($biases as *const i16 as *const [VecI16; $inner / VECTOR_LENGTH_I16]) }
+//   }};
+// }
 
 const LINEAR_STATE_SIZE: usize = 256;
 const LINEAR_STATE_VECTOR_COUNT: usize = LINEAR_STATE_SIZE / VECTOR_LENGTH_I16;
 
-// 6 layers for our pieces, 6 for theirs, 1 for the duck.
-pub const DUCK_LAYER: usize = 12;
+// We number the pieces:
+//   black: pawn = 0, knight = 1, bishop = 2, rook = 3, queen = 4, king = 5,
+//   white: pawn = 6, knight = 7, bishop = 8, rook = 9, queen = 10, king = 11.
+//   duck = 12
+// Let the black king's square be BK, and the white king's quare be WK.
+// A piece p on square s contributes the following two features:
+//   1) 13*64*BK + 64*p + s
+//   2) 13*64*WK + 64*p + s + 13*64*64
+//
+// Every non-king move affects at most four layers.
+//
+// In other words, our layers are:
+// Black king is on square 0:
+//       0 -- Black pawn on square 0 (impossible ununsed layer)
+//       1 -- Black pawn on square 1
+//            ...
+//      63 -- Black pawn on square 63
+//      64 -- Black knight on square 0
+//            ...
+//     128 -- Black bishop on square 0
+//            ...
+//     192 -- Black rook on square 0
+//            ...
+//     256 -- Black queen on square 0
+//            ...
+//     320 -- Black king on square 0
+//     321 -- Black king on square 1 (impossible unused layer)
+//            ...
+//     384 -- White pawn on square 0 (impossible unused layer)
+//            ...
+//     768 -- Duck on square 0
+//            ...
+// Black king is on square 1:
+//     832 -- Black pawn on square 0
+//     833 -- Black pawn on square 1 (impossible unused layer)
+//            ...
+// White king is on square 0:
+//   53248 -- Black pawn on square 0 (impossible unused layer)
+//            ...
+//  106495 -- Duck on square 63
 
-pub type LayerIndex = u16;
-pub const NO_LAYER: LayerIndex = LayerIndex::MAX;
+pub type LayerIndex = u32;
+pub type ZobristLayerIndex = u16;
 
-#[derive(Clone, Copy, Debug)]
-pub struct UndoCookie {
-  pub sub_layers: [LayerIndex; 2],
-  pub add_layers: [LayerIndex; 2],
+#[derive(Debug)]
+pub struct PlayerPieceSquare {
+  pub player: Player,
+  pub piece_kind: PieceKind,
+  pub square: Square,
 }
 
-impl UndoCookie {
-  pub fn new() -> UndoCookie {
-    UndoCookie {
-      sub_layers: [NO_LAYER; 2],
-      add_layers: [NO_LAYER; 2],
+impl PlayerPieceSquare {
+  pub fn get_layers(&self, king_positions: (Square, Square)) -> (LayerIndex, LayerIndex) {
+    let (black_king, white_king) = king_positions;
+    let player_piece_offset = match self.piece_kind {
+      PieceKind::Duck => 12,
+      _ => (self.piece_kind as LayerIndex) + 6 * (self.player as LayerIndex),
+    };
+    let layer_offset = 64 * player_piece_offset + self.square as LayerIndex;
+    (
+      layer_offset + 13 * 64 * (black_king as LayerIndex),
+      layer_offset + 13 * 64 * (white_king as LayerIndex) + 13 * 64 * 64,
+    )
+  }
+
+  pub fn get_zobrist_layer(&self) -> ZobristLayerIndex {
+    let player_piece_offset = match self.piece_kind {
+      PieceKind::Duck => 12,
+      _ => (self.piece_kind as ZobristLayerIndex) + 6 * (self.player as ZobristLayerIndex),
+    };
+    player_piece_offset * 64 + self.square as ZobristLayerIndex
+  }
+}
+
+#[inline]
+fn get_king_positions(state: &State) -> (Square, Square) {
+  (
+    crate::rules::get_square(state.kings[Player::Black as usize].0),
+    crate::rules::get_square(state.kings[Player::White as usize].0),
+  )
+}
+
+#[inline]
+fn compute_state_layers(state: &State, mut callback: impl FnMut(LayerIndex)) -> Result<(), ()> {
+  // Check if the state is terminal, and if so, refuse to featurize.
+  if state.get_outcome().is_some() {
+    return Err(());
+  }
+
+  let king_positions = get_king_positions(state);
+
+  for player in [Player::Black, Player::White] {
+    for (piece_kind, piece_array) in [
+      (PieceKind::Pawn, &state.pawns),
+      (PieceKind::Knight, &state.knights),
+      (PieceKind::Bishop, &state.bishops),
+      (PieceKind::Rook, &state.rooks),
+      (PieceKind::Queen, &state.queens),
+      (PieceKind::King, &state.kings),
+    ] {
+      let mut bitboard = piece_array[player as usize].0;
+      // Get all of the pieces.
+      while let Some(square) = crate::rules::iter_bits(&mut bitboard) {
+        let (black_layer, white_layer) = PlayerPieceSquare {
+          player,
+          piece_kind,
+          square,
+        }
+        .get_layers(king_positions);
+        callback(black_layer);
+        callback(white_layer);
+      }
     }
   }
+  // Include the duck.
+  let mut bitboard = state.ducks.0;
+  while let Some(pos) = crate::rules::iter_bits(&mut bitboard) {
+    let (black_layer, white_layer) = PlayerPieceSquare {
+      player: Player::Black,
+      piece_kind: PieceKind::Duck,
+      square: pos,
+    }
+    .get_layers(king_positions);
+    callback(black_layer);
+    callback(white_layer);
+  }
+
+  Ok(())
+}
+
+pub fn get_state_layers(state: &State) -> Option<Vec<LayerIndex>> {
+  let mut layers = Vec::new();
+  compute_state_layers(state, |layer| layers.push(layer)).ok()?;
+  Some(layers)
+}
+
+#[derive(Debug)]
+pub enum NnueAdjustment {
+  DuckCreation {
+    to: PlayerPieceSquare,
+  },
+  Normal {
+    from: PlayerPieceSquare,
+    to: PlayerPieceSquare,
+    // The capture needn't be on the same square as to due to en passant.
+    capture: Option<PlayerPieceSquare>,
+  },
+  KingInvolved,
 }
 
 struct NnueNet {
@@ -290,8 +419,8 @@ struct NnueNet {
 pub struct Nnue<'a> {
   layers:       &'a [[VecI16; LINEAR_STATE_VECTOR_COUNT]],
   nets:         [NnueNet; 16],
-  pub linear_state: [VecI16; LINEAR_STATE_VECTOR_COUNT],
-  //pub outputs:      [i16; 64 + 1],
+  main_bias:    [VecI16; LINEAR_STATE_VECTOR_COUNT],
+  linear_state: [VecI16; LINEAR_STATE_VECTOR_COUNT],
 }
 
 impl<'a> Nnue<'a> {
@@ -299,7 +428,7 @@ impl<'a> Nnue<'a> {
     //let linear_state = get_bias1d_i16!(PARAMS_MAIN_EMBED_BIAS, LINEAR_STATE_SIZE);
     let weights = NnueWeights::from_file(file_contents);
     let layers = weights.get_veci16_2d::<LINEAR_STATE_VECTOR_COUNT>("main_embed.weight", &[106496, LINEAR_STATE_SIZE], 14);
-    let linear_state = weights.get_veci16("main_bias", &[LINEAR_STATE_SIZE], 14);
+    let main_bias = weights.get_veci16("main_bias", &[LINEAR_STATE_SIZE], 14);
     let mut nets = vec![];
     for i in 0..16 {
       let net = NnueNet {
@@ -316,30 +445,16 @@ impl<'a> Nnue<'a> {
     let mut this = Self {
       layers,
       nets: nets.try_into().map_err(|_| "Wrong number of nets").unwrap(),
-      linear_state: linear_state.try_into().unwrap(),
+      main_bias: main_bias.try_into().unwrap(),
+      linear_state: [veci16_zeros(); LINEAR_STATE_VECTOR_COUNT],
     };
-
-    for turn in [Player::Black, Player::White] {
-      for (piece_layer_number, piece_array) in [
-        &state.pawns,
-        &state.knights,
-        &state.bishops,
-        &state.rooks,
-        &state.queens,
-        &state.kings,
-      ]
-      .into_iter()
-      .enumerate()
-      {
-        let layer_number = piece_layer_number + 6 * turn as usize;
-        let mut bitboard = piece_array[turn as usize].0;
-        // Get all of the pieces.
-        while let Some(pos) = crate::rules::iter_bits(&mut bitboard) {
-          this.add_layer((64 * layer_number + pos as usize) as u16);
-        }
-      }
-    }
+    this.recompute_linear_state(state);
     this
+  }
+
+  pub fn recompute_linear_state(&mut self, state: &State) {
+    self.linear_state = self.main_bias;
+    compute_state_layers(state, |layer| self.apply_layer::<false, false>(layer)).unwrap_or(())
   }
 
   pub fn get_debugging_hash(&self) -> u64 {
@@ -356,36 +471,46 @@ impl<'a> Nnue<'a> {
     hasher.finish()
   }
 
-  pub fn add_layer(&mut self, layer: u16) {
-    for i in 0..LINEAR_STATE_VECTOR_COUNT {
-      self.linear_state[i] = veci16_add(self.linear_state[i], self.layers[layer as usize][i]);
-    }
-  }
-
-  pub fn sub_layer(&mut self, layer: u16) {
-    for i in 0..LINEAR_STATE_VECTOR_COUNT {
-      self.linear_state[i] = veci16_sub(self.linear_state[i], self.layers[layer as usize][i]);
-    }
-  }
-
-  pub fn sub_add_layers(&mut self, from: u16, to: u16) {
-    for i in 0..LINEAR_STATE_VECTOR_COUNT {
-      self.linear_state[i] = veci16_sub(self.linear_state[i], self.layers[from as usize][i]);
-      self.linear_state[i] = veci16_add(self.linear_state[i], self.layers[to as usize][i]);
-    }
-  }
-
-  pub fn undo(&mut self, cookie: UndoCookie) {
-    for sub in cookie.sub_layers {
-      if sub != u16::MAX {
-        // Add because we're undoing a past sub.
-        self.add_layer(sub);
+  pub fn apply_adjustment<const UNDO: bool>(&mut self, state: &State, adjustment: &NnueAdjustment) {
+    let king_positions = get_king_positions(state);
+    match adjustment {
+      NnueAdjustment::DuckCreation { to } => {
+        let (black_layer, white_layer) = to.get_layers(king_positions);
+        self.apply_layer::<UNDO, false>(black_layer);
+        self.apply_layer::<UNDO, false>(white_layer);
+      }
+      NnueAdjustment::Normal { from, to, capture } => {
+        let (black_layer, white_layer) = from.get_layers(king_positions);
+        self.apply_layer::<UNDO, true>(black_layer);
+        self.apply_layer::<UNDO, true>(white_layer);
+        let (black_layer, white_layer) = to.get_layers(king_positions);
+        self.apply_layer::<UNDO, false>(black_layer);
+        self.apply_layer::<UNDO, false>(white_layer);
+        if let Some(capture) = capture {
+          let (black_layer, white_layer) = capture.get_layers(king_positions);
+          self.apply_layer::<UNDO, true>(black_layer);
+          self.apply_layer::<UNDO, true>(white_layer);
+        }
+      }
+      NnueAdjustment::KingInvolved => {
+        //panic!("King involved adjustment not implemented");
+        self.recompute_linear_state(state);
       }
     }
-    for add in cookie.add_layers {
-      if add != u16::MAX {
-        // Sub because we're undoing a past add.
-        self.sub_layer(add);
+  }
+
+  #[inline]
+  fn apply_layer<const UNDO: bool, const SUB: bool>(&mut self, layer: LayerIndex) {
+    //if UNDO != SUB {
+    //  println!("Subtracting layer {} from linear state", layer);
+    //} else {
+    //  println!("Adding layer {} to linear state", layer);
+    //}
+    for i in 0..LINEAR_STATE_VECTOR_COUNT {
+      if UNDO != SUB {
+        self.linear_state[i] = veci16_sub(self.linear_state[i], self.layers[layer as usize][i]);
+      } else {
+        self.linear_state[i] = veci16_add(self.linear_state[i], self.layers[layer as usize][i]);
       }
     }
   }
@@ -439,7 +564,7 @@ impl<'a> Nnue<'a> {
     final_accum = vec_matmul_sat_fma(final_accum, layer1_simd[0], net.l2_weights[0]);
     final_accum = vec_matmul_sat_fma(final_accum, layer1_simd[1], net.l2_weights[1]);
     let final_accum = veci16_horizontal_sat_sum(final_accum).saturating_add(net.l2_bias);
-    println!("final_accum: {}", final_accum);
+    //println!("final_accum: {}", final_accum);
 
     let network_output = (final_accum as f32 / (1 << 7) as f32).tanh();
     //self.value = (self.outputs[64].tanh() * 1000.0) as i32;

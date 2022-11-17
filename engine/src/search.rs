@@ -1,4 +1,4 @@
-use crate::nnue::{Nnue, UndoCookie};
+use crate::nnue::{Nnue, NnueAdjustment};
 use crate::rng::Rng;
 use crate::rules::{iter_bits, GameOutcome, Move, Player, State};
 
@@ -257,7 +257,7 @@ impl Engine {
     self.state = state;
   }
 
-  pub fn apply_move(&mut self, m: Move) -> Result<UndoCookie, &'static str> {
+  pub fn apply_move(&mut self, m: Move) -> Result<NnueAdjustment, &'static str> {
     self.state.apply_move::<false>(m, None)
   }
 
@@ -456,7 +456,7 @@ impl Engine {
     for m in moves {
       self.nodes_searched += 1;
       let mut new_state = state.clone();
-      let undo_cookie = if NNUE {
+      let adjustment = if NNUE {
         new_state.apply_move::<true>(m, Some(nnue)).unwrap()
       } else {
         new_state.apply_move::<false>(m, None).unwrap()
@@ -501,7 +501,8 @@ impl Engine {
       }
 
       if NNUE {
-        nnue.undo(undo_cookie);
+        // Must pass in the old state, as we're undoing the move.
+        nnue.apply_adjustment::<true>(&state, &adjustment);
       }
       //assert_eq!(debugging_hash, nnue.get_debugging_hash());
       //if state.is_duck_move {
@@ -518,7 +519,7 @@ impl Engine {
       if score > alpha && !QUIESCENCE {
         //self.tt_insert(state_hash, m, score, depth);
         //self.move_order_table.insert(state_hash, m);
-        self.move_order_table_insert(&state, m);
+        //self.move_order_table_insert(&state, m);
       }
       alpha = alpha.max(score);
       if alpha >= beta {
