@@ -20,6 +20,8 @@ print("Games:", len(all_games))
 
 pgn = []
 for game in all_games:
+    #if "-1" in game["engine_white"] or "-1" in game["engine_black"]:
+    #    continue
     assert game["version"].startswith("mcts-")
     result = game["outcome"]
     if result is None:
@@ -52,7 +54,7 @@ print(output.replace("ResultSet-EloRating>", "ResultSet-EloRating>\n"))
 # Extract all of the elos.
 ratings = {}
 for line in output.split("\n"):
-    if line.startswith("  "):
+    if line.startswith(" "):
         _, name, rating, *_ = line.split()
         rating = int(rating)
         ratings[name] = rating
