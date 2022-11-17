@@ -37,13 +37,13 @@ class Nnue(torch.nn.Module):
         # We output ACCUM_SIZE intermediate values, and one PSQT output that bypasses the net.
         self.main_embed = torch.nn.EmbeddingBag(
             num_embeddings=self.FEATURE_COUNT,
-            embedding_dim=self.ACCUM_SIZE + 1,
+            embedding_dim=self.ACCUM_SIZE,
             mode="sum",
         )
         # Scale down the embedding weights by a lot so that rare values do very little.
         self.main_embed.weight.data /= 100.0
 
-        self.main_bias = torch.nn.Parameter(torch.zeros(self.ACCUM_SIZE + 1))
+        self.main_bias = torch.nn.Parameter(torch.zeros(self.ACCUM_SIZE))
         self.clipped_relu = AnnealedLeakyClippedRelu()
         self.tanh = torch.nn.Tanh()
         make_net = lambda: torch.nn.Sequential(
@@ -64,8 +64,8 @@ class Nnue(torch.nn.Module):
 
     def forward(self, indices, offsets, which_model, lengths):
         accum = self.main_embed(indices, offsets) + self.main_bias
-        embedding, psqt = accum[:, :-1], accum[:, -1:]
-        embedding = self.clipped_relu(embedding)
+        psqt = accum[:, :1]
+        embedding = self.clipped_relu(accum)
         network_outputs = [net(embedding) for net in self.networks]
         #white_main = self.white_main(embedding)
         #black_main = self.black_main(embedding)
@@ -73,7 +73,7 @@ class Nnue(torch.nn.Module):
         #black_duck = self.black_duck(embedding)
         #data = torch.stack([black_main, white_main, black_duck, white_duck])
         data = torch.stack(network_outputs)
-        game_phase = lengths // 17
+        game_phase = torch.div(lengths, 17, rounding_mode="floor")
         which_model = which_model + game_phase * 4
         value = data[which_model, torch.arange(len(which_model))]
         return self.tanh(value + psqt)
@@ -148,8 +148,7 @@ class EWMA:
     def apply(self, x):
         self.value = x if self.value is None else (1 - self.alpha) * self.value + self.alpha * x
 
-def train(paths, device="cuda"):
-    print(f"Training on {len(paths)} files on {device}")
+def get_make_batch(paths, device):
     total_examples = 0
     all_indices = []
     all_meta = []
@@ -171,14 +170,6 @@ def train(paths, device="cuda"):
     # FIXME: This is a hack to emulate not doing the king-relative embeddings.
     #concat_indices = concat_indices % (13 * 64)
 
-    # Begin a training loop.
-    model = Nnue().to(device)
-    #model = PieceSquareTable().to(device)
-    print("Parameters:", sum(np.product(t.shape) for t in model.parameters()))
-    mse_func = torch.nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0)
-    loss_ewma = EWMA()
-
     def make_batch(batch_size):
         subset = np.random.randint(0, len(concat_indices), size=batch_size)
         lengths = all_indices_length[subset]
@@ -199,6 +190,19 @@ def train(paths, device="cuda"):
             torch.tensor(lengths, dtype=torch.int64, device=device),
             torch.tensor(all_value_for_white[subset].reshape((-1, 1)), dtype=torch.float32, device=device),
         )
+    return make_batch
+
+def train(paths, device="cuda"):
+    print(f"Training on {len(paths)} files on {device}")
+    # Begin a training loop.
+    model = Nnue().to(device)
+    #model = PieceSquareTable().to(device)
+    print("Parameters:", sum(np.product(t.shape) for t in model.parameters()))
+    mse_func = torch.nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0)
+    loss_ewma = EWMA()
+
+    make_batch = get_make_batch(paths, device)
 
     start_time = time.time()
     for i in range(1_000_000):
@@ -227,17 +231,27 @@ def train(paths, device="cuda"):
             ))
             torch.save(model.state_dict(), "nnue.pt")
 
+def quantize(model_path):
+    model = Nnue()
+    model.load_state_dict(torch.load(model_path))
+    print(model)
+    
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         print("Usage:")
         print("  python train_nnue.py process input1.json input2.json ...")
         print("  python train_nnue.py train input1-nnue-data.npz input2-nnue-data.npz ...")
+        print("  python train_nnue.py quantize nnue.pt")
         exit(1)
 
     if sys.argv[1] == "process":
         process(sys.argv[2:])
     elif sys.argv[1] == "train":
         train(sys.argv[2:])
+    elif sys.argv[1] == "quantize":
+        quantize(sys.argv[2])
     else:
         print("Unknown command:", sys.argv[1])
         exit(1)

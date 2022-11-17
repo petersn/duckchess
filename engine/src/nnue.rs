@@ -2,28 +2,96 @@
 /// 1. A SIMD implementation for x86_64.
 /// 2. A SIMD implementation for aarch64.
 /// 3. A SIMD implementation for wasm32.
-use std::collections::hash_map::DefaultHasher;
+use std::collections::{hash_map::DefaultHasher, HashMap};
 
 use crate::inference::Evaluation;
 #[rustfmt::skip]
-use crate::{
-  nnue_data::{
-    PARAMS_MAIN_EMBED_WEIGHT, PARAMS_MAIN_EMBED_BIAS,
-    PARAMS_WHITE_MAIN_0_WEIGHT, PARAMS_WHITE_MAIN_0_BIAS,
-    PARAMS_WHITE_MAIN_1_WEIGHT, PARAMS_WHITE_MAIN_1_BIAS,
-    PARAMS_WHITE_MAIN_2_WEIGHT, PARAMS_WHITE_MAIN_2_BIAS,
-    PARAMS_BLACK_MAIN_0_WEIGHT, PARAMS_BLACK_MAIN_0_BIAS,
-    PARAMS_BLACK_MAIN_1_WEIGHT, PARAMS_BLACK_MAIN_1_BIAS,
-    PARAMS_BLACK_MAIN_2_WEIGHT, PARAMS_BLACK_MAIN_2_BIAS,
-    PARAMS_WHITE_DUCK_0_WEIGHT, PARAMS_WHITE_DUCK_0_BIAS,
-    PARAMS_WHITE_DUCK_1_WEIGHT, PARAMS_WHITE_DUCK_1_BIAS,
-    PARAMS_WHITE_DUCK_2_WEIGHT, PARAMS_WHITE_DUCK_2_BIAS,
-    PARAMS_BLACK_DUCK_0_WEIGHT, PARAMS_BLACK_DUCK_0_BIAS,
-    PARAMS_BLACK_DUCK_1_WEIGHT, PARAMS_BLACK_DUCK_1_BIAS,
-    PARAMS_BLACK_DUCK_2_WEIGHT, PARAMS_BLACK_DUCK_2_BIAS,
-  },
-  rules::{Player, State},
-};
+use crate::rules::{Player, State};
+
+#[repr(C, align(64))]
+struct AlignedData<T> {
+  data: T,
+}
+
+static BUNDLED_NETWORK_DUMMY: AlignedData<[u8; include_bytes!("nnue-data.bin").len()]> = AlignedData { data: *include_bytes!("nnue-data.bin") };
+
+pub static BUNDLED_NETWORK: &'static [u8] = &BUNDLED_NETWORK_DUMMY.data;
+
+#[derive(Debug, serde::Deserialize)]
+struct NnueWeightDescription<'a> {
+  shape: Vec<usize>,
+  dtype: &'a str,
+  offset: usize,
+  shift: usize,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct WeightsMetaData<'a> {
+  version: &'a str,
+  weights: HashMap<String, NnueWeightDescription<'a>>,
+}
+
+struct NnueWeights<'a> {
+  metadata: WeightsMetaData<'a>,
+  file_contents: &'a [u8],
+}
+
+impl<'a> NnueWeights<'a> {
+  fn from_file(file_contents: &'a [u8]) -> Self {
+    let nnue_header = file_contents
+      .iter()
+      .position(|&x| x == 0)
+      .map(|x| std::str::from_utf8(&file_contents[..x]).unwrap())
+      .unwrap();
+    let metadata: WeightsMetaData = serde_json::from_str(nnue_header).unwrap();
+    assert_eq!(metadata.version, "v1");
+    Self {
+      metadata,
+      file_contents,
+    }
+  }
+
+  fn get_weight<T>(&self, vec_divide: usize, name: &str, type_check: &str, shape_check: &[usize], shift_check: usize) -> &'a [T] {
+    self.metadata.weights.get(name).map(|desc| {
+      let offset = desc.offset;
+      let raw_len = desc.shape.iter().product::<usize>();
+      // Make sure the tensor is divisible into this vector type.
+      assert_eq!(raw_len % vec_divide, 0);
+      let len = desc.shape.iter().product::<usize>() / vec_divide;
+      // Slice the contents.
+      let slice = &self.file_contents[offset..offset + len * std::mem::size_of::<T>()];
+      assert_eq!(desc.dtype, type_check);
+      assert_eq!(desc.shape, shape_check);
+      assert_eq!(slice.len(), len * std::mem::size_of::<T>());
+      assert_eq!(desc.shift, shift_check);
+      unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const T, len) }
+    }).expect(name)
+  }
+
+  fn get_veci8(&self, name: &str, shape_check: &[usize], shift_check: usize) -> &'a [VecI8] {
+    self.get_weight::<VecI8>(VECTOR_LENGTH_I8, name, "i8", shape_check, shift_check)
+  }
+
+  fn get_veci16(&self, name: &str, shape_check: &[usize], shift_check: usize) -> &'a [VecI16] {
+    self.get_weight::<VecI16>(VECTOR_LENGTH_I16, name, "i16", shape_check, shift_check)
+  }
+
+  fn get_veci8_2d<const inner: usize>(&self, name: &str, shape_check: &[usize], shift_check: usize) -> &'a [[VecI8; inner]] {
+    self.get_weight::<[VecI8; inner]>(VECTOR_LENGTH_I8 * inner, name, "i8", shape_check, shift_check)
+  }
+
+  fn get_veci16_2d<const inner: usize>(&self, name: &str, shape_check: &[usize], shift_check: usize) -> &'a [[VecI16; inner]] {
+    self.get_weight::<[VecI16; inner]>(VECTOR_LENGTH_I16 * inner, name, "i16", shape_check, shift_check)
+  }
+
+  fn get_i8(&self, name: &str, shape_check: &[usize], shift_check: usize) -> &'a [i8] {
+    self.get_weight::<i8>(1, name, "i8", shape_check, shift_check)
+  }
+
+  fn get_i16(&self, name: &str, shape_check: &[usize], shift_check: usize) -> &'a [i16] {
+    self.get_weight::<i16>(1, name, "i16", shape_check, shift_check)
+  }
+}
 
 const VECTOR_LENGTH_I8: usize = 16;
 const VECTOR_LENGTH_I16: usize = 8;
@@ -183,7 +251,7 @@ macro_rules! get_bias1d_i16 {
   }};
 }
 
-const LINEAR_STATE_SIZE: usize = 64;
+const LINEAR_STATE_SIZE: usize = 256;
 const LINEAR_STATE_VECTOR_COUNT: usize = LINEAR_STATE_SIZE / VECTOR_LENGTH_I16;
 
 // 6 layers for our pieces, 6 for theirs, 1 for the duck.
@@ -207,18 +275,47 @@ impl UndoCookie {
   }
 }
 
-pub struct Nnue {
+struct NnueNet {
+  l0_weights: [[VecI8; 256 / VECTOR_LENGTH_I8]; 16],
+  l0_bias: [VecI16; 2],
+  l1_weights: [VecI8; 32],
+  l1_bias: [VecI16; 4],
+  l2_weights: [VecI8; 2],
+  l2_bias: i16,
+}
+
+pub struct Nnue<'a> {
+  layers:       &'a [[VecI16; LINEAR_STATE_VECTOR_COUNT]],
+  nets:         [NnueNet; 16],
   pub linear_state: [VecI16; LINEAR_STATE_VECTOR_COUNT],
   //pub outputs:      [i16; 64 + 1],
 }
 
-impl Nnue {
-  pub fn new(state: &State) -> Self {
-    let linear_state = get_bias1d_i16!(PARAMS_MAIN_EMBED_BIAS, LINEAR_STATE_SIZE);
+impl<'a> Nnue<'a> {
+  pub fn new(state: &State, file_contents: &'a [u8]) -> Self {
+    //let linear_state = get_bias1d_i16!(PARAMS_MAIN_EMBED_BIAS, LINEAR_STATE_SIZE);
+    let weights = NnueWeights::from_file(file_contents);
+    let layers = weights.get_veci16_2d::<LINEAR_STATE_VECTOR_COUNT>("main_embed.weight", &[106496, LINEAR_STATE_SIZE], 7);
+    let linear_state = weights.get_veci16("main_bias", &[LINEAR_STATE_SIZE], 7);
+    let mut nets = vec![];
+    for i in 0..16 {
+      let net = NnueNet {
+        l0_weights: weights.get_veci8_2d::<16>(&format!("n{i}.0.w"), &[16, 256], 0).try_into().unwrap(),
+        l0_bias:    weights.get_veci16(&format!("n{i}.0.b"), &[16], 7).try_into().unwrap(),
+        l1_weights: weights.get_veci8(&format!("n{i}.1.w"), &[32, 16], 0).try_into().unwrap(),
+        l1_bias:    weights.get_veci16(&format!("n{i}.1.b"), &[32], 7).try_into().unwrap(),
+        l2_weights: weights.get_veci8(&format!("n{i}.2.w"), &[1, 32], 0).try_into().unwrap(),
+        l2_bias:    weights.get_i16(&format!("n{i}.2.b"), &[1], 7)[0],
+      };
+      nets.push(net);
+    }
+
     let mut this = Self {
-      linear_state: *linear_state,
-      //outputs:      [0; 64 + 1],
+      layers,
+      nets: nets.try_into().map_err(|_| "Wrong number of nets").unwrap(),
+      linear_state: linear_state.try_into().unwrap(),
     };
+
     for turn in [Player::Black, Player::White] {
       for (piece_layer_number, piece_array) in [
         &state.pawns,
@@ -257,25 +354,21 @@ impl Nnue {
   }
 
   pub fn add_layer(&mut self, layer: u16) {
-    let weights = get_bias1d_i16!(&PARAMS_MAIN_EMBED_WEIGHT[layer as usize], LINEAR_STATE_SIZE);
-    for (i, weight) in weights.iter().enumerate() {
-      self.linear_state[i] = veci16_add(self.linear_state[i], *weight);
+    for i in 0..LINEAR_STATE_VECTOR_COUNT {
+      self.linear_state[i] = veci16_add(self.linear_state[i], self.layers[layer as usize][i]);
     }
   }
 
   pub fn sub_layer(&mut self, layer: u16) {
-    let weights = get_bias1d_i16!(&PARAMS_MAIN_EMBED_WEIGHT[layer as usize], LINEAR_STATE_SIZE);
-    for (i, weight) in weights.iter().enumerate() {
-      self.linear_state[i] = veci16_sub(self.linear_state[i], *weight);
+    for i in 0..LINEAR_STATE_VECTOR_COUNT {
+      self.linear_state[i] = veci16_sub(self.linear_state[i], self.layers[layer as usize][i]);
     }
   }
 
   pub fn sub_add_layers(&mut self, from: u16, to: u16) {
-    let add_weights = get_bias1d_i16!(&PARAMS_MAIN_EMBED_WEIGHT[to as usize], LINEAR_STATE_SIZE);
-    let sub_weights = get_bias1d_i16!(&PARAMS_MAIN_EMBED_WEIGHT[from as usize], LINEAR_STATE_SIZE);
-    for (i, (add_weight, sub_weight)) in add_weights.iter().zip(sub_weights.iter()).enumerate() {
-      self.linear_state[i] = veci16_add(self.linear_state[i], *add_weight);
-      self.linear_state[i] = veci16_sub(self.linear_state[i], *sub_weight);
+    for i in 0..LINEAR_STATE_VECTOR_COUNT {
+      self.linear_state[i] = veci16_sub(self.linear_state[i], self.layers[from as usize][i]);
+      self.linear_state[i] = veci16_add(self.linear_state[i], self.layers[to as usize][i]);
     }
   }
 
@@ -299,40 +392,14 @@ impl Nnue {
       return terminal_eval;
     }
 
-    let (mat0, bias0, mat1, bias1, mat2, bias2) = match (state.turn, state.is_duck_move) {
-      (Player::White, false) => (
-        PARAMS_WHITE_MAIN_0_WEIGHT,
-        PARAMS_WHITE_MAIN_0_BIAS,
-        PARAMS_WHITE_MAIN_1_WEIGHT,
-        PARAMS_WHITE_MAIN_1_BIAS,
-        PARAMS_WHITE_MAIN_2_WEIGHT,
-        PARAMS_WHITE_MAIN_2_BIAS,
-      ),
-      (Player::White, true) => (
-        PARAMS_WHITE_DUCK_0_WEIGHT,
-        PARAMS_WHITE_DUCK_0_BIAS,
-        PARAMS_WHITE_DUCK_1_WEIGHT,
-        PARAMS_WHITE_DUCK_1_BIAS,
-        PARAMS_WHITE_DUCK_2_WEIGHT,
-        PARAMS_WHITE_DUCK_2_BIAS,
-      ),
-      (Player::Black, false) => (
-        PARAMS_BLACK_MAIN_0_WEIGHT,
-        PARAMS_BLACK_MAIN_0_BIAS,
-        PARAMS_BLACK_MAIN_1_WEIGHT,
-        PARAMS_BLACK_MAIN_1_BIAS,
-        PARAMS_BLACK_MAIN_2_WEIGHT,
-        PARAMS_BLACK_MAIN_2_BIAS,
-      ),
-      (Player::Black, true) => (
-        PARAMS_BLACK_DUCK_0_WEIGHT,
-        PARAMS_BLACK_DUCK_0_BIAS,
-        PARAMS_BLACK_DUCK_1_WEIGHT,
-        PARAMS_BLACK_DUCK_1_BIAS,
-        PARAMS_BLACK_DUCK_2_WEIGHT,
-        PARAMS_BLACK_DUCK_2_BIAS,
-      ),
-    };
+    // Compute the game phase.
+    //let game_phase = state.get_occupied().count_ones() / 8;
+    // FIXME: For now just always use phase 3.
+    let game_phase = 3;
+    let network_index = state.turn as usize + 2 * state.is_duck_move as usize + 4 * game_phase;
+    let net = &self.nets[network_index];
+
+    /*
     // The horizontal sum of all of the entries in accum[i] represents the output of layer 0.
     let mut accums0 = [veci16_zeros(); 16];
     let weights0 = get_weights2d_i8!(mat0, 256, 16);
@@ -380,5 +447,7 @@ impl Nnue {
       expected_score: (network_output + 1.0) / 2.0,
       perspective_player: state.turn,
     }
+    */
+    todo!()
   }
 }

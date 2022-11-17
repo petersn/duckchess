@@ -274,7 +274,7 @@ impl Engine {
   pub fn run(&mut self, depth: u16) -> (Evaluation, (Option<Move>, Option<Move>)) {
     self.nodes_searched = 0;
     let start_state = self.state.clone();
-    let mut nnue = Nnue::new(&start_state);
+    let mut nnue = Nnue::new(&start_state, crate::nnue::BUNDLED_NETWORK);
     // Apply iterative deepening.
     let mut p = (0, (None, None));
     //for d in 1..=depth {

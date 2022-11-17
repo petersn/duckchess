@@ -340,6 +340,22 @@ impl State {
     }
   }
 
+  pub fn get_occupied(&self) -> u64 {
+    self.pawns[0].0
+      | self.pawns[1].0
+      | self.knights[0].0
+      | self.knights[1].0
+      | self.bishops[0].0
+      | self.bishops[1].0
+      | self.rooks[0].0
+      | self.rooks[1].0
+      | self.queens[0].0
+      | self.queens[1].0
+      | self.kings[0].0
+      | self.kings[1].0
+      | self.ducks.0
+  }
+
   fn move_gen_for_color<const QUIESCENCE: bool, const IS_WHITE: bool>(
     &self,
     moves: &mut Vec<Move>,

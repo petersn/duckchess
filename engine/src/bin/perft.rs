@@ -24,7 +24,7 @@ fn perft(nnue: &mut Nnue, state: &State, depth: usize) -> u64 {
 fn main() {
   let start_time = std::time::Instant::now();
   let state = State::starting_state();
-  let mut nnue = Nnue::new(&state);
+  let mut nnue = Nnue::new(&state, engine::nnue::BUNDLED_NETWORK);
   let nodes = perft(&mut nnue, &state, 5);
   let elapsed = start_time.elapsed().as_secs_f32();
   println!("{} nodes", nodes);
