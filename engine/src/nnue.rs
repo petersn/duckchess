@@ -135,6 +135,9 @@ cfg_if::cfg_if! {
     fn veci16_sub(a: VecI16, b: VecI16) -> VecI16 { unsafe { _mm_sub_epi16(a, b) } }
 
     #[inline(always)]
+    fn veci16_shr7(a: VecI16) -> VecI16 { unsafe { _mm_srai_epi16(a, 7) } }
+
+    #[inline(always)]
     fn vec_narrow_pair(a: VecI16, b: VecI16) -> VecI8 { unsafe { _mm_packs_epi16(a, b) } }
 
     #[inline(always)]
@@ -277,9 +280,9 @@ impl UndoCookie {
 
 struct NnueNet {
   l0_weights: [[VecI8; 256 / VECTOR_LENGTH_I8]; 16],
-  l0_bias: [VecI16; 2],
+  l0_bias: [i16; 16],
   l1_weights: [VecI8; 32],
-  l1_bias: [VecI16; 4],
+  l1_bias: [i16; 32],
   l2_weights: [VecI8; 2],
   l2_bias: i16,
 }
@@ -301,9 +304,9 @@ impl<'a> Nnue<'a> {
     for i in 0..16 {
       let net = NnueNet {
         l0_weights: weights.get_veci8_2d::<16>(&format!("n{i}.0.w"), &[16, 256], 0).try_into().unwrap(),
-        l0_bias:    weights.get_veci16(&format!("n{i}.0.b"), &[16], 7).try_into().unwrap(),
+        l0_bias:    weights.get_i16(&format!("n{i}.0.b"), &[16], 7).try_into().unwrap(),
         l1_weights: weights.get_veci8(&format!("n{i}.1.w"), &[32, 16], 0).try_into().unwrap(),
-        l1_bias:    weights.get_veci16(&format!("n{i}.1.b"), &[32], 7).try_into().unwrap(),
+        l1_bias:    weights.get_i16(&format!("n{i}.1.b"), &[32], 7).try_into().unwrap(),
         l2_weights: weights.get_veci8(&format!("n{i}.2.w"), &[1, 32], 0).try_into().unwrap(),
         l2_bias:    weights.get_i16(&format!("n{i}.2.b"), &[1], 7)[0],
       };
@@ -399,55 +402,49 @@ impl<'a> Nnue<'a> {
     let network_index = state.turn as usize + 2 * state.is_duck_move as usize + 4 * game_phase;
     let net = &self.nets[network_index];
 
-    /*
     // The horizontal sum of all of the entries in accum[i] represents the output of layer 0.
     let mut accums0 = [veci16_zeros(); 16];
-    let weights0 = get_weights2d_i8!(mat0, 256, 16);
     for i in 0..LINEAR_STATE_VECTOR_COUNT / 2 {
-      let v0: VecI16 = self.linear_state[2 * i + 0];
-      let v1: VecI16 = self.linear_state[2 * i + 1];
+      let v0: VecI16 = veci16_shr7(self.linear_state[2 * i + 0]);
+      let v1: VecI16 = veci16_shr7(self.linear_state[2 * i + 1]);
       let v = vec_narrow_pair(v0, v1);
       for j in 0..16 {
-        let block = weights0[j][i];
+        let block = net.l0_weights[j][i];
         accums0[j] = vec_matmul_sat_fma(accums0[j], v, block);
       }
     }
     // We now horizontally sum the accums0, add the bias, and apply the activation function.
     let mut layer0: [i8; 16] = [0; 16];
     for i in 0..16 {
-      let intermediate = veci16_horizontal_sat_sum(accums0[i]) + bias0[i];
-      layer0[i] = (intermediate / 128).clamp(-128, 127) as i8;
+      let intermediate = veci16_horizontal_sat_sum(accums0[i]).saturating_add(net.l0_bias[i]);
+      layer0[i] = (intermediate >> 7).clamp(-128, 127) as i8;
     }
     let layer0_simd: VecI8 = unsafe { std::mem::transmute(layer0) };
 
     // Second layer
     let mut accums1 = [veci16_zeros(); 32];
-    let weights1 = get_weights2d_i8!(mat1, 16, 32);
     for j in 0..32 {
-      let block = weights1[j][0];
+      let block = net.l1_weights[j];
       accums1[j] = vec_matmul_sat_fma(accums1[j], layer0_simd, block);
     }
     let mut layer1: [i8; 32] = [0; 32];
     for i in 0..32 {
-      let intermediate = veci16_horizontal_sat_sum(accums1[i]) + bias1[i];
-      layer1[i] = (intermediate / 128).clamp(-128, 127) as i8;
+      let intermediate = veci16_horizontal_sat_sum(accums1[i]).saturating_add(net.l1_bias[i]);
+      layer1[i] = (intermediate >> 7).clamp(-128, 127) as i8;
     }
     let layer1_simd: [VecI8; 2] = unsafe { std::mem::transmute(layer1) };
 
     // Final layer
-    let weights2 = get_weights2d_i8!(mat2, 32, 1);
     let mut final_accum = veci16_zeros();
-    final_accum = vec_matmul_sat_fma(final_accum, layer1_simd[0], weights2[0][0]);
-    final_accum = vec_matmul_sat_fma(final_accum, layer1_simd[1], weights2[0][1]);
-    let final_accum = veci16_horizontal_sat_sum(final_accum) + bias2[0];
+    final_accum = vec_matmul_sat_fma(final_accum, layer1_simd[0], net.l2_weights[0]);
+    final_accum = vec_matmul_sat_fma(final_accum, layer1_simd[1], net.l2_weights[1]);
+    let final_accum = veci16_horizontal_sat_sum(final_accum).saturating_add(net.l2_bias);
 
-    let network_output = (final_accum as f32 / 1024.0).tanh();
+    let network_output = (final_accum as f32 / (1 << 7) as f32).tanh();
     //self.value = (self.outputs[64].tanh() * 1000.0) as i32;
     Evaluation {
       expected_score: (network_output + 1.0) / 2.0,
       perspective_player: state.turn,
     }
-    */
-    todo!()
   }
 }
