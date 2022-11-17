@@ -298,17 +298,17 @@ impl<'a> Nnue<'a> {
   pub fn new(state: &State, file_contents: &'a [u8]) -> Self {
     //let linear_state = get_bias1d_i16!(PARAMS_MAIN_EMBED_BIAS, LINEAR_STATE_SIZE);
     let weights = NnueWeights::from_file(file_contents);
-    let layers = weights.get_veci16_2d::<LINEAR_STATE_VECTOR_COUNT>("main_embed.weight", &[106496, LINEAR_STATE_SIZE], 7);
-    let linear_state = weights.get_veci16("main_bias", &[LINEAR_STATE_SIZE], 7);
+    let layers = weights.get_veci16_2d::<LINEAR_STATE_VECTOR_COUNT>("main_embed.weight", &[106496, LINEAR_STATE_SIZE], 14);
+    let linear_state = weights.get_veci16("main_bias", &[LINEAR_STATE_SIZE], 14);
     let mut nets = vec![];
     for i in 0..16 {
       let net = NnueNet {
-        l0_weights: weights.get_veci8_2d::<16>(&format!("n{i}.0.w"), &[16, 256], 0).try_into().unwrap(),
-        l0_bias:    weights.get_i16(&format!("n{i}.0.b"), &[16], 7).try_into().unwrap(),
-        l1_weights: weights.get_veci8(&format!("n{i}.1.w"), &[32, 16], 0).try_into().unwrap(),
-        l1_bias:    weights.get_i16(&format!("n{i}.1.b"), &[32], 7).try_into().unwrap(),
-        l2_weights: weights.get_veci8(&format!("n{i}.2.w"), &[1, 32], 0).try_into().unwrap(),
-        l2_bias:    weights.get_i16(&format!("n{i}.2.b"), &[1], 7)[0],
+        l0_weights: weights.get_veci8_2d::<16>(&format!("n{i}.0.w"), &[16, 256], 7).try_into().unwrap(),
+        l0_bias:    weights.get_i16(&format!("n{i}.0.b"), &[16], 14).try_into().unwrap(),
+        l1_weights: weights.get_veci8(&format!("n{i}.1.w"), &[32, 16], 7).try_into().unwrap(),
+        l1_bias:    weights.get_i16(&format!("n{i}.1.b"), &[32], 14).try_into().unwrap(),
+        l2_weights: weights.get_veci8(&format!("n{i}.2.w"), &[1, 32], 7).try_into().unwrap(),
+        l2_bias:    weights.get_i16(&format!("n{i}.2.b"), &[1], 14)[0],
       };
       nets.push(net);
     }
@@ -439,6 +439,7 @@ impl<'a> Nnue<'a> {
     final_accum = vec_matmul_sat_fma(final_accum, layer1_simd[0], net.l2_weights[0]);
     final_accum = vec_matmul_sat_fma(final_accum, layer1_simd[1], net.l2_weights[1]);
     let final_accum = veci16_horizontal_sat_sum(final_accum).saturating_add(net.l2_bias);
+    println!("final_accum: {}", final_accum);
 
     let network_output = (final_accum as f32 / (1 << 7) as f32).tanh();
     //self.value = (self.outputs[64].tanh() * 1000.0) as i32;
