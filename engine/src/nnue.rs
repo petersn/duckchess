@@ -135,10 +135,16 @@ cfg_if::cfg_if! {
     fn veci16_sub(a: VecI16, b: VecI16) -> VecI16 { unsafe { _mm_sub_epi16(a, b) } }
 
     #[inline(always)]
-    fn veci16_shr7(a: VecI16) -> VecI16 { unsafe { _mm_srai_epi16(a, 7) } }
+    fn veci16_shr4(a: VecI16) -> VecI16 { unsafe { _mm_srai_epi16(a, 4) } }
 
     #[inline(always)]
-    fn vec_narrow_pair(a: VecI16, b: VecI16) -> VecI8 { unsafe { _mm_packs_epi16(a, b) } }
+    fn vec_narrow_pair(a: VecI16, b: VecI16) -> VecI8 {
+      unsafe {
+        let x = _mm_packs_epi16(a, b);
+        // max with zero to saturate.
+        _mm_max_epi8(x, _mm_setzero_si128())
+      }
+    }
 
     #[inline(always)]
     fn vec_matmul_sat_fma(accum: VecI16, a: VecI8, b: VecI8) -> VecI16 {
@@ -418,7 +424,7 @@ struct NnueNet {
 
 pub struct Nnue<'a> {
   layers:       &'a [[VecI16; LINEAR_STATE_VECTOR_COUNT]],
-  nets:         [NnueNet; 16],
+  nets:         [NnueNet; 1],
   main_bias:    [VecI16; LINEAR_STATE_VECTOR_COUNT],
   linear_state: [VecI16; LINEAR_STATE_VECTOR_COUNT],
 }
@@ -427,10 +433,10 @@ impl<'a> Nnue<'a> {
   pub fn new(state: &State, file_contents: &'a [u8]) -> Self {
     //let linear_state = get_bias1d_i16!(PARAMS_MAIN_EMBED_BIAS, LINEAR_STATE_SIZE);
     let weights = NnueWeights::from_file(file_contents);
-    let layers = weights.get_veci16_2d::<LINEAR_STATE_VECTOR_COUNT>("main_embed.weight", &[106496, LINEAR_STATE_SIZE], 14);
-    let main_bias = weights.get_veci16("main_bias", &[LINEAR_STATE_SIZE], 14);
+    let layers = weights.get_veci16_2d::<LINEAR_STATE_VECTOR_COUNT>("main_embed.weight", &[106496, LINEAR_STATE_SIZE], 11);
+    let main_bias = weights.get_veci16("main_bias", &[LINEAR_STATE_SIZE], 11);
     let mut nets = vec![];
-    for i in 0..16 {
+    for i in 0..1 {
       let net = NnueNet {
         l0_weights: weights.get_veci8_2d::<16>(&format!("n{i}.0.w"), &[16, 256], 7).try_into().unwrap(),
         l0_bias:    weights.get_i16(&format!("n{i}.0.b"), &[16], 14).try_into().unwrap(),
@@ -450,6 +456,16 @@ impl<'a> Nnue<'a> {
     };
     this.recompute_linear_state(state);
     this
+  }
+
+  pub fn dump_state(&self) {
+    // Cast our linear state to a slice of i16s.
+    let linear_state = unsafe { std::slice::from_raw_parts(self.linear_state.as_ptr() as *const i16, LINEAR_STATE_SIZE) };
+    print!("[");
+    for i in 0..LINEAR_STATE_SIZE {
+      print!("{}, ", linear_state[i]);
+    }
+    println!("]");
   }
 
   pub fn recompute_linear_state(&mut self, state: &State) {
@@ -515,7 +531,7 @@ impl<'a> Nnue<'a> {
     }
   }
 
-  pub fn evaluate(&mut self, state: &State) -> Evaluation {
+  pub fn evaluate(&self, state: &State) -> Evaluation {
     if let Some(terminal_eval) = Evaluation::from_terminal_state(state) {
       return terminal_eval;
     }
@@ -523,16 +539,24 @@ impl<'a> Nnue<'a> {
     // Compute the game phase.
     //let game_phase = state.get_occupied().count_ones() / 8;
     // FIXME: For now just always use phase 3.
-    let game_phase = 3;
-    let network_index = state.turn as usize + 2 * state.is_duck_move as usize + 4 * game_phase;
+    //let game_phase = 3;
+    //let network_index = state.turn as usize + 2 * state.is_duck_move as usize + 4 * game_phase;
+    let network_index = 0;
     let net = &self.nets[network_index];
+
+    // Get the first i16 from the first vector of the linear state by unsafe casting.
+    let linear_state_i16 = unsafe { std::slice::from_raw_parts(self.linear_state.as_ptr() as *const i16, LINEAR_STATE_SIZE) };
+    let psqt = linear_state_i16[0] as i32;
 
     // The horizontal sum of all of the entries in accum[i] represents the output of layer 0.
     let mut accums0 = [veci16_zeros(); 16];
     for i in 0..LINEAR_STATE_VECTOR_COUNT / 2 {
-      let v0: VecI16 = veci16_shr7(self.linear_state[2 * i + 0]);
-      let v1: VecI16 = veci16_shr7(self.linear_state[2 * i + 1]);
+      let v0: VecI16 = veci16_shr4(self.linear_state[2 * i + 0]);
+      let v1: VecI16 = veci16_shr4(self.linear_state[2 * i + 1]);
       let v = vec_narrow_pair(v0, v1);
+      // Print out this block:
+      let transmuted = unsafe { std::mem::transmute::<VecI8, [i8; 16]>(v) };
+      println!("Block {} = {:?}", i, transmuted);
       for j in 0..16 {
         let block = net.l0_weights[j][i];
         accums0[j] = vec_matmul_sat_fma(accums0[j], v, block);
@@ -542,9 +566,17 @@ impl<'a> Nnue<'a> {
     let mut layer0: [i8; 16] = [0; 16];
     for i in 0..16 {
       let intermediate = veci16_horizontal_sat_sum(accums0[i]).saturating_add(net.l0_bias[i]);
-      layer0[i] = (intermediate >> 7).clamp(-128, 127) as i8;
+      println!("intermediate: {} (added {})", intermediate, net.l0_bias[i]);
+      layer0[i] = (intermediate >> 7).clamp(0, 127) as i8;
     }
     let layer0_simd: VecI8 = unsafe { std::mem::transmute(layer0) };
+    // Print out this intermediate.
+    let layer0_i8 = unsafe { std::slice::from_raw_parts(&layer0_simd as *const VecI8 as *const i8, 16) };
+    print!("layer0 out = [");
+    for i in 0..16 {
+      print!("{}, ", layer0_i8[i]);
+    }
+    println!("]");
 
     // Second layer
     let mut accums1 = [veci16_zeros(); 32];
@@ -555,22 +587,42 @@ impl<'a> Nnue<'a> {
     let mut layer1: [i8; 32] = [0; 32];
     for i in 0..32 {
       let intermediate = veci16_horizontal_sat_sum(accums1[i]).saturating_add(net.l1_bias[i]);
-      layer1[i] = (intermediate >> 7).clamp(-128, 127) as i8;
+      layer1[i] = (intermediate >> 7).clamp(0, 127) as i8;
     }
     let layer1_simd: [VecI8; 2] = unsafe { std::mem::transmute(layer1) };
+    // Print out this intermediate.
+    let layer1_i8 = unsafe { std::slice::from_raw_parts(&layer1_simd as *const [VecI8; 2] as *const i8, 32) };
+    print!("layer1 out = [");
+    for i in 0..32 {
+      print!("{}, ", layer1_i8[i]);
+    }
+    println!("]");
 
     // Final layer
+    // Print out all of the inputs and weights.
+    let l2_weights_i8 = unsafe { std::slice::from_raw_parts(&net.l2_weights as *const VecI8 as *const i8, 32) };
+    print!("l2_weights = [");
+    for i in 0..32 {
+      print!("{}, ", l2_weights_i8[i]);
+    }
+    println!("]");
     let mut final_accum = veci16_zeros();
     final_accum = vec_matmul_sat_fma(final_accum, layer1_simd[0], net.l2_weights[0]);
     final_accum = vec_matmul_sat_fma(final_accum, layer1_simd[1], net.l2_weights[1]);
-    let final_accum = veci16_horizontal_sat_sum(final_accum).saturating_add(net.l2_bias);
-    //println!("final_accum: {}", final_accum);
-
-    let network_output = (final_accum as f32 / (1 << 7) as f32).tanh();
+    let final_accum = veci16_horizontal_sat_sum(final_accum) as i32;
+    println!("final_accum: {} (wo/ bias)", final_accum);
+    let final_accum = final_accum + net.l2_bias as i32;
+    println!("final_accum: {} (w/ bias = {})", final_accum, net.l2_bias);
+    println!("psqt: {}", psqt);
+    let final_accum = final_accum + (psqt << 3);
+    println!("final_accum: {} (w/ psqt = {})", final_accum, psqt << 3);
+  
+    let network_output = (final_accum as f32 / (1 << 14) as f32).tanh();
     //self.value = (self.outputs[64].tanh() * 1000.0) as i32;
     Evaluation {
       expected_score: (network_output + 1.0) / 2.0,
-      perspective_player: state.turn,
+      perspective_player: Player::White
+      //perspective_player: state.turn,
     }
   }
 }

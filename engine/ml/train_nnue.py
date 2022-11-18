@@ -17,8 +17,8 @@ class AnnealedLeakyClippedRelu(torch.nn.Module):
         self.leak = leak
 
     def forward(self, x):
-        # We are modeling and i8 output in the range [-128, 127].
-        clamped = torch.clamp(x, -1, 127 / 128)
+        # We are modeling a u8 output in the range [0, 255].
+        clamped = torch.clamp(x, 0, 255 / 256)
         # Leak a little on either side.
         return clamped + self.leak * (x - clamped)
 
@@ -53,7 +53,8 @@ class Nnue(torch.nn.Module):
             self.clipped_relu,
             torch.nn.Linear(32, 1),
         )
-        self.networks = torch.nn.ModuleList([make_net() for _ in range(4 * 4)])
+        self.main_net = make_net()
+        #self.networks = torch.nn.ModuleList([make_net() for _ in range(4 * 4)])
         #self.white_main = make_net()
         #self.black_main = make_net()
         #self.white_duck = make_net()
@@ -66,16 +67,17 @@ class Nnue(torch.nn.Module):
         accum = self.main_embed(indices, offsets) + self.main_bias
         psqt = accum[:, :1]
         embedding = self.clipped_relu(accum)
-        network_outputs = [net(embedding) for net in self.networks]
-        #white_main = self.white_main(embedding)
-        #black_main = self.black_main(embedding)
-        #white_duck = self.white_duck(embedding)
-        #black_duck = self.black_duck(embedding)
-        #data = torch.stack([black_main, white_main, black_duck, white_duck])
-        data = torch.stack(network_outputs)
-        game_phase = torch.div(lengths, 17, rounding_mode="floor")
-        which_model = which_model + game_phase * 4
-        value = data[which_model, torch.arange(len(which_model))]
+        value = self.main_net(embedding)
+        #network_outputs = [net(embedding) for net in self.networks]
+        ##white_main = self.white_main(embedding)
+        ##black_main = self.black_main(embedding)
+        ##white_duck = self.white_duck(embedding)
+        ##black_duck = self.black_duck(embedding)
+        ##data = torch.stack([black_main, white_main, black_duck, white_duck])
+        #data = torch.stack(network_outputs)
+        #game_phase = torch.div(lengths, 17, rounding_mode="floor")
+        #which_model = which_model + game_phase * 4
+        #value = data[which_model, torch.arange(len(which_model))]
         return self.tanh(value + psqt)
 
 class PieceSquareTable(torch.nn.Module):
@@ -207,7 +209,7 @@ def train(paths, device="cuda"):
     start_time = time.time()
     for i in range(1_000_000):
         leak = 0.1 * 0.5 ** (i / 10_000)
-        lr = max(5e-6, 5e-4 * 0.5 ** (i / 20_000))
+        lr = max(5e-6, 5e-4 * 0.5 ** (i / 30_000))
         #lr = 1e-3
         model.adjust_leak(leak)
         for g in optimizer.param_groups:
