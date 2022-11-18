@@ -75,8 +75,6 @@ class Nnue(torch.nn.Module):
         ##black_duck = self.black_duck(embedding)
         ##data = torch.stack([black_main, white_main, black_duck, white_duck])
         data = torch.stack(network_outputs)
-        game_phase = torch.maximum(torch.tensor(0), torch.div(lengths - 3, 8, rounding_mode="floor"))
-        which_model = which_model + game_phase * 4
         value = data[which_model, torch.arange(len(which_model))]
         return self.tanh(value + psqt)
 
@@ -118,9 +116,10 @@ def process_one_path(path):
             move_str = json.dumps(move)
             r = e.apply_move(move_str)
             assert r is None, f"Move {move_str} failed: {r}"
-            new_feature_indices = e.get_nnue_feature_indices()
-            if new_feature_indices is None:
+            pair = e.get_nnue_feature_indices()
+            if pair is None:
                 continue
+            new_feature_indices, net_index = pair
             assert len(new_feature_indices) <= MAX_INDICIES
             state = json.loads(e.get_state())
             examples.append((
@@ -128,13 +127,14 @@ def process_one_path(path):
                 {"black": 0, "white": 1}[state["turn"]],
                 state["isDuckMove"],
                 value_for_white,
+                net_index,
             ))
     print(f"Examples: {len(examples)}")
     indices = -np.ones((len(examples), MAX_INDICIES), dtype=np.int32)
-    meta = np.zeros((len(examples), 4), dtype=np.int32)
-    for i, (new_feature_indices, turn, is_duck_move, value_for_white) in enumerate(examples):
+    meta = np.zeros((len(examples), 5), dtype=np.int32)
+    for i, (new_feature_indices, turn, is_duck_move, value_for_white, net_index) in enumerate(examples):
         indices[i, :len(new_feature_indices)] = new_feature_indices
-        meta[i, :] = len(new_feature_indices), value_for_white, turn, is_duck_move
+        meta[i, :] = len(new_feature_indices), value_for_white, turn, is_duck_move, net_index
     np.savez_compressed(result_path, indices=indices, meta=meta)
 
 def process(paths):
@@ -165,8 +165,9 @@ def get_make_batch(paths, device):
     print(f"Total examples: {len(concat_indices)}")
     all_indices_length = concat_meta[:, 0]
     all_value_for_white = concat_meta[:, 1]
-    all_turn = concat_meta[:, 2]
-    all_is_duck_move = concat_meta[:, 3]
+    all_net_index = concat_meta[:, 4]
+    #all_turn = concat_meta[:, 2]
+    #all_is_duck_move = concat_meta[:, 3]
     print("Constant model loss:", np.var(all_value_for_white))
 
     # FIXME: This is a hack to emulate not doing the king-relative embeddings.
@@ -184,7 +185,8 @@ def get_make_batch(paths, device):
             flattened_indices[next_offset:next_offset + length] = concat_indices[subset[i], :length]
             next_offset += length
         assert next_offset == total
-        which_model = 2 * all_is_duck_move[subset] + all_turn[subset]
+        which_model = all_net_index[subset]
+        #which_model = 2 * all_is_duck_move[subset] + all_turn[subset]
         return (
             torch.tensor(flattened_indices, dtype=torch.int64, device=device),
             torch.tensor(offsets, dtype=torch.int64, device=device),

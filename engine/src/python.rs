@@ -55,8 +55,8 @@ impl Engine {
     self.engine.get_outcome().map(|o| o.to_str())
   }
 
-  fn get_nnue_feature_indices(&self) -> Option<Vec<nnue::LayerIndex>> {
-    nnue::get_state_layers(self.engine.get_state())
+  fn get_nnue_feature_indices(&self) -> Option<(Vec<nnue::LayerIndex>, usize)> {
+    nnue::get_state_layers_and_net_index(self.engine.get_state())
   }
 }
 

@@ -84,10 +84,6 @@ impl<'a> NnueWeights<'a> {
     self.get_weight::<[VecI16; INNER]>(VECTOR_LENGTH_I16 * INNER, name, "i16", shape_check, shift_check)
   }
 
-  fn get_i8(&self, name: &str, shape_check: &[usize], shift_check: usize) -> &'a [i8] {
-    self.get_weight::<i8>(1, name, "i8", shape_check, shift_check)
-  }
-
   fn get_i16(&self, name: &str, shape_check: &[usize], shift_check: usize) -> &'a [i16] {
     self.get_weight::<i16>(1, name, "i16", shape_check, shift_check)
   }
@@ -396,10 +392,31 @@ fn compute_state_layers(state: &State, mut callback: impl FnMut(LayerIndex)) -> 
   Ok(())
 }
 
-pub fn get_state_layers(state: &State) -> Option<Vec<LayerIndex>> {
+fn get_net_index(state: &State, layer_count: i32) -> usize {
+  assert!(0 <= layer_count);
+  assert!(layer_count <= 66);
+  assert!(layer_count % 2 == 0);
+  // layer_count will be 2 * piece_count, including the duck.
+  // We compute a game phase based on how many pieces are left.
+  // Specifically, we compute:
+  //    2,  3,  4,  5 pieces left (including duck) -> game_phase = 0
+  //    6,  7,  8,  9 pieces left (including duck) -> game_phase = 1
+  //        ...
+  //   30, 31, 32, 33 pieces left (including duck) -> game_phase = 7
+  let game_phase = (layer_count - 3).max(0) / 8;
+  let net_index = 4 * game_phase as usize + 2 * (state.turn as usize) + state.is_duck_move as usize;
+  assert!(net_index < 32);
+  net_index
+}
+
+pub fn get_state_layers_and_net_index(state: &State) -> Option<(Vec<LayerIndex>, usize)> {
   let mut layers = Vec::new();
   compute_state_layers(state, |layer| layers.push(layer)).ok()?;
-  Some(layers)
+  let layer_count = layers.len() as i32;
+  Some((
+    layers,
+    get_net_index(state, layer_count),
+  ))
 }
 
 #[derive(Debug)]
@@ -427,9 +444,10 @@ struct NnueNet {
 
 pub struct Nnue<'a> {
   layers:       &'a [[VecI16; LINEAR_STATE_VECTOR_COUNT]],
-  nets:         [NnueNet; 1],
+  nets:         [NnueNet; 32],
   main_bias:    [VecI16; LINEAR_STATE_VECTOR_COUNT],
   linear_state: [VecI16; LINEAR_STATE_VECTOR_COUNT],
+  layer_count:  i32,
 }
 
 impl<'a> Nnue<'a> {
@@ -439,7 +457,7 @@ impl<'a> Nnue<'a> {
     let layers = weights.get_veci16_2d::<LINEAR_STATE_VECTOR_COUNT>("main_embed.weight", &[106496, LINEAR_STATE_SIZE], 11);
     let main_bias = weights.get_veci16("main_bias", &[LINEAR_STATE_SIZE], 11);
     let mut nets = vec![];
-    for i in 0..1 {
+    for i in 0..32 {
       let net = NnueNet {
         l0_weights: weights.get_veci8_2d::<16>(&format!("n{i}.0.w"), &[16, 256], 7).try_into().unwrap(),
         l0_bias:    weights.get_i16(&format!("n{i}.0.b"), &[16], 14).try_into().unwrap(),
@@ -456,6 +474,7 @@ impl<'a> Nnue<'a> {
       nets: nets.try_into().map_err(|_| "Wrong number of nets").unwrap(),
       main_bias: main_bias.try_into().unwrap(),
       linear_state: [veci16_zeros(); LINEAR_STATE_VECTOR_COUNT],
+      layer_count: 0,
     };
     this.recompute_linear_state(state);
     this
@@ -473,6 +492,7 @@ impl<'a> Nnue<'a> {
 
   pub fn recompute_linear_state(&mut self, state: &State) {
     self.linear_state = self.main_bias;
+    self.layer_count = 0;
     compute_state_layers(state, |layer| self.apply_layer::<false, false>(layer)).unwrap_or(())
   }
 
@@ -520,11 +540,11 @@ impl<'a> Nnue<'a> {
 
   #[inline]
   fn apply_layer<const UNDO: bool, const SUB: bool>(&mut self, layer: LayerIndex) {
-    //if UNDO != SUB {
-    //  println!("Subtracting layer {} from linear state", layer);
-    //} else {
-    //  println!("Adding layer {} to linear state", layer);
-    //}
+    if UNDO != SUB {
+      self.layer_count -= 1;
+    } else {
+      self.layer_count += 1;
+    }
     for i in 0..LINEAR_STATE_VECTOR_COUNT {
       if UNDO != SUB {
         self.linear_state[i] = veci16_sub(self.linear_state[i], self.layers[layer as usize][i]);
@@ -544,7 +564,8 @@ impl<'a> Nnue<'a> {
     // FIXME: For now just always use phase 3.
     //let game_phase = 3;
     //let network_index = state.turn as usize + 2 * state.is_duck_move as usize + 4 * game_phase;
-    let network_index = 0;
+    // FIXME: I need to reimplement everything here.
+    let network_index = get_net_index(state, self.layer_count);
     let net = &self.nets[network_index];
 
     // Get the first i16 from the first vector of the linear state by unsafe casting.
