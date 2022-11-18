@@ -4,9 +4,9 @@
 /// 3. A SIMD implementation for wasm32.
 use std::collections::{hash_map::DefaultHasher, HashMap};
 
-use crate::inference::Evaluation;
 #[rustfmt::skip]
 use crate::rules::{Player, PieceKind, Square, State};
+use crate::search::{IntEvaluation, eval_terminal_state};
 
 #[repr(C, align(64))]
 struct AlignedData<T> {
@@ -554,8 +554,8 @@ impl<'a> Nnue<'a> {
     }
   }
 
-  pub fn evaluate(&self, state: &State) -> Evaluation {
-    if let Some(terminal_eval) = Evaluation::from_terminal_state(state) {
+  pub fn evaluate(&self, state: &State) -> IntEvaluation {
+    if let Some(terminal_eval) = eval_terminal_state(state) {
       return terminal_eval;
     }
 
@@ -640,13 +640,20 @@ impl<'a> Nnue<'a> {
     //println!("psqt: {}", psqt);
     let final_accum = final_accum + (psqt << 3);
     //println!("final_accum: {} (w/ psqt = {})", final_accum, psqt << 3);
-  
-    let network_output = (final_accum as f32 / (1 << 14) as f32).tanh();
-    //self.value = (self.outputs[64].tanh() * 1000.0) as i32;
-    Evaluation {
-      expected_score: (network_output + 1.0) / 2.0,
-      perspective_player: Player::White
-      //perspective_player: state.turn,
+
+    // We now negate the value if it's black's turn.
+    match state.turn {
+      Player::White => final_accum,
+      Player::Black => -final_accum,
     }
+
+    //let network_output = (final_accum as f32 / (1 << 14) as f32).tanh();
+    //self.value = (self.outputs[64].tanh() * 1000.0) as i32;
+
+    //IntEvaluation {
+    //  expected_score: (network_output + 1.0) / 2.0,
+    //  perspective_player: Player::White
+    //  //perspective_player: state.turn,
+    //}
   }
 }

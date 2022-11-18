@@ -70,10 +70,10 @@ fn main() {
               Some(m2) => println!("info score cp {} pv {} {}", score, m1.to_uci(), m2.to_uci()),
               None => println!("info score cp {} pv {}", score, m1.to_uci()),
             }
+            engine.apply_move(m1).unwrap();
           }
           None => println!("bestmove 0000"),
         }
-        engine.apply_move(m1.unwrap()).unwrap();
       }
       _ => eprintln!("Unknown command: {}", line),
     }

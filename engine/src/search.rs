@@ -2,13 +2,47 @@ use crate::nnue::{Nnue, NnueAdjustment};
 use crate::rng::Rng;
 use crate::rules::{iter_bits, GameOutcome, Move, Player, State};
 
-type Evaluation = i32;
+// Represents an evaluation in a position from the perspective of the player to move.
+pub type IntEvaluation = i32;
 
-const VERY_NEGATIVE_EVAL: Evaluation = -1_000_000_000;
-const VERY_POSITIVE_EVAL: Evaluation = 1_000_000_000;
+const EVAL_DRAW: IntEvaluation = 0;
+const EVAL_VERY_NEGATIVE: IntEvaluation = -1_000_000_000;
+const EVAL_VERY_POSITIVE: IntEvaluation = 1_000_000_000;
+const EVAL_LOSS: IntEvaluation = -1_000_000;
+const EVAL_WIN: IntEvaluation = 1_000_000;
+
+pub fn eval_terminal_state(state: &State) -> Option<IntEvaluation> {
+  Some(match (state.get_outcome()?, state.turn) {
+    (GameOutcome::Draw, _) => EVAL_DRAW,
+    (GameOutcome::Win(Player::White), Player::White) => EVAL_WIN,
+    (GameOutcome::Win(Player::White), Player::Black) => EVAL_LOSS,
+    (GameOutcome::Win(Player::Black), Player::White) => EVAL_LOSS,
+    (GameOutcome::Win(Player::Black), Player::Black) => EVAL_WIN,
+  })
+}
+
+pub fn make_mate_score_slightly_less_extreme(eval: IntEvaluation) -> IntEvaluation {
+  if eval > 100_000 {
+    eval - 1
+  } else if eval < -100_000 {
+    eval + 1
+  } else {
+    eval
+  }
+}
+
+pub fn make_mate_score_much_less_extreme(eval: IntEvaluation) -> IntEvaluation {
+  if eval > 100_000 {
+    eval - 100
+  } else if eval < -100_000 {
+    eval + 100
+  } else {
+    eval
+  }
+}
 
 #[rustfmt::skip]
-const PAWN_MIDDLEGAME_PST: [Evaluation; 64] = [
+const PAWN_MIDDLEGAME_PST: [IntEvaluation; 64] = [
    0,  0,  0,  0,  0,  0,  0,  0,
   50, 50, 50, 50, 50, 50, 50, 50,
   10, 10, 20, 30, 30, 20, 10, 10,
@@ -20,7 +54,7 @@ const PAWN_MIDDLEGAME_PST: [Evaluation; 64] = [
 ];
 
 #[rustfmt::skip]
-const PAWN_ENDGAME_PST: [Evaluation; 64] = [
+const PAWN_ENDGAME_PST: [IntEvaluation; 64] = [
    0,  0,  0,  0,  0,  0,  0,  0,
   99, 99, 99, 99, 99, 99, 99, 99,
   40, 40, 60, 70, 70, 60, 40, 40,
@@ -32,7 +66,7 @@ const PAWN_ENDGAME_PST: [Evaluation; 64] = [
 ];
 
 #[rustfmt::skip]
-const KNIGHT_PST: [Evaluation; 64] = [
+const KNIGHT_PST: [IntEvaluation; 64] = [
   -50,-40,-30,-30,-30,-30,-40,-50,
   -40,-20,  0,  0,  0,  0,-20,-40,
   -30,  0, 10, 15, 15, 10,  0,-30,
@@ -44,7 +78,7 @@ const KNIGHT_PST: [Evaluation; 64] = [
 ];
 
 #[rustfmt::skip]
-const BISHOP_PST: [Evaluation; 64] = [
+const BISHOP_PST: [IntEvaluation; 64] = [
   -20,-10,-10,-10,-10,-10,-10,-20,
   -10,  0,  0,  0,  0,  0,  0,-10,
   -10,  0,  5, 10, 10,  5,  0,-10,
@@ -56,7 +90,7 @@ const BISHOP_PST: [Evaluation; 64] = [
 ];
 
 #[rustfmt::skip]
-const ROOK_PST: [Evaluation; 64] = [
+const ROOK_PST: [IntEvaluation; 64] = [
    0,  0,  0,  0,  0,  0,  0,  0,
    5, 10, 10, 10, 10, 10, 10,  5,
   -5,  0,  0,  0,  0,  0,  0, -5,
@@ -68,7 +102,7 @@ const ROOK_PST: [Evaluation; 64] = [
 ];
 
 #[rustfmt::skip]
-const QUEEN_PST: [Evaluation; 64] = [
+const QUEEN_PST: [IntEvaluation; 64] = [
   -20,-10,-10, -5, -5,-10,-10,-20,
   -10,  0,  0,  0,  0,  0,  0,-10,
   -10,  0,  5,  5,  5,  5,  0,-10,
@@ -80,7 +114,7 @@ const QUEEN_PST: [Evaluation; 64] = [
 ];
 
 #[rustfmt::skip]
-const KING_MIDDLEGAME_PST: [Evaluation; 64] = [
+const KING_MIDDLEGAME_PST: [IntEvaluation; 64] = [
   -30,-40,-40,-50,-50,-40,-40,-30,
   -30,-40,-40,-50,-50,-40,-40,-30,
   -30,-40,-40,-50,-50,-40,-40,-30,
@@ -92,7 +126,7 @@ const KING_MIDDLEGAME_PST: [Evaluation; 64] = [
 ];
 
 #[rustfmt::skip]
-const KING_ENDGAME_PST: [Evaluation; 64] = [
+const KING_ENDGAME_PST: [IntEvaluation; 64] = [
   -50,-40,-30,-20,-20,-30,-40,-50,
   -30,-20,-10,  0,  0,-10,-20,-30,
   -30,-10, 20, 30, 30, 20,-10,-30,
@@ -104,7 +138,7 @@ const KING_ENDGAME_PST: [Evaluation; 64] = [
 ];
 
 // #[inline(never)]
-// pub fn evaluate_state(state: &State) -> Evaluation {
+// pub fn evaluate_state(state: &State) -> IntEvaluation {
 //   let endgame_factor = 1.0
 //     - (2 * state.queens[0].0.count_ones()
 //       + 2 * state.queens[1].0.count_ones()
@@ -115,7 +149,11 @@ const KING_ENDGAME_PST: [Evaluation; 64] = [
 //   return state.pawns[0].0.count_ones() as i32 - state.pawns[1].0.count_ones() as i32 + adjust;
 // }
 
-pub fn evaluate_state(state: &State) -> Evaluation {
+pub fn evaluate_state(state: &State) -> IntEvaluation {
+  if let Some(terminal_eval) = eval_terminal_state(state) {
+    return terminal_eval;
+  }
+
   let mut score = 0;
   // endgame factor is 0 for middlegame, 1 for endgame
   let endgame_factor = 1.0
@@ -149,43 +187,19 @@ pub fn evaluate_state(state: &State) -> Evaluation {
       Player::White => (piece_array[1].0, piece_array[0].0, 0),
       Player::Black => (piece_array[0].0, piece_array[1].0, 56),
     };
-    score += us.count_ones() as Evaluation * piece_value;
-    score -= them.count_ones() as Evaluation * piece_value;
+    score += us.count_ones() as IntEvaluation * piece_value;
+    score -= them.count_ones() as IntEvaluation * piece_value;
     while let Some(pos) = iter_bits(&mut us) {
-      score += (pst_mult * pst[(pos ^ pst_xor ^ 56) as usize] as f32) as Evaluation;
+      score += (pst_mult * pst[(pos ^ pst_xor ^ 56) as usize] as f32) as IntEvaluation;
     }
     while let Some(pos) = iter_bits(&mut them) {
-      score -= (pst_mult * pst[(pos ^ pst_xor) as usize] as f32) as Evaluation;
+      score -= (pst_mult * pst[(pos ^ pst_xor) as usize] as f32) as IntEvaluation;
     }
   }
   score + 25
 }
 
 const QUIESCENCE_DEPTH: u16 = 10;
-
-fn make_terminal_scores_slightly_less_extreme<T>(p: (Evaluation, T)) -> (Evaluation, T) {
-  let (score, m) = p;
-  let score = if score < -100_000 {
-    score + 1
-  } else if score > 100_000 {
-    score - 1
-  } else {
-    score
-  };
-  (score, m)
-}
-
-fn make_terminal_scores_much_less_extreme<T>(p: (Evaluation, T)) -> (Evaluation, T) {
-  let (score, m) = p;
-  let score = if score < -100_000 {
-    score + 100
-  } else if score > 100_000 {
-    score - 100
-  } else {
-    score
-  };
-  (score, m)
-}
 
 enum NodeType {
   Exact,
@@ -200,7 +214,7 @@ struct MoveOrderEntry {
 struct TTEntry {
   zobrist:   u64,
   depth:     u16,
-  score:     Evaluation,
+  score:     IntEvaluation,
   best_move: Option<Move>,
   node_type: NodeType,
 }
@@ -229,7 +243,7 @@ impl Engine {
       transposition_table.push(TTEntry {
         zobrist:   0,
         depth:     0,
-        score:     0,
+        score:     EVAL_DRAW,
         best_move: None,
         node_type: NodeType::Exact,
       });
@@ -271,21 +285,21 @@ impl Engine {
     self.state.get_outcome()
   }
 
-  pub fn run(&mut self, depth: u16) -> (Evaluation, (Option<Move>, Option<Move>)) {
+  pub fn run(&mut self, depth: u16) -> (IntEvaluation, (Option<Move>, Option<Move>)) {
     self.nodes_searched = 0;
     let start_state = self.state.clone();
     let mut nnue = Nnue::new(&start_state, crate::nnue::BUNDLED_NETWORK);
     // Apply iterative deepening.
-    let mut p = (0, (None, None));
+    let mut p = (EVAL_DRAW, (None, None));
     //for d in 1..=depth {
     for d in 1..=depth {
       let nnue_hash = nnue.get_debugging_hash();
-      p = self.pvs::<false, true>(
+      p = self.pvs::<false, false>(
         d,
         &start_state,
         &mut nnue,
-        VERY_NEGATIVE_EVAL,
-        VERY_POSITIVE_EVAL,
+        EVAL_VERY_NEGATIVE,
+        EVAL_VERY_POSITIVE,
       );
       assert_eq!(nnue_hash, nnue.get_debugging_hash());
       //log(&format!(
@@ -327,7 +341,7 @@ impl Engine {
     &mut self,
     zobrist: u64,
     depth: u16,
-    score: Evaluation,
+    score: IntEvaluation,
     best_move: Option<Move>,
     node_type: NodeType,
   ) {
@@ -345,9 +359,9 @@ impl Engine {
     depth: u16,
     state: &State,
     nnue: &mut Nnue,
-    mut alpha: Evaluation,
-    beta: Evaluation,
-  ) -> (Evaluation, (Option<Move>, Option<Move>)) {
+    mut alpha: IntEvaluation,
+    beta: IntEvaluation,
+  ) -> (IntEvaluation, (Option<Move>, Option<Move>)) {
     // Check the transposition table.
     // if let Some(entry) = self.probe_tt(state) {
     //   if entry.depth >= depth {
@@ -366,27 +380,29 @@ impl Engine {
     // }
   
     // Evaluate the nnue to get a score.
-    let mut get_eval = || {
+    let get_eval = || {
       if NNUE {
-        (nnue.evaluate(state).expected_score * 1000.0) as i32
+        //(nnue.evaluate(state).expected_score * 1000.0) as i32
+        nnue.evaluate(state)
       } else {
         evaluate_state(state)
       }
     };
 
     let game_over = state.get_outcome().is_some();
-    let random_bonus = (self.rng.next_random() & 0xf) as Evaluation;
+    let random_bonus = (self.rng.next_random() & 0xf) as i32;
     match (game_over, depth, QUIESCENCE) {
       (true, _, _) => return (get_eval() + random_bonus, (None, None)),
       (_, 0, true) => return (get_eval() + random_bonus, (None, None)),
       (_, 0, false) => {
-        return make_terminal_scores_much_less_extreme(self.pvs::<true, NNUE>(
+        let (score, move_pair) = self.pvs::<true, NNUE>(
           QUIESCENCE_DEPTH,
           state,
           nnue,
           alpha,
           beta,
-        ))
+        );
+        return (make_mate_score_much_less_extreme(score), move_pair);
       }
       _ => {}
     }
@@ -441,7 +457,7 @@ impl Engine {
     //});
 
     //log(&format!("pvs({}, {}, {}) moves={}", depth, alpha, beta, moves.len()));
-    let mut best_score = VERY_NEGATIVE_EVAL;
+    let mut best_score = EVAL_VERY_NEGATIVE;
     let mut best_pair = (None, None);
 
     // If we're in a QUIESCENCE search then we're allowed to pass.
@@ -529,8 +545,8 @@ impl Engine {
       first = false;
     }
 
-    let (score, move_pair) = make_terminal_scores_slightly_less_extreme((alpha, best_pair));
-    self.tt_insert(state.zobrist, depth, score, move_pair.0, NodeType::Exact);
-    (score, move_pair)
+    let score = make_mate_score_slightly_less_extreme(alpha);
+    self.tt_insert(state.zobrist, depth, score, best_pair.0, NodeType::Exact);
+    (score, best_pair)
   }
 }
