@@ -174,7 +174,6 @@ pub fn move_to_uci(m: JsValue) -> String {
 }
 
 fn run_perft<const NNUE: bool, const EVAL: bool>() -> usize {
-  use crate::nnue::UndoCookie;
   use crate::rules::{Move, State};
 
   struct StackEntry {
@@ -191,10 +190,10 @@ fn run_perft<const NNUE: bool, const EVAL: bool>() -> usize {
     state: State::starting_state(),
     m:     Move::from_uci("e2e4").unwrap(),
   }];
-  let mut nnue = crate::nnue::Nnue::new(&State::starting_state());
+  let mut nnue = crate::nnue::Nnue::new(&State::starting_state(), crate::nnue::BUNDLED_NETWORK);
   while let Some(mut entry) = stack.pop() {
     nodes += 1;
-    let undo_cookie = entry.state.apply_move::<NNUE>(entry.m, Some(&mut nnue)).unwrap();
+    let adjustment = entry.state.apply_move::<NNUE>(entry.m, Some(&mut nnue)).unwrap();
     if EVAL {
       crate::search::evaluate_state(&entry.state);
     }
@@ -217,7 +216,8 @@ fn run_perft<const NNUE: bool, const EVAL: bool>() -> usize {
       moves.clear();
     }
     if NNUE {
-      nnue.undo(undo_cookie);
+      // FIXME: This is WRONG! I need to pass in the parent state!
+      nnue.apply_adjustment::<true>(&entry.state, &adjustment);
     }
   }
   nodes

@@ -10,6 +10,7 @@ crate-type = ["rlib", "cdylib"]
 [dependencies]
 cfg-if = "1.0.0"
 serde = { version = "1.0.145", features = ["derive"] }
+serde_json = "1.0.87"
 slotmap = "1.0.6"
 static_assertions = "1.1.0"
 
@@ -21,7 +22,6 @@ serde-wasm-bindgen = "0.4.5"
 
 [target.'cfg(not(target_arch="wasm32"))'.dependencies]
 rand = "0.8.5"
-serde_json = "1.0.87"
 num_cpus = "1.13.1"
 pyo3 = { version = "0.17.2", features = ["extension-module"] }
 tensorflow = { version = "0.19.1", features = ["tensorflow_gpu"] }

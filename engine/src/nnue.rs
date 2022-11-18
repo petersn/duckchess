@@ -214,8 +214,11 @@ cfg_if::cfg_if! {
     fn veci16_sub(a: VecI16, b: VecI16) -> VecI16 { unsafe { i16x8_sub(a, b) } }
 
     #[inline(always)]
+    fn veci16_shr4(a: VecI16) -> VecI16 { unsafe { i16x8_shr(a, 4) } }
+
+    #[inline(always)]
     fn vec_narrow_pair(a: VecI16, b: VecI16) -> VecI8 {
-      unsafe { i8x16_narrow_i16x8(a, b) }
+      unsafe { i8x16_max(i8x16_splat(0), i8x16_narrow_i16x8(a, b)) }
     }
 
     #[inline(always)]
