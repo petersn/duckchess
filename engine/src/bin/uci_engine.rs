@@ -1,6 +1,11 @@
 use std::{collections::HashMap, io::BufRead, cell::RefCell};
 
 use clap::Parser;
+use engine::{inference_desktop::TensorFlowEngine, mcts::{SearchParams, Mcts}};
+use engine::inference::InferenceEngine;
+
+const MAX_BATCH_SIZE: usize = 32;
+const MAX_STEPS_BEFORE_INFERENCE: usize = 40 * 32;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -10,6 +15,15 @@ struct Args {
 
   #[arg(short, long)]
   random: bool,
+
+  #[arg(short, long)]
+  nnue: bool,
+
+  #[arg(short, long)]
+  model: Option<String>,
+
+  #[arg(short, long, default_value = "100")]
+  visits: u32,
 }
 
 fn main() {
@@ -25,6 +39,31 @@ fn main() {
     engine::search::Engine::new(seed, hash_mib * 1024 * 1024)
   };
   let mut engine = make_new_engine();
+
+  let mut mcts_data = args.model.map(|model| {
+    let inference_engine: &'static _ = Box::leak(Box::new(TensorFlowEngine::new(MAX_BATCH_SIZE, &model)));
+    let mcts = Mcts::new(0, 0, inference_engine, SearchParams::default());
+    (inference_engine, mcts)
+  });
+
+  macro_rules! inference {
+    () => {
+      let (inference_engine, mcts) = mcts_data.as_mut().unwrap();
+      inference_engine.predict(|inference_results| {
+        for (i, (_cookie, pending_path)) in inference_results.cookies.into_iter().enumerate() {
+          mcts.process_path(pending_path.clone(), inference_results.get(i));
+        }
+      });
+    };
+    ($inference_engine:expr, $mcts:expr) => {
+      $inference_engine.predict(|inference_results| {
+        for (i, (_cookie, pending_path)) in inference_results.cookies.into_iter().enumerate() {
+          $mcts.process_path(pending_path.clone(), inference_results.get(i));
+        }
+      });
+    };
+  }
+  inference!();
 
   for line in stdin.lock().lines().map(|r| r.unwrap()) {
     let tokens = line.split_whitespace().collect::<Vec<_>>();
@@ -78,9 +117,8 @@ fn main() {
           depth = d;
         }
         //let mut search = engine::search::Search::new(&engine, depth, time, nodes, movetime, infinite, ponder);
-        let (score, (m1, m2)) = match args.random {
-          false => engine.run(depth),
-          true => {
+        let (score, (m1, m2)) = match (args.random, mcts_data.as_mut()) {
+          (true, _) => {
             let mut rng = rand::thread_rng();
             let mut moves = vec![];
             engine.get_state().move_gen::<false>(&mut moves);
@@ -90,6 +128,22 @@ fn main() {
             let m2 = None;
             (12345, (m1, m2))
           }
+          (false, None) => engine.run(depth, args.nnue),
+          (false, Some((ref inference_engine, ref mut mcts))) => {
+            let mut steps = args.visits;
+            while steps > 0 {
+              for i in 0..MAX_STEPS_BEFORE_INFERENCE {
+                steps -= 1;
+                mcts.step();
+                mcts.get_state().sanity_check().unwrap(); // FIXME: Maybe remove this?
+                if steps == 0 || inference_engine.batch_ready() {
+                  break;
+                }
+              }
+              inference!(inference_engine, mcts);
+            }
+            (0, (mcts.sample_move_by_visit_count(), None))
+          },
         };
         match m1 {
           Some(m1) => {

@@ -2,7 +2,7 @@
 fn main() {
   let mut e = engine::search::Engine::new(1234, 64 * 1024 * 1024);
   let start_time = std::time::Instant::now();
-  let (score, (m1, m2)) = e.run(5);
+  let (score, (m1, m2)) = e.run(5, false);
   let elapsed = start_time.elapsed().as_secs_f32();
   println!("Score: {}", score);
   println!("Move: {:?}", m1);

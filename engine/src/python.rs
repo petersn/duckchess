@@ -37,7 +37,7 @@ impl Engine {
   }
 
   fn run(&mut self, depth: u16) -> (i32, String) {
-    let (score, best_move) = self.engine.run(depth);
+    let (score, best_move) = self.engine.run(depth, false);
     let serialized = serde_json::to_string(&best_move).unwrap();
     (score, serialized)
   }

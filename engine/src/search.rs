@@ -285,7 +285,7 @@ impl Engine {
     self.state.get_outcome()
   }
 
-  pub fn run(&mut self, depth: u16) -> (IntEvaluation, (Option<Move>, Option<Move>)) {
+  pub fn run(&mut self, depth: u16, use_nnue: bool) -> (IntEvaluation, (Option<Move>, Option<Move>)) {
     self.nodes_searched = 0;
     let start_state = self.state.clone();
     let mut nnue = Nnue::new(&start_state, crate::nnue::BUNDLED_NETWORK);
@@ -294,13 +294,22 @@ impl Engine {
     //for d in 1..=depth {
     for d in 1..=depth {
       let nnue_hash = nnue.get_debugging_hash();
-      p = self.pvs::<false, false>(
-        d,
-        &start_state,
-        &mut nnue,
-        EVAL_VERY_NEGATIVE,
-        EVAL_VERY_POSITIVE,
-      );
+      p = match use_nnue {
+        true => self.pvs::<false, true>(
+          d,
+          &start_state,
+          &mut nnue,
+          EVAL_VERY_NEGATIVE,
+          EVAL_VERY_POSITIVE,
+        ),
+        false => self.pvs::<false, false>(
+          d,
+          &start_state,
+          &mut nnue,
+          EVAL_VERY_NEGATIVE,
+          EVAL_VERY_POSITIVE,
+        ),
+      };
       assert_eq!(nnue_hash, nnue.get_debugging_hash());
       //log(&format!(
       //  "Depth {}: {} (nodes={})",

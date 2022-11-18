@@ -36,7 +36,7 @@ fn work(depth: u16, output_dir: &str) {
       let random_move = move_index == 0 || if move_index < 6 { r < 0.5 } else { r < 0.005 };
       let p = match random_move {
         true => engine.get_moves().choose(&mut rng).map(|x| *x),
-        false => engine.run(depth).1 .0,
+        false => engine.run(depth, false).1 .0,
       };
       if let Some(m) = p {
         was_rand.push(random_move);
