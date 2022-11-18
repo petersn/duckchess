@@ -1,6 +1,19 @@
 use std::{collections::HashMap, io::BufRead, cell::RefCell};
 
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+  #[arg(short, long)]
+  depth: Option<u16>,
+
+  #[arg(short, long)]
+  random: bool,
+}
+
 fn main() {
+  let args = Args::parse();
   let stdin = std::io::stdin();
   let options = RefCell::new(HashMap::<String, String>::from([
     ("Hash".to_string(), "16".to_string()),
@@ -61,8 +74,23 @@ fn main() {
             _ => (),
           }
         }
+        if let Some(d) = args.depth {
+          depth = d;
+        }
         //let mut search = engine::search::Search::new(&engine, depth, time, nodes, movetime, infinite, ponder);
-        let (score, (m1, m2)) = engine.run(depth);
+        let (score, (m1, m2)) = match args.random {
+          false => engine.run(depth),
+          true => {
+            let mut rng = rand::thread_rng();
+            let mut moves = vec![];
+            engine.get_state().move_gen::<false>(&mut moves);
+            use rand::seq::SliceRandom;
+            moves.shuffle(&mut rng);
+            let m1 = moves.first().copied();
+            let m2 = None;
+            (12345, (m1, m2))
+          }
+        };
         match m1 {
           Some(m1) => {
             println!("bestmove {}", m1.to_uci());
@@ -70,7 +98,6 @@ fn main() {
               Some(m2) => println!("info score cp {} pv {} {}", score, m1.to_uci(), m2.to_uci()),
               None => println!("info score cp {} pv {}", score, m1.to_uci()),
             }
-            engine.apply_move(m1).unwrap();
           }
           None => println!("bestmove 0000"),
         }
