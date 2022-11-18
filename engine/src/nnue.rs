@@ -558,8 +558,8 @@ impl<'a> Nnue<'a> {
       let v1: VecI16 = veci16_shr4(self.linear_state[2 * i + 1]);
       let v = vec_narrow_pair(v0, v1);
       // Print out this block:
-      let transmuted = unsafe { std::mem::transmute::<VecI8, [i8; 16]>(v) };
-      println!("Block {} = {:?}", i, transmuted);
+      //let transmuted = unsafe { std::mem::transmute::<VecI8, [i8; 16]>(v) };
+      //println!("Block {} = {:?}", i, transmuted);
       for j in 0..16 {
         let block = net.l0_weights[j][i];
         accums0[j] = vec_matmul_sat_fma(accums0[j], v, block);
@@ -569,17 +569,17 @@ impl<'a> Nnue<'a> {
     let mut layer0: [i8; 16] = [0; 16];
     for i in 0..16 {
       let intermediate = veci16_horizontal_sat_sum(accums0[i]).saturating_add(net.l0_bias[i]);
-      println!("intermediate: {} (added {})", intermediate, net.l0_bias[i]);
+      //println!("intermediate: {} (added {})", intermediate, net.l0_bias[i]);
       layer0[i] = (intermediate >> 7).clamp(0, 127) as i8;
     }
     let layer0_simd: VecI8 = unsafe { std::mem::transmute(layer0) };
     // Print out this intermediate.
-    let layer0_i8 = unsafe { std::slice::from_raw_parts(&layer0_simd as *const VecI8 as *const i8, 16) };
-    print!("layer0 out = [");
-    for i in 0..16 {
-      print!("{}, ", layer0_i8[i]);
-    }
-    println!("]");
+    //let layer0_i8 = unsafe { std::slice::from_raw_parts(&layer0_simd as *const VecI8 as *const i8, 16) };
+    //print!("layer0 out = [");
+    //for i in 0..16 {
+    //  print!("{}, ", layer0_i8[i]);
+    //}
+    //println!("]");
 
     // Second layer
     let mut accums1 = [veci16_zeros(); 32];
@@ -594,31 +594,31 @@ impl<'a> Nnue<'a> {
     }
     let layer1_simd: [VecI8; 2] = unsafe { std::mem::transmute(layer1) };
     // Print out this intermediate.
-    let layer1_i8 = unsafe { std::slice::from_raw_parts(&layer1_simd as *const [VecI8; 2] as *const i8, 32) };
-    print!("layer1 out = [");
-    for i in 0..32 {
-      print!("{}, ", layer1_i8[i]);
-    }
-    println!("]");
+    //let layer1_i8 = unsafe { std::slice::from_raw_parts(&layer1_simd as *const [VecI8; 2] as *const i8, 32) };
+    //print!("layer1 out = [");
+    //for i in 0..32 {
+    //  print!("{}, ", layer1_i8[i]);
+    //}
+    //println!("]");
 
     // Final layer
     // Print out all of the inputs and weights.
-    let l2_weights_i8 = unsafe { std::slice::from_raw_parts(&net.l2_weights as *const VecI8 as *const i8, 32) };
-    print!("l2_weights = [");
-    for i in 0..32 {
-      print!("{}, ", l2_weights_i8[i]);
-    }
-    println!("]");
+    //let l2_weights_i8 = unsafe { std::slice::from_raw_parts(&net.l2_weights as *const VecI8 as *const i8, 32) };
+    //print!("l2_weights = [");
+    //for i in 0..32 {
+    //  print!("{}, ", l2_weights_i8[i]);
+    //}
+    //println!("]");
     let mut final_accum = veci16_zeros();
     final_accum = vec_matmul_sat_fma(final_accum, layer1_simd[0], net.l2_weights[0]);
     final_accum = vec_matmul_sat_fma(final_accum, layer1_simd[1], net.l2_weights[1]);
     let final_accum = veci16_horizontal_sat_sum(final_accum) as i32;
-    println!("final_accum: {} (wo/ bias)", final_accum);
+    //println!("final_accum: {} (wo/ bias)", final_accum);
     let final_accum = final_accum + net.l2_bias as i32;
-    println!("final_accum: {} (w/ bias = {})", final_accum, net.l2_bias);
-    println!("psqt: {}", psqt);
+    //println!("final_accum: {} (w/ bias = {})", final_accum, net.l2_bias);
+    //println!("psqt: {}", psqt);
     let final_accum = final_accum + (psqt << 3);
-    println!("final_accum: {} (w/ psqt = {})", final_accum, psqt << 3);
+    //println!("final_accum: {} (w/ psqt = {})", final_accum, psqt << 3);
   
     let network_output = (final_accum as f32 / (1 << 14) as f32).tanh();
     //self.value = (self.outputs[64].tanh() * 1000.0) as i32;
