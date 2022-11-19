@@ -3,6 +3,7 @@ use std::{collections::HashMap, io::BufRead, cell::RefCell};
 use clap::Parser;
 use engine::{inference_desktop::TensorFlowEngine, mcts::{SearchParams, Mcts}};
 use engine::inference::InferenceEngine;
+use engine::rules::State;
 
 const MAX_BATCH_SIZE: usize = 32;
 const MAX_STEPS_BEFORE_INFERENCE: usize = 40 * 32;
@@ -63,7 +64,10 @@ fn main() {
       });
     };
   }
-  inference!();
+  if mcts_data.is_some() {
+    inference!();
+  }
+  let mut mcts_moves_applied = 0;
 
   for line in stdin.lock().lines().map(|r| r.unwrap()) {
     let tokens = line.split_whitespace().collect::<Vec<_>>();
@@ -93,13 +97,44 @@ fn main() {
       }
       "position" => {
         assert_eq!(tokens[1], "startpos");
-        engine = make_new_engine();
-        if tokens.len() > 2 {
+        if mcts_data.is_some() {
+          // Assert that the position is a continuation of the previous position.
+          let (inference_engine, mcts) = mcts_data.as_mut().unwrap();
+          let mut state = State::starting_state();
           assert_eq!(tokens[2], "moves");
-          let moves = &tokens[3..];
+          if tokens.len() == 3 {
+            // This means that the tkens are just "position startpos moves".
+            // In which case we should hopefully be good, unless we're doing a second game.
+            // FIXME: Make this work for second games.
+            continue;
+          }
+          println!("TOKENS: {:?}", tokens);
+          let moves_wanted = tokens.len() - 3 - mcts_moves_applied;
+          // Take all the tokens starting at 3, up to the third to last
+          let moves = &tokens[3..tokens.len() - moves_wanted];
+          println!("MOVES: {:?} (wanted: {})", moves, moves_wanted);
           for m in moves {
             let m = engine::rules::Move::from_uci(m).unwrap();
-            engine.apply_move(m).unwrap();
+            state.apply_move::<false>(m, None).unwrap();
+          }
+          // Assert that this state is equal to the last state in the MCTS.
+          assert_eq!(state.get_transposition_table_hash(), mcts.get_state().get_transposition_table_hash());
+          // Apply the final moves
+          for m in &tokens[tokens.len() - moves_wanted..] {
+            let m = engine::rules::Move::from_uci(m).unwrap();
+            mcts.apply_move(m);
+            mcts_moves_applied += 1;
+            inference!(inference_engine, mcts);
+          }
+        } else {
+          engine = make_new_engine();
+          if tokens.len() > 2 {
+            assert_eq!(tokens[2], "moves");
+            let moves = &tokens[3..];
+            for m in moves {
+              let m = engine::rules::Move::from_uci(m).unwrap();
+              engine.apply_move(m).unwrap();
+            }
           }
         }
       }

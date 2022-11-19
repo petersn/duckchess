@@ -88,6 +88,7 @@ def worker(games_file, index):
                     # Sometimes randomize the move.
                     rand_move_prob = 0.8 * 0.4 ** (len(moves_list) // 4)
                     random_move = random.random() < rand_move_prob
+                    #random_move = False # FIXME: Disabling this because I can't deal with it for MCTS right now
                     if random_move:
                         move = move_to_uci(json.loads(random.choice(follow_along.get_moves())))
                         print(f"Random move: {move}")
