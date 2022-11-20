@@ -33,6 +33,14 @@ impl Rng {
     (self.next_random() % max as u64) as u32
   }
 
+  /// Generate a uniformly random u64 in the range [0, max).
+  /// FIXME: I should merge this with the above, but I'm lazy right now.
+  #[inline]
+  pub fn generate_range_sketchy(&self, max: u64) -> u64 {
+    // I don't care about the at most part per billion bias here.
+    self.next_random() % max
+  }
+
   /// Generate a uniformly random pair of f32s in the range [0, 1).
   #[inline]
   pub fn generate_float_pair(&self) -> (f32, f32) {

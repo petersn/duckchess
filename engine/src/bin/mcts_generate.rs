@@ -154,7 +154,11 @@ async fn main() {
               mcts.get_state().move_gen::<false>(&mut moves);
               moves.choose(&mut rand::thread_rng()).map(|m| *m)
             }
-            false => mcts.sample_move_by_visit_count(),
+            // We use temperature = 1.0 for training moves, and temperature = 0.5 for fast moves, to improve play strength.
+            false => match do_full_search {
+              true => mcts.sample_move_by_visit_count(1),
+              false => mcts.sample_move_by_visit_count(2),
+            },
           };
 
           match game_move {

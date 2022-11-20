@@ -243,7 +243,7 @@ async fn main() {
               mcts.process_path(pending_path, model_outputs);
             }
           }
-          let game_move = mcts.sample_move_by_visit_count();
+          let game_move = mcts.sample_move_by_visit_count(1);
           match game_move {
             None => break,
             Some(game_move) => {

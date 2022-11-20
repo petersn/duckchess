@@ -662,9 +662,18 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     distribution
   }
 
-  pub fn sample_move_by_visit_count(&self) -> Option<Move> {
-    let sum_child_visits = self.get_sum_child_visits(self.root);
-    if sum_child_visits == 0 {
+  pub fn sample_move_by_visit_count(&self, beta: u32) -> Option<Move> {
+    //let sum_child_visits = self.get_sum_child_visits(self.root);
+    // Naively we could use node.visits - 1, but due to transpositions
+    // that might not actually be the right value.
+  
+    let temperature_sum_child_visits: i64 = self.nodes[self.root]
+      .outgoing_edges
+      .values()
+      .map(|child_index| (self.nodes[*child_index].visits as i64).pow(beta))
+      .sum();
+
+    if temperature_sum_child_visits == 0 {
       if self.get_state().get_outcome().is_none() {
         crate::log("WARNING: No moves available!");
         self.print_tree_root();
@@ -672,9 +681,9 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       }
       return None;
     }
-    let mut visit_count = self.rng.generate_range(sum_child_visits as u32) as i32;
+    let mut visit_count = self.rng.generate_range_sketchy(temperature_sum_child_visits as u64) as i64;
     for (m, child_index) in &self.nodes[self.root].outgoing_edges {
-      visit_count -= self.nodes[*child_index].visits as i32;
+      visit_count -= (self.nodes[*child_index].visits as i64).pow(beta);
       if visit_count < 0 {
         return Some(*m);
       }
