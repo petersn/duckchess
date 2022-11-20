@@ -81,7 +81,7 @@ fn main() {
     })
     .collect();
   // We have:
-  //   12 side+pieces * 64 squares,
+  //   12 (side, piece) * 64 squares,
   //   64 duck positions,
   //   64 en passant positions,
   //   4 castling rights,
@@ -91,12 +91,39 @@ fn main() {
   let rng = rng::Rng::new(0);
   // Use rng.next_random() -> u64 to get random numbers.
   let zobrist_table: Vec<u64> = (0..zobrist_table_length).map(|_| rng.next_random()).collect();
+
+  // We now compute one mask per (from, to) pair of all squares that would block this motion.
+  let duck_block_masks: Vec<Vec<u64>> = (0..64)
+    .map(|from| {
+      (0..64)
+        .map(|to| {
+          let mut mask = 0;
+          let (x1, y1) = (from % 8, from / 8);
+          let (x2, y2) = (to % 8, to / 8);
+          let (dx, dy) = (x2 as i32 - x1 as i32, y2 as i32 - y1 as i32);
+          // Only moves along one of the eight cardinal directions get a non-zero mask.
+          if dx == 0 || dy == 0 || dx.abs() == dy.abs() {
+            let steps = dx.abs().max(dy.abs());
+            let (dx, dy) = (dx.signum(), dy.signum());
+            for i in 1..steps + 1 {
+              let (x, y) = (x1 as i32 + dx * i, y1 as i32 + dy * i);
+              assert!(x >= 0 && x < 8 && y >= 0 && y < 8);
+              mask |= 1 << (x + y * 8);
+            }
+          }
+          mask
+        })
+        .collect()
+    })
+    .collect();
+
   let code = format!(
     r#"
       pub const KNIGHT_MOVES: [u64; 64] = [{}];
       pub const KING_MOVES: [u64; 64] = [{}];
       pub const RAYS: [[u64; 64]; 8] = [{}];
       pub const ZOBRIST: [u64; {}] = [{}];
+      pub const DUCK_BLOCK_MASKS: [[u64; 64]; 64] = [{}];
     "#,
     knight_moves.iter().map(|x| format!("0x{:016x}", x)).collect::<Vec<_>>().join(", "),
     king_moves.iter().map(|x| format!("0x{:016x}", x)).collect::<Vec<_>>().join(", "),
@@ -112,6 +139,16 @@ fn main() {
       .join(", "),
     zobrist_table_length,
     zobrist_table.iter().map(|x| format!("0x{:016x}", x)).collect::<Vec<_>>().join(", "),
+    duck_block_masks
+      .iter()
+      .map(|ray| {
+        format!(
+          "[{}]",
+          ray.iter().map(|x| format!("0x{:016x}", x)).collect::<Vec<_>>().join(", ")
+        )
+      })
+      .collect::<Vec<_>>()
+      .join(", "),
   );
 
   let out_dir = env::var_os("OUT_DIR").unwrap();

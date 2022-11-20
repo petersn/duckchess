@@ -101,6 +101,7 @@ pub struct State {
   pub is_duck_move:    bool,
   pub move_history:    [Option<Move>; MOVE_HISTORY_LEN],
   pub zobrist:         u64,
+  pub plies:           u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -277,6 +278,7 @@ impl State {
       is_duck_move:    false,
       move_history:    [None; MOVE_HISTORY_LEN],
       zobrist:         0, // FIXME: Compute this properly.
+      plies:           0,
     }
   }
 
@@ -523,7 +525,11 @@ impl State {
     //   moves,
     //   forward_one_row * 2
     // );
-    if !QUIESCENCE {
+    if QUIESCENCE {
+      // In quiescence, we only generate pawn pushes that result in a promotion.
+      single_pawn_pushes &= seventh_rank;
+      add_pawn_moves!("plain", single_pawn_pushes, moves, forward_one_row);
+    } else {
       add_pawn_moves!("plain", single_pawn_pushes, moves, forward_one_row);
       add_pawn_moves!(
         "plain",
@@ -629,6 +635,27 @@ impl State {
       Player::White => self.move_gen_for_color::<QUIESCENCE, true>(moves),
       Player::Black => self.move_gen_for_color::<QUIESCENCE, false>(moves),
     }
+  }
+
+  pub fn generate_duck_block_mask<const QUIESCENCE: bool>(&self) -> u64 {
+    // FIXME: Optimize this! For now do a simple obvious thing.
+    let mut mask = 0;
+    let mut moves = vec![];
+    self.move_gen::<QUIESCENCE>(&mut moves);
+    for m in moves {
+      // Check if the move is queenside castling, which has one more blocking square than it might seem.
+      let white_queenside_castling = m.from == 4 && m.to == 2 && self.kings[Player::White as usize].0 & (1 << 4) != 0;
+      let black_queenside_castling = m.from == 60 && m.to == 58 && self.kings[Player::Black as usize].0 & (1 << 60) != 0;
+      if white_queenside_castling {
+        mask |= 1 << 1;
+      }
+      if black_queenside_castling {
+        mask |= 1 << 57;
+      }
+      // Or in the appropriate pre-computed mask.
+      mask |= DUCK_BLOCK_MASKS[m.from as usize][m.to as usize];
+    }
+    mask
   }
 
   pub fn adjust_zobrist(&mut self, adjustment: &NnueAdjustment) {
@@ -793,7 +820,6 @@ impl State {
             us.0 &= !promotion_mask;
             new_queens = promotion_mask;
 
-            let our_queen_layer = 2 * 4 + self.turn as usize;
             if promotion_mask != 0 {
               to_pps = Some(PlayerPieceSquare {
                 player: self.turn,
@@ -867,6 +893,7 @@ impl State {
     } else {
       self.turn = self.turn.other_player();
     }
+    self.plies += 1;
 
     if NNUE {
       nnue.unwrap().apply_adjustment::<false>(&self, &adjustment);

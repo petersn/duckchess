@@ -18,11 +18,12 @@ fn perft(nnue: &mut Nnue, state: &State, depth: usize) -> u64 {
   for m in moves {
     //let starting_nnue_hash = nnue.get_debugging_hash();
     let mut child = state.clone();
-    let adjustment = child.apply_move::<true>(m, Some(nnue)).unwrap();
+    //let adjustment = child.apply_move::<true>(m, Some(nnue)).unwrap();
+    child.apply_move::<false>(m, None).unwrap();
     //println!("{}{} {:?}", indent, m, adjustment);
-    let _eval = nnue.evaluate(&child);
+    //let _eval = nnue.evaluate(&child);
     count += perft(nnue, &child, depth - 1);
-    nnue.apply_adjustment::<true>(state, &adjustment);
+    //nnue.apply_adjustment::<true>(state, &adjustment);
     //let after_undo_hash = nnue.get_debugging_hash();
     // Recompute.
     //nnue.recompute_linear_state(state);
