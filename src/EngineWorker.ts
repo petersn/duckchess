@@ -57,7 +57,7 @@ async function initWorker() {
   const hasThreads = await threads();
   console.log('Has threads:', hasThreads);
   const sharedArrayBuffer = new SharedArrayBuffer(4 * 1024 * 1024);
-  const wasm = await init();
+  //const wasm = await init();
 
   for (let i = 0; i < 0; i++) {
     const start1 = performance.now();
@@ -87,12 +87,15 @@ async function initWorker() {
 
   // test_simd();
 
-  const seed = Math.floor(Math.random() * 1e9);
-  engine = new_engine(BigInt(seed));
+  //const seed = Math.floor(Math.random() * 1e9);
+  //engine = new_engine(BigInt(seed));
 
-  model = await tf.loadLayersModel('/duck-chess-engine/model.json')
+  //model = await tf.loadLayersModel('/duck-chess-engine/model.json')
   postMessage({ type: 'initted' });
-  sendBoardState();
+  // Make an 8x8 array of all nulls.
+  const fakeState = Array(8).fill(null).map(() => Array(8).fill(null));
+  //postMessage({ type: 'board', board: fakeState, moves: [] });
+  //sendBoardState();
   return;
 
   // Create a search worker.

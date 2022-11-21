@@ -60,7 +60,7 @@ function ChessPiece(props: { piece: string; }) {
     'knight': 'black_knight.svg', 'KNIGHT': 'white_knight.svg',
     'bishop': 'black_bishop.svg', 'BISHOP': 'white_bishop.svg',
     'queen':  'black_queen.svg',  'QUEEN':  'white_queen.svg',
-    'king':   'black_king.svg',   'KING':   'white_king.svg',
+    'king':   'black_king.svg',   'KING':   'duck.svg',
     'duck':   'unknown',
     'enpassant': 'unknown',
   };
@@ -240,17 +240,17 @@ function AppWithEngineWorker(props: { engineWorker: EngineWorker }) {
     arrows.push(arrow);
   }
 
-  return (
-    <div style={{ margin: 30, position: 'relative', width: 400, height: 400, minWidth: 400, minHeight: 400 }}>
+  const boardDiv = (
+    <div style={{ margin: 10, position: 'relative', width: 600, height: 600, minWidth: 600, minHeight: 600 }}>
       <svg
         viewBox="0 0 400 400"
-        style={{ width: 400, height: 400, position: 'absolute', zIndex: 1, pointerEvents: 'none' }}
+        style={{ width: 600, height: 600, position: 'absolute', zIndex: 1, pointerEvents: 'none' }}
       >
         {arrows}
       </svg>
 
       <div style={{ position: 'absolute' }}>
-        <table style={{ borderCollapse: 'collapse', border: '1px solid black' }}>
+        <table style={{ borderCollapse: 'collapse', border: '1px solid #eee' }}>
           <tbody>
             {board.map((row, y) => (
               <tr key={y}>
@@ -264,10 +264,10 @@ function AppWithEngineWorker(props: { engineWorker: EngineWorker }) {
                   return <td key={x} style={{ margin: 0, padding: 0 }}>
                     <div
                       style={{
-                        width: 50,
-                        maxWidth: 50,
-                        height: 50,
-                        maxHeight: 50,
+                        width: 75,
+                        maxWidth: 75,
+                        height: 75,
+                        maxHeight: 75,
                         backgroundColor,
                         textAlign: 'center',
                       }}
@@ -281,7 +281,52 @@ function AppWithEngineWorker(props: { engineWorker: EngineWorker }) {
             ))}
           </tbody>
         </table>
-        {JSON.stringify(engineWorker.pv)}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+    }}>
+      <div style={{
+        flex: 1,
+        height: 600,
+        minHeight: 600,
+      }}>
+        <div style={{
+          marginLeft: 'auto',
+          height: '100%',
+          maxWidth: 400,
+          border: '1px solid #eee',
+          padding: 10,
+          boxSizing: 'border-box',
+        }}>
+          <span style={{ fontWeight: 'bold', fontSize: '120%' }}>Duck Chess Analysis Board</span><br/>
+
+          <a href="https://duckchess.com/">Duck chess</a> is a variant in which there is one extra piece (the duck) that cannot be captured or moved through.
+          Each turn consists of making regular move, and then moving the duck to any empty square (the duck may not stay in place).
+        </div>
+      </div>
+      {boardDiv}
+      <div style={{
+        flex: 1,
+        height: 600,
+        minHeight: 600,
+      }}>
+        <div style={{
+          height: '100%',
+          maxWidth: 400,
+          border: '1px solid #eee',
+          padding: 10,
+          boxSizing: 'border-box',
+        }}>
+          <span style={{ fontWeight: 'bold', fontSize: '120%' }}>Engine</span>
+        </div>
       </div>
     </div>
   );
