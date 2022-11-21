@@ -177,7 +177,7 @@ fn main() {
               }
               inference!(inference_engine, mcts);
             }
-            (0, (mcts.sample_move_by_visit_count(), None))
+            (0, (mcts.sample_move_by_visit_count(2), None))
           },
         };
         match m1 {
