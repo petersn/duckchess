@@ -59,7 +59,7 @@ async function initWorker() {
   const sharedArrayBuffer = new SharedArrayBuffer(4 * 1024 * 1024);
   const wasm = await init();
 
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 0; i++) {
     const start1 = performance.now();
     const nodes1 = perft();
     const end1 = performance.now();
@@ -79,21 +79,21 @@ async function initWorker() {
     console.log('mega nodes per second', nodes3 / (end3 - start3) / 1000);
     console.log('------------------');
   }
-  return;
 
-  let array = new Int32Array(sharedArrayBuffer);
-  setInterval(() => {
-    test_shared_mem(array, 1);
-  }, 1000);
+  // let array = new Int32Array(sharedArrayBuffer);
+  // setInterval(() => {
+  //   test_shared_mem(array, 1);
+  // }, 1000);
 
-  test_simd();
+  // test_simd();
 
   const seed = Math.floor(Math.random() * 1e9);
   engine = new_engine(BigInt(seed));
 
-  //model = await tf.loadLayersModel('/duck-chess-engine/model.json')
-  //postMessage({ type: 'initted' });
-  //sendBoardState();
+  model = await tf.loadLayersModel('/duck-chess-engine/model.json')
+  postMessage({ type: 'initted' });
+  sendBoardState();
+  return;
 
   // Create a search worker.
   worker = new Worker(new URL('./SearchWorker.ts', import.meta.url));

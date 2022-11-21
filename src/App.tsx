@@ -53,6 +53,30 @@ class EngineWorker {
   }
 }
 
+function ChessPiece(props: { piece: string; }) {
+  const pieceFileMapping = {
+    'pawn':   'black_pawn.svg',   'PAWN':   'white_pawn.svg',
+    'rook':   'black_rook.svg',   'ROOK':   'white_rook.svg',
+    'knight': 'black_knight.svg', 'KNIGHT': 'white_knight.svg',
+    'bishop': 'black_bishop.svg', 'BISHOP': 'white_bishop.svg',
+    'queen':  'black_queen.svg',  'QUEEN':  'white_queen.svg',
+    'king':   'black_king.svg',   'KING':   'white_king.svg',
+    'duck':   'unknown',
+    'enpassant': 'unknown',
+  };
+  const pieceFile = (pieceFileMapping as any)[props.piece];
+  return <img
+    style={{
+      width: '100%',
+      height: '100%',
+      objectFit: 'contain',
+      userSelect: 'none',
+    }}
+    src={`${process.env.PUBLIC_URL}/icons/${pieceFile}`}
+    draggable={false}
+  />;
+}
+
 function AppWithEngineWorker(props: { engineWorker: EngineWorker }) {
   const [selectedSquare, setSelectedSquare] = React.useState<[number, number] | null>(null);
   const [forceUpdateCounter, setForceUpdateCounter] = React.useState(0);
@@ -161,7 +185,7 @@ function AppWithEngineWorker(props: { engineWorker: EngineWorker }) {
             userSelect: 'none',
             fontFamily: 'Arial Unicode MS',
           }}>
-            {(unicodeChessPieces as any)[piece]}
+            <ChessPiece piece={piece} />
           </span>;
         }
       }
