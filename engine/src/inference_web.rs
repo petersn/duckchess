@@ -54,11 +54,11 @@ impl<Cookie> TensorFlowJsEngine<Cookie> {
       None => return 0,
     };
     let batch_length = block.cookies.len();
-    web::log(&format!(
-      "Fetched batch of length {} -> {}",
-      batch_length,
-      array.len()
-    ));
+    //web::log(&format!(
+    //  "Fetched batch of length {} -> {}",
+    //  batch_length,
+    //  array.len()
+    //));
     // Avoid the call to .subarray if we don't need it.
     if batch_length == MAX_BATCH_SIZE {
       array.copy_from_slice(&block.data[..batch_length * FEATURES_SIZE]);

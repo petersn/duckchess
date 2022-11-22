@@ -1,14 +1,22 @@
 import init, { new_engine, max_batch_size, channel_count, parse_pgn4, Engine, perft, perft_nnue, perft_eval, test_threads, test_simd, test_shared_mem } from 'engine';
 import * as tf from '@tensorflow/tfjs';
-import { MessageToEngineWorker } from './EngineWorkerMessages';
+import { MessageFromEngineWorker, MessageToEngineWorker } from './EngineWorkerMessages';
 import { threads } from 'wasm-feature-detect';
+
+// Declare the type of postMessage
+declare function postMessage(message: MessageFromEngineWorker): void;
 
 let model: tf.LayersModel;
 let engine: Engine;
 let worker: Worker;
 
 function sendBoardState() {
-  postMessage({ type: 'board', board: engine.get_state(), moves: engine.get_moves() });
+  //console.log(JSON.stringify(engine.get_state()), JSON.stringify(engine.get_moves()));
+  const [moves, nextMoves] = engine.get_moves();
+  postMessage({ type: 'board', board: engine.get_state(), moves, nextMoves });
+  //const board = {"pawns":[[0,0,0,0,0,0,255,0],[0,255,0,0,0,0,0,0]],"knights":[[0,0,0,0,0,0,0,66],[66,0,0,0,0,0,0,0]],"bishops":[[0,0,0,0,0,0,0,36],[36,0,0,0,0,0,0,0]],"rooks":[[0,0,0,0,0,0,0,129],[129,0,0,0,0,0,0,0]],"queens":[[0,0,0,0,0,0,0,8],[8,0,0,0,0,0,0,0]],"kings":[[0,0,0,0,0,0,0,16],[16,0,0,0,0,0,0,0]],"ducks":[0,0,0,0,0,0,0,0],"enPassant":[0,0,0,0,0,0,0,0],"castlingRights":[{"kingSide":true,"queenSide":true},{"kingSide":true,"queenSide":true}],"turn":"white","isDuckMove":false,"moveHistory":[null,null,null,null],"zobrist":0};
+  //const moves = [{"from":8,"to":16},{"from":9,"to":17},{"from":10,"to":18},{"from":11,"to":19},{"from":12,"to":20},{"from":13,"to":21},{"from":14,"to":22},{"from":15,"to":23},{"from":8,"to":24},{"from":9,"to":25},{"from":10,"to":26},{"from":11,"to":27},{"from":12,"to":28},{"from":13,"to":29},{"from":14,"to":30},{"from":15,"to":31},{"from":1,"to":16},{"from":1,"to":18},{"from":6,"to":21},{"from":6,"to":23}];
+  //postMessage({ type: 'board', board, moves });
 }
 
 const onSearchWorkerMessage = (e: MessageEvent<any>) => {
@@ -16,8 +24,7 @@ const onSearchWorkerMessage = (e: MessageEvent<any>) => {
 }
 
 function workLoop() {
-  return;
-  setTimeout(workLoop, 10000);
+  setTimeout(workLoop, 500);
   let inputArray = new Float32Array(max_batch_size() * channel_count() * 8 * 8);
   const batchSize = engine.step_until_batch(inputArray);
   //const batchSize = 1 as any;
@@ -32,7 +39,7 @@ function workLoop() {
       nonZeroCount++;
     }
   }
-  console.log('Nonzero', nonZeroCount, 'of', inputArray.length);
+  //console.log('Nonzero', nonZeroCount, 'of', inputArray.length);
   //console.log('batchSize', batchSize);
   const inp = tf.tensor4d(inputArray, [batchSize, channel_count(), 8, 8]);
   const [policy, value] = model.predict(inp) as [tf.Tensor, tf.Tensor];
@@ -48,7 +55,7 @@ function workLoop() {
   value.dispose();
   const evaluation = 9.99;
   const pv = engine.get_principal_variation();
-  postMessage({ type: 'evaluation', evaluation, pv });
+  //postMessage({ type: 'evaluation', evaluation, pv });
   // FIXME: Why do I need as any here?
   //await (engine as any).step(array);
 }
@@ -57,7 +64,7 @@ async function initWorker() {
   const hasThreads = await threads();
   console.log('Has threads:', hasThreads);
   const sharedArrayBuffer = new SharedArrayBuffer(4 * 1024 * 1024);
-  //const wasm = await init();
+  const wasm = await init();
 
   for (let i = 0; i < 0; i++) {
     const start1 = performance.now();
@@ -87,23 +94,22 @@ async function initWorker() {
 
   // test_simd();
 
-  //const seed = Math.floor(Math.random() * 1e9);
-  //engine = new_engine(BigInt(seed));
+  const seed = Math.floor(Math.random() * 1e9);
+  engine = new_engine(BigInt(seed));
 
-  //model = await tf.loadLayersModel('/duck-chess-engine/model.json')
+  model = await tf.loadLayersModel('/duck-chess-engine/model.json')
   postMessage({ type: 'initted' });
   // Make an 8x8 array of all nulls.
-  const fakeState = Array(8).fill(null).map(() => Array(8).fill(null));
+  //const fakeState = Array(8).fill(null).map(() => Array(8).fill(null));
   //postMessage({ type: 'board', board: fakeState, moves: [] });
-  //sendBoardState();
+  sendBoardState();
+  workLoop();
   return;
 
   // Create a search worker.
   worker = new Worker(new URL('./SearchWorker.ts', import.meta.url));
   worker.onmessage = onSearchWorkerMessage;
   worker.postMessage({ type: 'init', mem: sharedArrayBuffer });
-
-  workLoop();
 }
 
 onmessage = function(e: MessageEvent<MessageToEngineWorker>) {
@@ -113,7 +119,8 @@ onmessage = function(e: MessageEvent<MessageToEngineWorker>) {
       initWorker();
       break;
     case 'applyMove':
-      engine.apply_move(e.data.move);
+      console.log('Applying move', e.data.move, 'isHidden', e.data.isHidden);
+      engine.apply_move(e.data.move, e.data.isHidden);
       sendBoardState();
       break;
   }

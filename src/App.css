@@ -1,4 +1,8 @@
 
+:root {
+    color-scheme: light; /* both supported */
+}
+
 body {
     background-color: #282c34;
     color: #eee;

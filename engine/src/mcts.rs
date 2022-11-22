@@ -696,6 +696,9 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
   }
 
   pub fn apply_move(&mut self, m: Move) {
+    if self.any_in_flight() {
+      crate::log("In-flight nodes when applying move!");
+    }
     assert!(!self.any_in_flight());
     let root_node = &self.nodes[self.root];
     self.root = match root_node.outgoing_edges.get(&m) {
@@ -704,7 +707,14 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       // Otherwise, we create a new node.
       None => {
         let mut new_state = root_node.state.clone();
-        new_state.apply_move::<false>(m, None).unwrap();
+        match new_state.apply_move::<false>(m, None) {
+          Ok(_) => (),
+          Err(e) => {
+            crate::log(&format!("Failed to apply move {:?} to state: {:?}", m, root_node.state));
+            panic!("Failed to apply move: {:?}", e);
+            //panic!(e);
+          }
+        }
         self.add_child_and_adjust_scores(vec![], None, new_state, root_node.depth + 1)
       }
     };

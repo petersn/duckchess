@@ -4,6 +4,7 @@ export type MessageToEngineWorker = {
 } | {
   type: 'applyMove';
   move: any;
+  isHidden: boolean;
 };
 
 export type MessageFromEngineWorker = {
@@ -12,6 +13,7 @@ export type MessageFromEngineWorker = {
   type: 'board';
   board: any;
   moves: any[];
+  nextMoves: any[];
 } | {
   type: 'evaluation';
   evaluation: number;
