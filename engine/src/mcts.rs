@@ -347,6 +347,14 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     self.in_flight_count > 0
   }
 
+  pub fn get_root_score(&self) -> (f32, u32) {
+    let root = &self.nodes[self.root];
+    (
+      root.get_subtree_value().expected_score_for_player(crate::rules::Player::White),
+      root.visits,
+    )
+  }
+
   // FIXME: These names here are so bad.
   pub fn get_pv(&self) -> Vec<Move> {
     let mut pv = vec![];

@@ -53,13 +53,12 @@ function workLoop() {
     inp.dispose();
     policy.dispose();
     value.dispose();
-    const evaluation = 9.99;
-    const pv = engine.get_principal_variation();
-    //postMessage({ type: 'evaluation', evaluation, pv });
+    const [pv, whiteWinProb, nodes] = engine.get_principal_variation();
+    postMessage({ type: 'evaluation', whiteWinProb, pv, nodes });
     // FIXME: Why do I need as any here?
     //await (engine as any).step(array);
   } finally {
-    setTimeout(workLoop, 500);
+    setTimeout(workLoop, 1);
   }
 }
 

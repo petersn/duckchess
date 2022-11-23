@@ -12,6 +12,7 @@ class EngineWorker {
   nextMoves: any[];
   pv: any[] = [];
   evaluation: number = 0;
+  nodes: number = 0;
   forceUpdateCallback: () => void;
 
   constructor(initCallback: () => void, forceUpdateCallback: () => void) {
@@ -37,8 +38,11 @@ class EngineWorker {
         this.nextMoves = e.data.nextMoves;
         break;
       case 'evaluation':
-        this.evaluation = e.data.evaluation;
+        const whiteWinProb = e.data.whiteWinProb;
+        const Q = 2 * whiteWinProb - 1;
+        this.evaluation = 1.11714640912 * Math.tan(1.5620688421 * Q);
         this.pv = e.data.pv;
+        this.nodes = e.data.nodes;
         break;
     }
     this.forceUpdateCallback();
@@ -300,6 +304,11 @@ function App(props: {}) {
             boxSizing: 'border-box',
           }}>
             <div style={{ fontWeight: 'bold', fontSize: '120%', marginBottom: 10 }}>Engine</div>
+
+            {engineWorker !== null && <div>
+              Evaluation: {engineWorker.evaluation}<br/>
+              Nodes: {engineWorker.nodes}<br/>
+            </div>}
           </div>
         </div>
       </div>

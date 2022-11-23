@@ -157,7 +157,8 @@ impl Engine {
 
   pub fn get_principal_variation(&self) -> JsValue {
     let pv = self.mcts.get_pv();
-    serde_wasm_bindgen::to_value(&pv).unwrap_or_else(|e| {
+    let (root_score, nodes) = self.mcts.get_root_score();
+    serde_wasm_bindgen::to_value(&(pv, root_score, nodes)).unwrap_or_else(|e| {
       log(&format!("Failed to serialize pv: {}", e));
       JsValue::NULL
     })

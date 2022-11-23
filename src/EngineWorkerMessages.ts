@@ -16,7 +16,8 @@ export type MessageFromEngineWorker = {
   nextMoves: any[];
 } | {
   type: 'evaluation';
-  evaluation: number;
+  whiteWinProb: number;
+  nodes: number;
   pv: {
     from: number;
     to: number;
