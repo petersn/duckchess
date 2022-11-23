@@ -25,4 +25,20 @@ export type MessageFromEngineWorker = {
     from: number;
     to: number;
   }[];
-}
+};
+
+export type MessageToSearchWorker = {
+  type: 'init';
+} | {
+  type: 'applyMove';
+  move: any;
+  isHidden: boolean;
+} | {
+  type: 'setRunEngine';
+  runEngine: boolean;
+};
+
+export type MessageFromSearchWorker = {
+  type: 'initted';
+};
+

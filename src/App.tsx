@@ -1,36 +1,48 @@
 import { engine } from '@tensorflow/tfjs';
 import React from 'react';
 import './App.css';
-import { MessageFromEngineWorker } from './EngineWorkerMessages';
+import { MessageFromEngineWorker, MessageFromSearchWorker } from './WorkerMessages';
 import { ChessBoard, ChessPiece, PieceKind } from './ChessBoard';
 
-class EngineWorker {
-  worker: Worker;
-  initCallback: (ew: EngineWorker) => void;
+class Workers {
+  engineWorker: Worker;
+  searchWorker: Worker;
+  initCallback: (ew: Workers) => void;
   boardState: any;
   legalMoves: any[];
   nextMoves: any[];
   pv: any[] = [];
   evaluation: number = 0;
   nodes: number = 0;
+  initFlags: boolean[] = [false, false];
   forceUpdateCallback: () => void;
 
   constructor(initCallback: () => void, forceUpdateCallback: () => void) {
-    this.worker = new Worker(new URL('./EngineWorker.ts', import.meta.url));
-    this.worker.onmessage = this.onMessage;
+    this.engineWorker = new Worker(new URL('./EngineWorker.ts', import.meta.url));
+    this.engineWorker.onmessage = this.onEngineMessage;
+    this.searchWorker = new Worker(new URL('./SearchWorker.ts', import.meta.url));
+    this.searchWorker.onmessage = this.onSearchMessage;
     this.initCallback = initCallback;
     this.forceUpdateCallback = forceUpdateCallback;
-    this.worker.postMessage({ type: 'init' });
+    for (const worker of [this.engineWorker, this.searchWorker]) {
+      worker.postMessage({ type: 'init' });
+    }
     this.boardState = null;
     this.legalMoves = [];
     this.nextMoves = [];
   }
 
-  onMessage = (e: MessageEvent<MessageFromEngineWorker>) => {
+  setInitFlag(workerIndex: number) {
+    this.initFlags[workerIndex] = true;
+    if (this.initFlags[0] && this.initFlags[1])
+      this.initCallback(this);
+  }
+
+  onEngineMessage = (e: MessageEvent<MessageFromEngineWorker>) => {
     console.log('Main thread got:', e.data);
     switch (e.data.type) {
       case 'initted':
-        this.initCallback(this);
+        this.setInitFlag(0);
         break;
       case 'board':
         this.boardState = e.data.board;
@@ -48,6 +60,16 @@ class EngineWorker {
     this.forceUpdateCallback();
   }
 
+  onSearchMessage = (e: MessageEvent<MessageFromSearchWorker>) => {
+    console.log('Main thread got:', e.data);
+    switch (e.data.type) {
+      case 'initted':
+        this.setInitFlag(1);
+        break;
+    }
+    this.forceUpdateCallback();
+  }
+
   getState() {
     return this.boardState;
   }
@@ -57,11 +79,15 @@ class EngineWorker {
   }
 
   applyMove(move: any, isHidden: boolean) {
-    this.worker.postMessage({ type: 'applyMove', move, isHidden });
+    for (const worker of [this.engineWorker, this.searchWorker]) {
+      worker.postMessage({ type: 'applyMove', move, isHidden });
+    }
   }
 
   setRunEngine(runEngine: boolean) {
-    this.worker.postMessage({ type: 'setRunEngine', runEngine });
+    for (const worker of [this.engineWorker, this.searchWorker]) {
+      worker.postMessage({ type: 'setRunEngine', runEngine });
+    }
   }
 }
 
@@ -73,14 +99,14 @@ function App(props: {}) {
   const [pgn, setPgn] = React.useState<string>('');
   const [runEngine, setRunEngine] = React.useState<boolean>(false);
 
-  const [engineWorker, setEngineWorker] = React.useState<EngineWorker | null>(null);
+  const [workers, setWorkers] = React.useState<Workers | null>(null);
   React.useEffect(() => {
     console.log('Initializing worker...');
-    const worker = new EngineWorker(
+    const workers = new Workers(
       () => {
         console.log('Worker initialized!');
         // FIXME: There's a race if you toggle runEngine before the engine is created.
-        setEngineWorker(worker);
+        setWorkers(workers);
       },
       () => {
         setTimeout(() => setForceUpdateCounter(Math.random()), 10);
@@ -103,10 +129,10 @@ function App(props: {}) {
     board.push([null, null, null, null, null, null, null, null]);
   let legalMoves: any[] = [];
   let hiddenLegalMoves: any[] = [];
-  if (engineWorker !== null) {
-    const state = engineWorker.getState();
-    legalMoves = engineWorker.getMoves();
-    hiddenLegalMoves = engineWorker.nextMoves;
+  if (workers !== null) {
+    const state = workers.getState();
+    legalMoves = workers.getMoves();
+    hiddenLegalMoves = workers.nextMoves;
     console.log('HIDDEN LEGAL MOVES', hiddenLegalMoves);
     if (state !== null) {
       for (let y = 0; y < 8; y++) {
@@ -145,14 +171,14 @@ function App(props: {}) {
   }
 
   //React.useEffect(() => {
-  //  engineWorker.forceUpdateCallback = () => {
+  //  workers.forceUpdateCallback = () => {
   //    setForceUpdateCounter(Math.random());
   //  };
   //}, []);
 
-  //const { engineWorker } = props;
-  //const state = engineWorker.getState();
-  //const moves: any[] = engineWorker.getMoves();
+  //const { workers } = props;
+  //const state = workers.getState();
+  //const moves: any[] = workers.getMoves();
   //React.useEffect(() => {
   //  //for (let i = 0; i < 100; i++) {
   //  //  const start = performance.now();
@@ -162,7 +188,7 @@ function App(props: {}) {
   //  //  console.log('tfjs prediction took', end - start, 'ms');
   //  //}
   //  //console.log(tfjsResult[0], tfjsResult[1]);
-  //  let pair = engineWorker.run(4);
+  //  let pair = workers.run(4);
   //  setPair(pair);
   //  setTimeout(() => {
   //    if (pair && pair[1][0]) {
@@ -182,7 +208,7 @@ function App(props: {}) {
       // Check if this is the initial duck placement.
       const m = moves.find(m => m.from === 64 && m.to === x + (7 - y) * 8);
       if (m) {
-        engineWorker.applyMove(m);
+        workers.applyMove(m);
         setSelectedSquare(null);
         setForceUpdateCounter(forceUpdateCounter + 1);
       } else {
@@ -197,7 +223,7 @@ function App(props: {}) {
       // Find the first move that matches the selected square and the clicked square.
       const m = moves.find((m: any) => m.from === encodedFrom && m.to === encodedTo);
       if (m) {
-        engineWorker.applyMove(m);
+        workers.applyMove(m);
         setForceUpdateCounter(forceUpdateCounter + 1);
       }
       setSelectedSquare(null);
@@ -246,8 +272,8 @@ function App(props: {}) {
 
   /*
   //let showMoves: any[] = (pair && pair[1][0]) ? pair[1] : [];
-  console.log('----PV:', engineWorker.pv);
-  let showMoves: any[] = engineWorker.pv;
+  console.log('----PV:', workers.pv);
+  let showMoves: any[] = workers.pv;
   if ((state.isDuckMove || true) && showMoves) {
     showMoves = showMoves.slice(0, 1);
   }
@@ -293,9 +319,9 @@ function App(props: {}) {
           legalMoves={legalMoves}
           hiddenLegalMoves={hiddenLegalMoves}
           onMove={(move, isHidden) => {
-            if (engineWorker !== null) {
+            if (workers !== null) {
               console.log('[snp1] move', move, isHidden);
-              engineWorker.applyMove(move, isHidden);
+              workers.applyMove(move, isHidden);
             }
           }}
         />
@@ -314,15 +340,15 @@ function App(props: {}) {
             <div style={{ fontWeight: 'bold', fontSize: '120%', marginBottom: 10 }}>Engine</div>
             <input type="checkbox" checked={runEngine} onChange={e => {
               setRunEngine(e.target.checked);
-              if (engineWorker !== null) {
-                engineWorker.setRunEngine(e.target.checked);
+              if (workers !== null) {
+                workers.setRunEngine(e.target.checked);
               }
             }} /> Run engine
 
-            {engineWorker !== null && <div>
-              Evaluation: {engineWorker.evaluation}<br/>
-              Nodes: {engineWorker.nodes}<br/>
-              PV: {engineWorker.pv.map((m: any) => m.from + ' ' + m.to).join(' ')}
+            {workers !== null && <div>
+              Evaluation: {workers.evaluation}<br/>
+              Nodes: {workers.nodes}<br/>
+              PV: {workers.pv.map((m: any) => m.from + ' ' + m.to).join(' ')}
             </div>}
           </div>
         </div>
