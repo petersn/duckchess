@@ -59,12 +59,19 @@ class EngineWorker {
   applyMove(move: any, isHidden: boolean) {
     this.worker.postMessage({ type: 'applyMove', move, isHidden });
   }
+
+  setRunEngine(runEngine: boolean) {
+    this.worker.postMessage({ type: 'setRunEngine', runEngine });
+  }
 }
 
 function App(props: {}) {
   const [selectedSquare, setSelectedSquare] = React.useState<[number, number] | null>(null);
   const [forceUpdateCounter, setForceUpdateCounter] = React.useState(0);
   const [pair, setPair] = React.useState<any>(null);
+  const [duckFen, setDuckFen] = React.useState<string>('');
+  const [pgn, setPgn] = React.useState<string>('');
+  const [runEngine, setRunEngine] = React.useState<boolean>(false);
 
   const [engineWorker, setEngineWorker] = React.useState<EngineWorker | null>(null);
   React.useEffect(() => {
@@ -72,6 +79,7 @@ function App(props: {}) {
     const worker = new EngineWorker(
       () => {
         console.log('Worker initialized!');
+        // FIXME: There's a race if you toggle runEngine before the engine is created.
         setEngineWorker(worker);
       },
       () => {
@@ -304,16 +312,38 @@ function App(props: {}) {
             boxSizing: 'border-box',
           }}>
             <div style={{ fontWeight: 'bold', fontSize: '120%', marginBottom: 10 }}>Engine</div>
+            <input type="checkbox" checked={runEngine} onChange={e => {
+              setRunEngine(e.target.checked);
+              if (engineWorker !== null) {
+                engineWorker.setRunEngine(e.target.checked);
+              }
+            }} /> Run engine
 
             {engineWorker !== null && <div>
               Evaluation: {engineWorker.evaluation}<br/>
               Nodes: {engineWorker.nodes}<br/>
+              PV: {engineWorker.pv.map((m: any) => m.from + ' ' + m.to).join(' ')}
             </div>}
           </div>
         </div>
       </div>
 
-      <div style={{ margin: 20, textAlign: 'center' }}>
+      <div style={{ marginTop: 10, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <input type="text" value={duckFen} onChange={e => setDuckFen(e.target.value)} style={{
+          width: 400,
+          backgroundColor: '#445',
+          color: '#eee',
+        }} />
+        <textarea value={pgn} onChange={e => setPgn(e.target.value)} style={{
+          marginTop: 5,
+          width: 400,
+          height: 100,
+          backgroundColor: '#445',
+          color: '#eee',
+        }} placeholder="Paste PGN here..." />
+      </div>
+
+      <div style={{ marginTop: 10, textAlign: 'center' }}>
         Created by Peter Schmidt-Nielsen
         (<a href="https://twitter.com/ptrschmdtnlsn">Twitter</a>, <a href="https://peter.website">Website</a>)<br/>
         Engine + web interface: <a href="https://github.com/petersn/duckchess">github.com/petersn/duckchess</a><br/>

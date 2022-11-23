@@ -9,6 +9,7 @@ declare function postMessage(message: MessageFromEngineWorker): void;
 let model: tf.LayersModel;
 let engine: Engine;
 let worker: Worker;
+let runEngine: boolean = false;
 
 function sendBoardState() {
   //console.log(JSON.stringify(engine.get_state()), JSON.stringify(engine.get_moves()));
@@ -25,6 +26,8 @@ const onSearchWorkerMessage = (e: MessageEvent<any>) => {
 
 function workLoop() {
   try {
+    if (!runEngine)
+      return;
     let inputArray = new Float32Array(max_batch_size() * channel_count() * 8 * 8);
     const batchSize = engine.step_until_batch(inputArray);
     //const batchSize = 1 as any;
@@ -58,7 +61,7 @@ function workLoop() {
     // FIXME: Why do I need as any here?
     //await (engine as any).step(array);
   } finally {
-    setTimeout(workLoop, 1);
+    setTimeout(workLoop, runEngine ? 1 : 50);
   }
 }
 
@@ -124,6 +127,9 @@ onmessage = function(e: MessageEvent<MessageToEngineWorker>) {
       console.log('Applying move', e.data.move, 'isHidden', e.data.isHidden);
       engine.apply_move(e.data.move, e.data.isHidden);
       sendBoardState();
+      break;
+    case 'setRunEngine':
+      runEngine = e.data.runEngine;
       break;
   }
 }

@@ -5,6 +5,9 @@ export type MessageToEngineWorker = {
   type: 'applyMove';
   move: any;
   isHidden: boolean;
+} | {
+  type: 'setRunEngine';
+  runEngine: boolean;
 };
 
 export type MessageFromEngineWorker = {
