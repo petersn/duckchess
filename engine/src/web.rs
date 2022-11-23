@@ -85,14 +85,22 @@ impl Engine {
       next_state.turn = next_state.turn.other_player();
       next_state.is_duck_move = false;
       // Find all duck positions that interfere with this move.
-      let duck_disallowed = next_state.get_move_duck_block_mask(m) | next_state.get_occupied();
+      let mut duck_allowed = !(next_state.get_move_duck_block_mask(m) | next_state.get_occupied());
       // Find the first allowed location for the duck.
       let duck_from = crate::rules::get_square(current_state.ducks.0);
-      let duck_to = crate::rules::get_square(!duck_disallowed);
+      // We now figure out a nice spot to put the duck.
+      let mut duck_to = 0;
+      while let Some(square) = crate::rules::iter_bits(&mut duck_allowed) {
+        // Pick whichever move has a lower x-coordinate, and a y-coordinate closer to the middle.
+        let better_y = ((square as i32 / 8) - 3).abs() < ((duck_to as i32 / 8) - 3).abs();
+        if square % 8 < duck_to % 8 || better_y {
+          duck_to = square;
+        }
+      }
       // Handle the initial placement of the duck here too.
       let move_duck = Move { from: if current_state.ducks.0 == 0 { duck_to } else { duck_from }, to: duck_to };
       // Move the duck out of the way first.
-      log(&format!("Applying duck movement move: {:?} (duck_disallowed: {:016x})", move_duck, duck_disallowed));
+      log(&format!("Applying duck movement move: {:?} (duck_allowed: {:016x})", move_duck, duck_allowed));
       match self.engine.get_state_mut().apply_move::<false>(move_duck, None) {
         Ok(_) => {}
         Err(msg) => {

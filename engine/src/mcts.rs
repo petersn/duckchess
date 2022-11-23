@@ -487,6 +487,11 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     assert!(self.in_flight_count > 0);
     // FIXME: I need to ignore the path if it includes GCed nodes.
     let node_index = pending_path.path.last().unwrap();
+    // If the tail is GCed, then we ignore the whole thing.
+    if !self.nodes.contains_key(*node_index) {
+      self.in_flight_count -= 1;
+      return;
+    }
     let node = &mut self.nodes[*node_index];
     node.needs_eval = false;
     node.outputs = ModelOutputs::quantize_from(model_outputs, &node.moves);
@@ -578,8 +583,10 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     // Adjust every node along the path, including the final node itself.
     for node_index in path {
       if !self.nodes.contains_key(node_index) {
+        // FIXME: I'll probably comment this out, and just silently ignore missing nodes.
         crate::log("WARNING: Got path with unknown node.");
         crate::log(&format!("Cause: {}", cause));
+        continue;
       }
       let node = &mut self.nodes[node_index];
       node.adjust_score(value_score);
@@ -696,10 +703,10 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
   }
 
   pub fn apply_move(&mut self, m: Move) {
-    if self.any_in_flight() {
-      crate::log("In-flight nodes when applying move!");
-    }
-    assert!(!self.any_in_flight());
+    //if self.any_in_flight() {
+    //  crate::log("In-flight nodes when applying move!");
+    //}
+    //assert!(!self.any_in_flight());
     let root_node = &self.nodes[self.root];
     self.root = match root_node.outgoing_edges.get(&m) {
       // If we already have a node for this move, then just make it the new root.
