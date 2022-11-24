@@ -479,6 +479,11 @@ function App() {
       },
     );
   }, []);
+  console.log("[debug] -- TESTING HERE?");
+
+  return (
+    <div>Test?</div>
+  );
 
   return (
     <Router>
