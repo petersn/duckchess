@@ -8,7 +8,7 @@ use std::collections::{hash_map::DefaultHasher, HashMap};
 use crate::rules::{Player, PieceKind, Square, State};
 use crate::search::{IntEvaluation, eval_terminal_state};
 
-#[repr(C, align(64))]
+#[repr(C, align(32))]
 struct AlignedData<T> {
   data: T,
 }
