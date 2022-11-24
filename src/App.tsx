@@ -479,23 +479,22 @@ function App() {
       },
     );
   }, []);
-  console.log("[debug] -- TESTING HERE 2?");
+  console.log("[debug] -- TESTING HERE 3?");
 
-  //return (
-  //  <div>Test?</div>
-  //);
-
-  return <>
-    TEST?
+  return (
     <Router>
       <Routes>
         <Route path="/analysis" element={<AnalysisPage workers={workers} />} />
         <Route path="/benchmark" element={<BenchmarkPage />} />
         <Route path="/info" element={<InfoPage />} />
         <Route path="/" element={<Navigate to="/analysis" replace />} />
+        <Route
+          path="*"
+          element={<Navigate to="/" replace />}
+        />
       </Routes>
     </Router>
-  </>;
+  );
 }
 
 export default App;
