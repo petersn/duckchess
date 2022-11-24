@@ -8,9 +8,9 @@ import { BenchmarkApp } from './BenchmarkApp';
 
 // FIXME: This is a mildly hacky way to get the router location...
 function getRouterPath(): string {
-  let routerPath = window.location.pathname.replace('/', '');
-  if (routerPath === '')
-    return 'analysis';
+  let routerPath = window.location.pathname;
+  if (routerPath.includes('/'))
+    routerPath = routerPath.substring(routerPath.lastIndexOf('/') + 1);
   return routerPath;
 }
 
@@ -137,15 +137,15 @@ function TopBar(props: {}) {
         Duck Chess Engine
       </div>
 
-      <Link to='/analysis' style={path === 'analysis' ? selectedTab : unselectedTab} replace>
+      <Link to='/duck-chess/analysis' style={path === 'analysis' ? selectedTab : unselectedTab} replace>
         Analysis
       </Link>
 
-      <Link to='/benchmark' style={path === 'benchmark' ? selectedTab : unselectedTab} replace>
+      <Link to='/duck-chess/benchmark' style={path === 'benchmark' ? selectedTab : unselectedTab} replace>
         Benchmark
       </Link>
 
-      <Link to='/info' style={path === 'info' ? selectedTab : unselectedTab} replace>
+      <Link to='/duck-chess/info' style={path === 'info' ? selectedTab : unselectedTab} replace>
         Info
       </Link>
     </div>
@@ -479,19 +479,15 @@ function App() {
       },
     );
   }, []);
-  console.log("[debug] -- TESTING HERE 3?");
+  console.log("[debug] -- TESTING HERE 4?");
 
   return (
     <Router>
       <Routes>
-        <Route path="/analysis" element={<AnalysisPage workers={workers} />} />
-        <Route path="/benchmark" element={<BenchmarkPage />} />
-        <Route path="/info" element={<InfoPage />} />
-        <Route path="/" element={<Navigate to="/analysis" replace />} />
-        <Route
-          path="*"
-          element={<Navigate to="/" replace />}
-        />
+        <Route path="/duck-chess/analysis" element={<AnalysisPage workers={workers} />} />
+        <Route path="/duck-chess/benchmark" element={<BenchmarkPage />} />
+        <Route path="/duck-chess/info" element={<InfoPage />} />
+        <Route path="/duck-chess" element={<Navigate to="/duck-chess/analysis" replace />} />
       </Routes>
     </Router>
   );
