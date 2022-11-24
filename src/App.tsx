@@ -474,12 +474,11 @@ function App() {
         setWorkers(workers);
       },
       () => {
-        setTimeout(() => setForceUpdateCounter(Math.random()), 10);
+        setTimeout(() => setForceUpdateCounter(Math.random()), 1);
 //        setForceUpdateCounter(forceUpdateCounter + 1);
       },
     );
   }, []);
-  console.log("[debug] -- TESTING HERE 4?");
 
   return (
     <Router>
