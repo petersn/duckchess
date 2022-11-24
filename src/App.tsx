@@ -3,6 +3,16 @@ import React from 'react';
 import './App.css';
 import { MessageFromEngineWorker, MessageFromSearchWorker } from './WorkerMessages';
 import { ChessBoard, ChessPiece, PieceKind } from './ChessBoard';
+import { BrowserRouter as Router, Route, Link, Routes, Navigate } from 'react-router-dom';
+import { BenchmarkApp } from './BenchmarkApp';
+
+// FIXME: This is a mildly hacky way to get the router location...
+function getRouterPath(): string {
+  let routerPath = window.location.pathname.replace('/', '');
+  if (routerPath === '')
+    return 'analysis';
+  return routerPath;
+}
 
 class Workers {
   engineWorker: Worker;
@@ -91,29 +101,75 @@ class Workers {
   }
 }
 
-function App(props: {}) {
+function TopBar(props: {}) {
+  const barEntryStyle: React.CSSProperties = {
+    paddingLeft: 20,
+    paddingRight: 20,
+    borderRight: '1px solid black',
+    height: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    color: 'white',
+    textDecoration: 'none',
+  };
+  const selectedTab: React.CSSProperties = {
+    ...barEntryStyle,
+    backgroundColor: '#225',
+  };
+  const unselectedTab: React.CSSProperties = {
+    ...barEntryStyle,
+    backgroundColor: '#447',
+  };
+  const path = getRouterPath();
+  return (
+    <div style={{
+      width: '100%',
+      height: 40,
+      backgroundColor: '#336',
+      borderBottom: '1px solid black',
+      display: 'flex',
+      flexDirection: 'row',
+      alignItems: 'center',
+      fontSize: '130%',
+      fontWeight: 'bold',
+    }}>
+      <div style={barEntryStyle}>
+        Duck Chess Engine
+      </div>
+
+      <Link to='/analysis' style={path === 'analysis' ? selectedTab : unselectedTab} replace>
+        Analysis
+      </Link>
+
+      <Link to='/benchmark' style={path === 'benchmark' ? selectedTab : unselectedTab} replace>
+        Benchmark
+      </Link>
+
+      <Link to='/info' style={path === 'info' ? selectedTab : unselectedTab} replace>
+        Info
+      </Link>
+    </div>
+  );
+}
+
+function AnalysisPage(props: { workers: Workers | null }) {
   const [selectedSquare, setSelectedSquare] = React.useState<[number, number] | null>(null);
-  const [forceUpdateCounter, setForceUpdateCounter] = React.useState(0);
   const [pair, setPair] = React.useState<any>(null);
   const [duckFen, setDuckFen] = React.useState<string>('');
   const [pgn, setPgn] = React.useState<string>('');
   const [runEngine, setRunEngine] = React.useState<boolean>(false);
 
-  const [workers, setWorkers] = React.useState<Workers | null>(null);
+  // Stop the engine when this subpage isn't active.
   React.useEffect(() => {
-    console.log('Initializing worker...');
-    const workers = new Workers(
-      () => {
-        console.log('Worker initialized!');
-        // FIXME: There's a race if you toggle runEngine before the engine is created.
-        setWorkers(workers);
-      },
-      () => {
-        setTimeout(() => setForceUpdateCounter(Math.random()), 10);
-//        setForceUpdateCounter(forceUpdateCounter + 1);
-      },
-    );
-  }, []);
+    if (props.workers) {
+      props.workers.setRunEngine(runEngine);
+    }
+    return () => {
+      if (props.workers) {
+        props.workers.setRunEngine(false);
+      }
+    };
+  }, [props.workers]);
 
   // let board: React.ReactNode[][] = [];
   // for (let y = 0; y < 8; y++)
@@ -129,10 +185,10 @@ function App(props: {}) {
     board.push([null, null, null, null, null, null, null, null]);
   let legalMoves: any[] = [];
   let hiddenLegalMoves: any[] = [];
-  if (workers !== null) {
-    const state = workers.getState();
-    legalMoves = workers.getMoves();
-    hiddenLegalMoves = workers.nextMoves;
+  if (props.workers !== null) {
+    const state = props.workers.getState();
+    legalMoves = props.workers.getMoves();
+    hiddenLegalMoves = props.workers.nextMoves;
     console.log('HIDDEN LEGAL MOVES', hiddenLegalMoves);
     if (state !== null) {
       for (let y = 0; y < 8; y++) {
@@ -171,14 +227,14 @@ function App(props: {}) {
   }
 
   //React.useEffect(() => {
-  //  workers.forceUpdateCallback = () => {
+  //  props.workers.forceUpdateCallback = () => {
   //    setForceUpdateCounter(Math.random());
   //  };
   //}, []);
 
-  //const { workers } = props;
-  //const state = workers.getState();
-  //const moves: any[] = workers.getMoves();
+  //const { props.workers } = props;
+  //const state = props.workers.getState();
+  //const moves: any[] = props.workers.getMoves();
   //React.useEffect(() => {
   //  //for (let i = 0; i < 100; i++) {
   //  //  const start = performance.now();
@@ -188,7 +244,7 @@ function App(props: {}) {
   //  //  console.log('tfjs prediction took', end - start, 'ms');
   //  //}
   //  //console.log(tfjsResult[0], tfjsResult[1]);
-  //  let pair = workers.run(4);
+  //  let pair = props.workers.run(4);
   //  setPair(pair);
   //  setTimeout(() => {
   //    if (pair && pair[1][0]) {
@@ -208,7 +264,7 @@ function App(props: {}) {
       // Check if this is the initial duck placement.
       const m = moves.find(m => m.from === 64 && m.to === x + (7 - y) * 8);
       if (m) {
-        workers.applyMove(m);
+        props.workers.applyMove(m);
         setSelectedSquare(null);
         setForceUpdateCounter(forceUpdateCounter + 1);
       } else {
@@ -223,7 +279,7 @@ function App(props: {}) {
       // Find the first move that matches the selected square and the clicked square.
       const m = moves.find((m: any) => m.from === encodedFrom && m.to === encodedTo);
       if (m) {
-        workers.applyMove(m);
+        props.workers.applyMove(m);
         setForceUpdateCounter(forceUpdateCounter + 1);
       }
       setSelectedSquare(null);
@@ -272,8 +328,8 @@ function App(props: {}) {
 
   /*
   //let showMoves: any[] = (pair && pair[1][0]) ? pair[1] : [];
-  console.log('----PV:', workers.pv);
-  let showMoves: any[] = workers.pv;
+  console.log('----PV:', props.workers.pv);
+  let showMoves: any[] = props.workers.pv;
   if ((state.isDuckMove || true) && showMoves) {
     showMoves = showMoves.slice(0, 1);
   }
@@ -285,6 +341,7 @@ function App(props: {}) {
       flexDirection: 'column',
       alignItems: 'center',
     }}>
+      <TopBar />
       <div style={{
         width: '100%',
         height: '100%',
@@ -319,9 +376,9 @@ function App(props: {}) {
           legalMoves={legalMoves}
           hiddenLegalMoves={hiddenLegalMoves}
           onMove={(move, isHidden) => {
-            if (workers !== null) {
+            if (props.workers !== null) {
               console.log('[snp1] move', move, isHidden);
-              workers.applyMove(move, isHidden);
+              props.workers.applyMove(move, isHidden);
             }
           }}
         />
@@ -340,16 +397,17 @@ function App(props: {}) {
             <div style={{ fontWeight: 'bold', fontSize: '120%', marginBottom: 10 }}>Engine</div>
             <input type="checkbox" checked={runEngine} onChange={e => {
               setRunEngine(e.target.checked);
-              if (workers !== null) {
-                workers.setRunEngine(e.target.checked);
+              if (props.workers !== null) {
+                props.workers.setRunEngine(e.target.checked);
               }
             }} /> Run engine
 
-            {workers !== null && <div>
-              Evaluation: {workers.evaluation}<br/>
-              Nodes: {workers.nodes}<br/>
-              PV: {workers.pv.map((m: any) => m.from + ' ' + m.to).join(' ')}
+            {props.workers !== null && <div>
+              Evaluation: {props.workers.evaluation}<br/>
+              Nodes: {props.workers.nodes}<br/>
+              PV: {props.workers.pv.map((m: any) => m.from + ' ' + m.to).join(' ')}
             </div>}
+
           </div>
         </div>
       </div>
@@ -376,6 +434,61 @@ function App(props: {}) {
         <span style={{ fontSize: '50%', opacity: 0.5 }}>Piece SVGs: Cburnett (CC BY-SA 3), Duck SVG + all code: my creation (CC0)</span>
       </div>
     </div>
+  );
+}
+
+function BenchmarkPage(props: {}) {
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+    }}>
+      <TopBar />
+      <BenchmarkApp />
+    </div>
+  );
+}
+
+function InfoPage(props: {}) {
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+    }}>
+      <TopBar />
+    </div>
+  );
+}
+
+function App() {
+  const [workers, setWorkers] = React.useState<Workers | null>(null);
+  const [forceUpdateCounter, setForceUpdateCounter] = React.useState(0);
+  React.useEffect(() => {
+    console.log('Initializing worker...');
+    const workers = new Workers(
+      () => {
+        console.log('Worker initialized!');
+        // FIXME: There's a race if you toggle runEngine before the engine is created.
+        setWorkers(workers);
+      },
+      () => {
+        setTimeout(() => setForceUpdateCounter(Math.random()), 10);
+//        setForceUpdateCounter(forceUpdateCounter + 1);
+      },
+    );
+  }, []);
+
+  return (
+    <Router>
+      <Routes>
+        <Route path="/analysis" element={<AnalysisPage workers={workers} />} />
+        <Route path="/benchmark" element={<BenchmarkPage />} />
+        <Route path="/info" element={<InfoPage />} />
+        <Route path="/" element={<Navigate to="/analysis" replace />} />
+      </Routes>
+    </Router>
   );
 }
 
