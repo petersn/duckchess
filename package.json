@@ -46,5 +46,5 @@
     "@types/react-router-dom": "^5.3.3",
     "typescript": "^4.8.4"
   },
-  "homepage": "https://peter.website/duck-chess-engine"
+  "homepage": "https://peter.website/duck-chess"
 }

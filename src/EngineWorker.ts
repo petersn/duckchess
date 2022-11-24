@@ -102,8 +102,8 @@ async function initWorker() {
   const seed = Math.floor(Math.random() * 1e9);
   engine = new_engine(BigInt(seed));
 
-  //model = await tf.loadLayersModel('/duck-chess-engine/model-small/model.json')
-  model = await tf.loadLayersModel('/duck-chess-engine/model-medium/model.json')
+  //model = await tf.loadLayersModel('/duck-chess/model-small/model.json')
+  model = await tf.loadLayersModel('/duck-chess/model-medium/model.json')
   postMessage({ type: 'initted' });
   // Make an 8x8 array of all nulls.
   //const fakeState = Array(8).fill(null).map(() => Array(8).fill(null));

@@ -93,7 +93,7 @@ async function evalLoop(app: BenchmarkApp) {
 /*
 
     console.log('Initializing tfjs...');
-    tf.loadLayersModel('/duck-chess-engine/model-small/model.json')
+    tf.loadLayersModel('/duck-chess/model-small/model.json')
       .then((model) => {
         setModel(model);
         // Start a loop of evaluating the model.
@@ -179,7 +179,7 @@ export class BenchmarkApp extends React.PureComponent<{}, BenchmarkAppState> {
 
   componentDidMount() {
     if (modelSmall == null) {
-      tf.loadLayersModel('/duck-chess-engine/model-small/model.json')
+      tf.loadLayersModel('/duck-chess/model-small/model.json')
         .then((model) => {
           modelSmall = model;
           this.setState({ loadedSmall: true });
@@ -187,7 +187,7 @@ export class BenchmarkApp extends React.PureComponent<{}, BenchmarkAppState> {
         .catch(console.error);
     }
     if (modelMedium == null) {
-      tf.loadLayersModel('/duck-chess-engine/model-medium/model.json')
+      tf.loadLayersModel('/duck-chess/model-medium/model.json')
         .then((model) => {
           modelMedium = model;
           this.setState({ loadedMedium: true });
