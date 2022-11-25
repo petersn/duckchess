@@ -46,18 +46,71 @@ impl Engine {
 
   pub fn get_moves(&self) -> JsValue {
     let mut moves = Vec::new();
-    self.engine.get_state().move_gen::<false>(&mut moves);
-    serde_wasm_bindgen::to_value(&moves).unwrap_or_else(|e| {
+    let mut optional_moves = Vec::new();
+    let current_state = self.engine.get_state();
+    current_state.move_gen::<false>(&mut moves);
+    // If this is a duck move, also get the moves for the next state.
+    if current_state.is_duck_move && current_state.get_outcome().is_none() {
+      let mut next_state = current_state.clone();
+      next_state.turn = next_state.turn.other_player();
+      next_state.is_duck_move = false;
+      // Remove the duck, because they could put it anywhere to not interfere.
+      next_state.ducks.0 = 0;
+      next_state.move_gen::<false>(&mut optional_moves);
+    }
+
+    serde_wasm_bindgen::to_value(&[moves, optional_moves]).unwrap_or_else(|e| {
       log(&format!("Failed to serialize moves: {}", e));
       JsValue::NULL
     })
   }
 
-  pub fn apply_move(&mut self, m: JsValue) -> bool {
+  pub fn apply_move(&mut self, m: JsValue, is_hidden: bool) -> bool {
     let m: Move = serde_wasm_bindgen::from_value(m).unwrap_or_else(|e| {
       log(&format!("Failed to deserialize move: {}", e));
       panic!("Failed to deserialize move: {}", e);
     });
+    // Print all args.
+    log(&format!("Applying move: {:?} -- {:?}", m, is_hidden));
+
+    // First check if we need to apply a duck move first.
+    if is_hidden {
+      let current_state = self.engine.get_state();
+      // If this is a duck move, also get the moves for the next state.
+      if !current_state.is_duck_move || current_state.get_outcome().is_some() {
+        log("BUG BUG BUG: Invalid hidden move");
+        return false;
+      }
+      let mut next_state = current_state.clone();
+      next_state.turn = next_state.turn.other_player();
+      next_state.is_duck_move = false;
+      // Find all duck positions that interfere with this move.
+      let mut duck_allowed = !(next_state.get_move_duck_block_mask(m) | next_state.get_occupied());
+      // Find the first allowed location for the duck.
+      let duck_from = crate::rules::get_square(current_state.ducks.0);
+      // We now figure out a nice spot to put the duck.
+      let mut duck_to = 0;
+      while let Some(square) = crate::rules::iter_bits(&mut duck_allowed) {
+        // Pick whichever move has a lower x-coordinate, and a y-coordinate closer to the middle.
+        let better_y = ((square as i32 / 8) - 3).abs() < ((duck_to as i32 / 8) - 3).abs();
+        if square % 8 < duck_to % 8 || better_y {
+          duck_to = square;
+        }
+      }
+      // Handle the initial placement of the duck here too.
+      let move_duck = Move { from: if current_state.ducks.0 == 0 { duck_to } else { duck_from }, to: duck_to };
+      // Move the duck out of the way first.
+      log(&format!("Applying duck movement move: {:?} (duck_allowed: {:016x})", move_duck, duck_allowed));
+      match self.engine.get_state_mut().apply_move::<false>(move_duck, None) {
+        Ok(_) => {}
+        Err(msg) => {
+          log(&format!("Failed to apply move: {}", msg));
+          return false;
+        }
+      }
+      self.mcts.apply_move(move_duck);
+    }
+
     match self.engine.get_state_mut().apply_move::<false>(m, None) {
       Ok(_) => {}
       Err(msg) => {
@@ -65,9 +118,10 @@ impl Engine {
         return false;
       }
     }
+    log(&format!("Applied move: {:?}", m));
     self.mcts.apply_move(m);
     use crate::inference::InferenceEngine;
-    self.inference_engine.clear();
+    //self.inference_engine.clear();
     true
   }
 
@@ -78,14 +132,16 @@ impl Engine {
         break;
       }
     }
-    log(&format!(
-      "Inference engine has batch: {}",
-      self.inference_engine.has_batch()
-    ));
+    //log(&format!("In flight after stepping: {}", self.mcts.in_flight_count));
+    //log(&format!(
+    //  "Inference engine has batch: {}",
+    //  self.inference_engine.has_batch()
+    //));
     self.inference_engine.fetch_work(features_array)
   }
 
   pub fn give_answers(&mut self, policy_array: &[f32], value_array: &[f32]) {
+    //log(&format!("In flight before give answers: {}", self.mcts.in_flight_count));
     use crate::inference::InferenceEngine;
     self.inference_engine.give_answers(policy_array, value_array);
     self.mcts.get_state().sanity_check().unwrap();
@@ -94,13 +150,15 @@ impl Engine {
         self.mcts.process_path(pending_path.clone(), inference_results.get(i));
       }
     });
+    //log(&format!("In flight after give answers: {}", self.mcts.in_flight_count));
     //self.mcts.predict_now();
     //self.inference_engine.give_answers(&self.policy_array, &self.value_array);
   }
 
   pub fn get_principal_variation(&self) -> JsValue {
     let pv = self.mcts.get_pv();
-    serde_wasm_bindgen::to_value(&pv).unwrap_or_else(|e| {
+    let (root_score, nodes) = self.mcts.get_root_score();
+    serde_wasm_bindgen::to_value(&(pv, root_score, nodes)).unwrap_or_else(|e| {
       log(&format!("Failed to serialize pv: {}", e));
       JsValue::NULL
     })
@@ -195,7 +253,7 @@ fn run_perft<const NNUE: bool, const EVAL: bool>() -> usize {
     nodes += 1;
     let adjustment = entry.state.apply_move::<NNUE>(entry.m, Some(&mut nnue)).unwrap();
     if EVAL {
-      crate::search::evaluate_state(&entry.state);
+      crate::eval::basic_eval(&entry.state);
     }
     if NNUE {
       nnue.evaluate(&entry.state);

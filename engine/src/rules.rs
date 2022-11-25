@@ -658,6 +658,23 @@ impl State {
     mask
   }
 
+  // FIXME: Reduce duplication with the above.
+  pub fn get_move_duck_block_mask(&self, m: Move) -> u64 {
+    let mut mask = 0;
+    // Check if the move is queenside castling, which has one more blocking square than it might seem.
+    let white_queenside_castling = m.from == 4 && m.to == 2 && self.kings[Player::White as usize].0 & (1 << 4) != 0;
+    let black_queenside_castling = m.from == 60 && m.to == 58 && self.kings[Player::Black as usize].0 & (1 << 60) != 0;
+    if white_queenside_castling {
+      mask |= 1 << 1;
+    }
+    if black_queenside_castling {
+      mask |= 1 << 57;
+    }
+    // Or in the appropriate pre-computed mask.
+    mask |= DUCK_BLOCK_MASKS[m.from as usize][m.to as usize];
+    mask
+  }
+
   pub fn adjust_zobrist(&mut self, adjustment: &NnueAdjustment) {
     //match adjustment {
     //  

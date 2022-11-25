@@ -1,40 +1,80 @@
 import { engine } from '@tensorflow/tfjs';
 import React from 'react';
 import './App.css';
-import { MessageFromEngineWorker } from './EngineWorkerMessages';
+import { MessageFromEngineWorker, MessageFromSearchWorker } from './WorkerMessages';
+import { ChessBoard, ChessPiece, PieceKind } from './ChessBoard';
+import { BrowserRouter as Router, Route, Link, Routes, Navigate } from 'react-router-dom';
+import { BenchmarkApp } from './BenchmarkApp';
 
-class EngineWorker {
-  worker: Worker;
-  initCallback: (ew: EngineWorker) => void;
+// FIXME: This is a mildly hacky way to get the router location...
+function getRouterPath(): string {
+  let routerPath = window.location.pathname;
+  if (routerPath.includes('/'))
+    routerPath = routerPath.substring(routerPath.lastIndexOf('/') + 1);
+  return routerPath;
+}
+
+class Workers {
+  engineWorker: Worker;
+  searchWorker: Worker;
+  initCallback: (ew: Workers) => void;
   boardState: any;
-  moves: any[];
+  legalMoves: any[];
+  nextMoves: any[];
   pv: any[] = [];
   evaluation: number = 0;
+  nodes: number = 0;
+  initFlags: boolean[] = [false, false];
   forceUpdateCallback: () => void;
 
-  constructor(initCallback: () => void) {
-    this.worker = new Worker(new URL('./EngineWorker.ts', import.meta.url));
-    this.worker.onmessage = this.onMessage;
+  constructor(initCallback: () => void, forceUpdateCallback: () => void) {
+    this.engineWorker = new Worker(new URL('./EngineWorker.ts', import.meta.url));
+    this.engineWorker.onmessage = this.onEngineMessage;
+    this.searchWorker = new Worker(new URL('./SearchWorker.ts', import.meta.url));
+    this.searchWorker.onmessage = this.onSearchMessage;
     this.initCallback = initCallback;
-    this.worker.postMessage({ type: 'init' });
+    this.forceUpdateCallback = forceUpdateCallback;
+    for (const worker of [this.engineWorker, this.searchWorker]) {
+      worker.postMessage({ type: 'init' });
+    }
     this.boardState = null;
-    this.moves = [];
-    this.forceUpdateCallback = () => {};
+    this.legalMoves = [];
+    this.nextMoves = [];
   }
 
-  onMessage = (e: MessageEvent<MessageFromEngineWorker>) => {
+  setInitFlag(workerIndex: number) {
+    this.initFlags[workerIndex] = true;
+    if (this.initFlags[0] && this.initFlags[1])
+      this.initCallback(this);
+  }
+
+  onEngineMessage = (e: MessageEvent<MessageFromEngineWorker>) => {
     console.log('Main thread got:', e.data);
     switch (e.data.type) {
       case 'initted':
-        this.initCallback(this);
+        this.setInitFlag(0);
         break;
       case 'board':
         this.boardState = e.data.board;
-        this.moves = e.data.moves;
+        this.legalMoves = e.data.moves;
+        this.nextMoves = e.data.nextMoves;
         break;
       case 'evaluation':
-        this.evaluation = e.data.evaluation;
+        const whiteWinProb = e.data.whiteWinProb;
+        const Q = 2 * whiteWinProb - 1;
+        this.evaluation = 1.11714640912 * Math.tan(1.5620688421 * Q);
         this.pv = e.data.pv;
+        this.nodes = e.data.nodes;
+        break;
+    }
+    this.forceUpdateCallback();
+  }
+
+  onSearchMessage = (e: MessageEvent<MessageFromSearchWorker>) => {
+    console.log('Main thread got:', e.data);
+    switch (e.data.type) {
+      case 'initted':
+        this.setInitFlag(1);
         break;
     }
     this.forceUpdateCallback();
@@ -45,28 +85,156 @@ class EngineWorker {
   }
 
   getMoves(): any[] {
-    return this.moves;
+    return this.legalMoves;
   }
 
-  applyMove(move: any) {
-    this.worker.postMessage({ type: 'applyMove', move });
+  applyMove(move: any, isHidden: boolean) {
+    for (const worker of [this.engineWorker, this.searchWorker]) {
+      worker.postMessage({ type: 'applyMove', move, isHidden });
+    }
+  }
+
+  setRunEngine(runEngine: boolean) {
+    for (const worker of [this.engineWorker, this.searchWorker]) {
+      worker.postMessage({ type: 'setRunEngine', runEngine });
+    }
   }
 }
 
-function AppWithEngineWorker(props: { engineWorker: EngineWorker }) {
+function TopBar(props: {}) {
+  const barEntryStyle: React.CSSProperties = {
+    paddingLeft: 20,
+    paddingRight: 20,
+    borderRight: '1px solid black',
+    height: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    color: 'white',
+    textDecoration: 'none',
+  };
+  const selectedTab: React.CSSProperties = {
+    ...barEntryStyle,
+    backgroundColor: '#225',
+  };
+  const unselectedTab: React.CSSProperties = {
+    ...barEntryStyle,
+    backgroundColor: '#447',
+  };
+  const path = getRouterPath();
+  return (
+    <div style={{
+      width: '100%',
+      height: 40,
+      backgroundColor: '#336',
+      borderBottom: '1px solid black',
+      display: 'flex',
+      flexDirection: 'row',
+      alignItems: 'center',
+      fontSize: '130%',
+      fontWeight: 'bold',
+    }}>
+      <div style={barEntryStyle}>
+        Duck Chess Engine
+      </div>
+
+      <Link to='/duck-chess/analysis' style={path === 'analysis' ? selectedTab : unselectedTab} replace>
+        Analysis
+      </Link>
+
+      <Link to='/duck-chess/benchmark' style={path === 'benchmark' ? selectedTab : unselectedTab} replace>
+        Benchmark
+      </Link>
+
+      <Link to='/duck-chess/info' style={path === 'info' ? selectedTab : unselectedTab} replace>
+        Info
+      </Link>
+    </div>
+  );
+}
+
+function AnalysisPage(props: { workers: Workers | null }) {
   const [selectedSquare, setSelectedSquare] = React.useState<[number, number] | null>(null);
-  const [forceUpdateCounter, setForceUpdateCounter] = React.useState(0);
   const [pair, setPair] = React.useState<any>(null);
+  const [duckFen, setDuckFen] = React.useState<string>('');
+  const [pgn, setPgn] = React.useState<string>('');
+  const [runEngine, setRunEngine] = React.useState<boolean>(false);
 
+  // Stop the engine when this subpage isn't active.
   React.useEffect(() => {
-    engineWorker.forceUpdateCallback = () => {
-      setForceUpdateCounter(Math.random());
+    if (props.workers) {
+      props.workers.setRunEngine(runEngine);
+    }
+    return () => {
+      if (props.workers) {
+        props.workers.setRunEngine(false);
+      }
     };
-  }, []);
+  }, [props.workers]);
 
-  const { engineWorker } = props;
-  const state = engineWorker.getState();
-  const moves: any[] = engineWorker.getMoves();
+  // let board: React.ReactNode[][] = [];
+  // for (let y = 0; y < 8; y++)
+  //   board.push([null, null, null, null, null, null, null, null]);
+  // let legalMoves: any[] = [];
+  // if (engineWorker !== null) {
+  //   board = engineWorker.getState() || board;
+  //   legalMoves = engineWorker.getMoves() || legalMoves;
+  // }
+
+  let board: React.ReactNode[][] = [];
+  for (let y = 0; y < 8; y++)
+    board.push([null, null, null, null, null, null, null, null]);
+  let legalMoves: any[] = [];
+  let hiddenLegalMoves: any[] = [];
+  if (props.workers !== null) {
+    const state = props.workers.getState();
+    legalMoves = props.workers.getMoves();
+    hiddenLegalMoves = props.workers.nextMoves;
+    console.log('HIDDEN LEGAL MOVES', hiddenLegalMoves);
+    if (state !== null) {
+      for (let y = 0; y < 8; y++) {
+        for (let player = 0; player < 2; player++) {
+          for (const name of ['pawns', 'knights', 'bishops', 'rooks', 'queens', 'kings', 'ducks']) {
+            let byte;
+            // Special handling for the duck
+            if (name === 'ducks') {
+              if (player === 1)
+                continue;
+              byte = state.ducks[7 - y];
+            } else if (name === 'enpassants') {
+              if (player === 1)
+                continue;
+              byte = state.enPassant[7 - y];
+            } else {
+              byte = state[name][player][7 - y];
+            }
+            for (let x = 0; x < 8; x++) {
+              const hasPiece = byte & 1;
+              byte = byte >> 1;
+              if (!hasPiece)
+                continue;
+              let piece = name.replace('knight', 'night').slice(0, 1).toUpperCase();
+              if (player === 1)
+                piece = 'w' + piece;
+              else
+                piece = 'b' + piece;
+              piece = piece.replace('bD', 'duck');
+              board[y][x] = piece;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  //React.useEffect(() => {
+  //  props.workers.forceUpdateCallback = () => {
+  //    setForceUpdateCounter(Math.random());
+  //  };
+  //}, []);
+
+  //const { props.workers } = props;
+  //const state = props.workers.getState();
+  //const moves: any[] = props.workers.getMoves();
   //React.useEffect(() => {
   //  //for (let i = 0; i < 100; i++) {
   //  //  const start = performance.now();
@@ -76,7 +244,7 @@ function AppWithEngineWorker(props: { engineWorker: EngineWorker }) {
   //  //  console.log('tfjs prediction took', end - start, 'ms');
   //  //}
   //  //console.log(tfjsResult[0], tfjsResult[1]);
-  //  let pair = engineWorker.run(4);
+  //  let pair = props.workers.run(4);
   //  setPair(pair);
   //  setTimeout(() => {
   //    if (pair && pair[1][0]) {
@@ -86,16 +254,17 @@ function AppWithEngineWorker(props: { engineWorker: EngineWorker }) {
   //  }, 1000000);
   //}, [forceUpdateCounter]);
 
-  if (state === null) {
-    return <div>Loading...</div>;
-  }
+  //if (state === null) {
+  //  return <div>Loading...</div>;
+  //}
 
+  /*
   function clickOn(x: number, y: number) {
     if (selectedSquare === null) {
       // Check if this is the initial duck placement.
       const m = moves.find(m => m.from === 64 && m.to === x + (7 - y) * 8);
       if (m) {
-        engineWorker.applyMove(m);
+        props.workers.applyMove(m);
         setSelectedSquare(null);
         setForceUpdateCounter(forceUpdateCounter + 1);
       } else {
@@ -110,28 +279,16 @@ function AppWithEngineWorker(props: { engineWorker: EngineWorker }) {
       // Find the first move that matches the selected square and the clicked square.
       const m = moves.find((m: any) => m.from === encodedFrom && m.to === encodedTo);
       if (m) {
-        engineWorker.applyMove(m);
+        props.workers.applyMove(m);
         setForceUpdateCounter(forceUpdateCounter + 1);
       }
       setSelectedSquare(null);
     }
   }
+  */
 
-  const board: React.ReactNode[][] = [];
-  for (let y = 0; y < 8; y++)
-    board.push([null, null, null, null, null, null, null, null]);
 
-  const unicodeChessPieces = {
-    'pawn':   '♟', 'PAWN':   '♙',
-    'rook':   '♜', 'ROOK':   '♖',
-    'knight': '♞', 'KNIGHT': '♘',
-    'bishop': '♝', 'BISHOP': '♗',
-    'queen':  '♛', 'QUEEN':  '♕',
-    'king':   '♚', 'KING':   '♔',
-    'duck':   '🦆',
-    'enpassant': '👻',
-  };
-
+  /*
   for (let y = 0; y < 8; y++) {
     for (let player = 0; player < 2; player++) {
       for (const name of ['pawns', 'knights', 'bishops', 'rooks', 'queens', 'kings', 'ducks']) {
@@ -161,214 +318,178 @@ function AppWithEngineWorker(props: { engineWorker: EngineWorker }) {
             userSelect: 'none',
             fontFamily: 'Arial Unicode MS',
           }}>
-            {(unicodeChessPieces as any)[piece]}
+            <ChessPiece piece={piece as PieceKind} />
           </span>;
         }
       }
     }
   }
+  */
 
+  /*
   //let showMoves: any[] = (pair && pair[1][0]) ? pair[1] : [];
-  console.log('----PV:', engineWorker.pv);
-  let showMoves: any[] = engineWorker.pv;
+  console.log('----PV:', props.workers.pv);
+  let showMoves: any[] = props.workers.pv;
   if ((state.isDuckMove || true) && showMoves) {
     showMoves = showMoves.slice(0, 1);
   }
-
-  const arrows = [];
-  let k = 0;
-  for (const move of showMoves) {
-    if (!move)
-      continue;
-    const fromX = move.from % 8;
-    const fromY = 7 - Math.floor(move.from / 8);
-    const toX = move.to % 8;
-    const toY = 7 - Math.floor(move.to / 8);
-    let dx = toX - fromX;
-    let dy = toY - fromY;
-    const length = 1e-6 + Math.sqrt(dx * dx + dy * dy);
-    dx /= length;
-    dy /= length;
-    const endX = toX * 50 + 25 - 10 * dx;
-    const endY = toY * 50 + 25 - 10 * dy;
-    if (move.from === 64) {
-      const arrow = <circle
-        key={k++}
-        cx={toX * 50 + 25}
-        cy={toY * 50 + 25}
-        r={10}
-        stroke="red"
-        strokeWidth="5"
-        fill="red"
-      />;
-      arrows.push(arrow);
-      continue;
-    }
-    let d = `M ${fromX * 50 + 25} ${fromY * 50 + 25} L ${endX} ${endY}`;
-    d += ` L ${endX + 5 * dy} ${endY - 5 * dx} L ${endX + 10 * dx} ${endY + 10 * dy} L ${endX - 5 * dy} ${endY + 5 * dx} L ${endX} ${endY} Z`;
-    const arrow = <path
-      key={k++}
-      d={d}
-      stroke="red"
-      strokeWidth="5"
-      fill="red"
-    />;
-    arrows.push(arrow);
-  }
+  */
 
   return (
-    <div style={{ margin: 30, position: 'relative', width: 400, height: 400, minWidth: 400, minHeight: 400 }}>
-      <svg
-        viewBox="0 0 400 400"
-        style={{ width: 400, height: 400, position: 'absolute', zIndex: 1, pointerEvents: 'none' }}
-      >
-        {arrows}
-      </svg>
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+    }}>
+      <TopBar />
+      <div style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+        <div style={{
+          flex: 1,
+          height: 600,
+          minHeight: 600,
+        }}>
+          <div style={{
+            marginLeft: 'auto',
+            height: '100%',
+            maxWidth: 400,
+            border: '1px solid #eee',
+            padding: 10,
+            boxSizing: 'border-box',
+            overflow: 'scroll',
+          }}>
+            <div style={{ fontWeight: 'bold', fontSize: '120%', marginBottom: 10 }}>Duck Chess Analysis Board</div>
 
-      <div style={{ position: 'absolute' }}>
-        <table style={{ borderCollapse: 'collapse', border: '1px solid black' }}>
-          <tbody>
-            {board.map((row, y) => (
-              <tr key={y}>
-                {row.map((piece, x) => {
-                  const isSelected = selectedSquare !== null && selectedSquare[0] === x && selectedSquare[1] === y;
-                  let backgroundColor = (x + y) % 2 === 0 ? '#eca' : '#b97';
-                  //if (state.highlight[7 - y] & (1 << x))
-                  //  backgroundColor = (x + y) % 2 === 0 ? '#dd9' : '#aa6';
-                  if (isSelected)
-                    backgroundColor = '#7f7';
-                  return <td key={x} style={{ margin: 0, padding: 0 }}>
-                    <div
-                      style={{
-                        width: 50,
-                        maxWidth: 50,
-                        height: 50,
-                        maxHeight: 50,
-                        backgroundColor,
-                        textAlign: 'center',
-                      }}
-                      onClick={() => clickOn(x, y)}
-                    >
-                      {piece}
-                    </div>
-                  </td>;
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {JSON.stringify(engineWorker.pv)}
+            <a href="https://duckchess.com/">Duck chess</a> is a variant in which there is one extra piece, the duck, which is shared between the two players and cannot be captured.
+            Each turn consists of making a regular move, and then moving the duck to any empty square (the duck may not stay in place).
+            There is no check or checkmate, you win by capturing the opponent's king.
+          </div>
+        </div>
+        <ChessBoard
+          board={board as any}
+          legalMoves={legalMoves}
+          hiddenLegalMoves={hiddenLegalMoves}
+          onMove={(move, isHidden) => {
+            if (props.workers !== null) {
+              console.log('[snp1] move', move, isHidden);
+              props.workers.applyMove(move, isHidden);
+            }
+          }}
+        />
+        <div style={{
+          flex: 1,
+          height: 600,
+          minHeight: 600,
+        }}>
+          <div style={{
+            height: '100%',
+            maxWidth: 400,
+            border: '1px solid #eee',
+            padding: 10,
+            boxSizing: 'border-box',
+          }}>
+            <div style={{ fontWeight: 'bold', fontSize: '120%', marginBottom: 10 }}>Engine</div>
+            <input type="checkbox" checked={runEngine} onChange={e => {
+              setRunEngine(e.target.checked);
+              if (props.workers !== null) {
+                props.workers.setRunEngine(e.target.checked);
+              }
+            }} /> Run engine
+
+            {props.workers !== null && <div>
+              Evaluation: {props.workers.evaluation}<br/>
+              Nodes: {props.workers.nodes}<br/>
+              PV: {props.workers.pv.map((m: any) => m.from + ' ' + m.to).join(' ')}
+            </div>}
+
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 10, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <input type="text" value={duckFen} onChange={e => setDuckFen(e.target.value)} style={{
+          width: 400,
+          backgroundColor: '#445',
+          color: '#eee',
+        }} />
+        <textarea value={pgn} onChange={e => setPgn(e.target.value)} style={{
+          marginTop: 5,
+          width: 400,
+          height: 100,
+          backgroundColor: '#445',
+          color: '#eee',
+        }} placeholder="Paste PGN here..." />
+      </div>
+
+      <div style={{ marginTop: 10, textAlign: 'center' }}>
+        Created by Peter Schmidt-Nielsen
+        (<a href="https://twitter.com/ptrschmdtnlsn">Twitter</a>, <a href="https://peter.website">Website</a>)<br/>
+        Engine + web interface: <a href="https://github.com/petersn/duckchess">github.com/petersn/duckchess</a><br/>
+        <span style={{ fontSize: '50%', opacity: 0.5 }}>Piece SVGs: Cburnett (CC BY-SA 3), Duck SVG + all code: my creation (CC0)</span>
       </div>
     </div>
   );
 }
 
-function App() {
-  const [engineWorker, setEngineWorker] = React.useState<EngineWorker | null>(null);
-  React.useEffect(() => {
-    console.log('Initializing worker...');
-    const worker = new EngineWorker(() => {
-      console.log('Worker initialized!');
-      setEngineWorker(worker);
-    });
-  }, []);
-  return engineWorker ? <AppWithEngineWorker engineWorker={engineWorker} /> : <div>Loading engine...</div>;
-}
-
-/*
-let globalBatchSize = 16;
-
-function App() {
-  const [model, setModel] = React.useState<tf.LayersModel | null>(null);
-  const [batchSize, setBatchSize] = React.useState('16');
-  const [fut1Latency, setFut1Latency] = React.useState(1000);
-  const [fut2Latency, setFut2Latency] = React.useState(1000);
-
-  React.useEffect(() => {
-    const myWorker = new Worker(new URL('./worker.tsx', import.meta.url));
-    myWorker.onmessage = (e) => {
-      console.log('Message received from worker');
-    };
-    myWorker.postMessage({ type: 'init' });
-
-    console.log('Initializing tfjs...');
-    createConvModel()
-      .then((model) => {
-        setModel(model);
-        // Start a loop of evaluating the model.
-        const loop = async () => {
-          (window as any).tensor = tf.randomUniform([1, 8, 8, 12]);
-          return;
-          let inp1 = tf.randomUniform([globalBatchSize, 22, 8, 8]);
-          let inp2 = tf.randomUniform([globalBatchSize, 22, 8, 8]);
-          let fut1LaunchTime = performance.now();
-          let fut1 = model.predict(inp1) as tf.Tensor[];
-          let fut2LaunchTime = performance.now();
-          let fut2 = model.predict(inp2) as tf.Tensor[];
-          // Keep two computations in flight at all times.
-          while (true) {
-            console.log('EVALUATED');
-            fut1LaunchTime = performance.now();
-            fut1 = model.predict(inp1) as tf.Tensor[];
-            await fut2[0].data();
-            await fut2[1].data();
-            setFut2Latency(performance.now() - fut2LaunchTime);
-            fut2[0].dispose();
-            fut2[1].dispose();
-            fut2LaunchTime = performance.now();
-            fut2 = model.predict(inp2) as tf.Tensor[];
-            const d = await fut1[0].data();
-            await fut1[1].data();
-            const fut1FinishTime = performance.now();
-            setFut1Latency(fut1FinishTime - fut1LaunchTime);
-            fut1[0].dispose();
-            fut1[1].dispose();
-            if (inp1.shape[0] !== globalBatchSize && Number.isInteger(globalBatchSize) && globalBatchSize > 0) {
-              console.log('Resizing inputs to:', globalBatchSize);
-              inp1.dispose();
-              inp2.dispose();
-              inp1 = tf.randomUniform([globalBatchSize, 22, 8, 8]);
-              inp2 = tf.randomUniform([globalBatchSize, 22, 8, 8]);
-            }
-          }
-        }
-        loop();
-      })
-      .catch(console.error);
-  }, []);
-
+function BenchmarkPage(props: {}) {
   return (
-    <div style={{ margin: 30 }}>
-      <h1>tfjs performance tester</h1>
-      <p>
-        {model ? 'Loaded tfjs model.' : 'Loading tfjs model...'}
-      </p>
-      <p>
-        <label>Batch size: <input
-          type="number"
-          value={batchSize}
-          onChange={(e) => {
-            setBatchSize(e.target.value);
-            const value = parseInt(e.target.value);
-            globalBatchSize = value;
-          }}
-        /></label>
-      </p>
-      <p>
-        <label>Future 1 latency: {fut1Latency.toFixed(1)} ms</label>
-      </p>
-      <p>
-        <label>Future 2 latency: {fut2Latency.toFixed(1)} ms</label>
-      </p>
-      <p>
-        Batch size: {globalBatchSize}
-      </p>
-      <p>
-        Nodes per second: {(2 * globalBatchSize * 1000 / ((fut1Latency + fut2Latency) / 2)).toFixed(1)}
-      </p>
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+    }}>
+      <TopBar />
+      <BenchmarkApp />
     </div>
   );
 }
-*/
+
+function InfoPage(props: {}) {
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+    }}>
+      <TopBar />
+    </div>
+  );
+}
+
+function App() {
+  const [workers, setWorkers] = React.useState<Workers | null>(null);
+  const [forceUpdateCounter, setForceUpdateCounter] = React.useState(0);
+  React.useEffect(() => {
+    console.log('Initializing worker...');
+    const workers = new Workers(
+      () => {
+        console.log('Worker initialized!');
+        // FIXME: There's a race if you toggle runEngine before the engine is created.
+        setWorkers(workers);
+      },
+      () => {
+        setTimeout(() => setForceUpdateCounter(Math.random()), 1);
+//        setForceUpdateCounter(forceUpdateCounter + 1);
+      },
+    );
+  }, []);
+
+  return (
+    <Router>
+      <Routes>
+        <Route path="/duck-chess/analysis" element={<AnalysisPage workers={workers} />} />
+        <Route path="/duck-chess/benchmark" element={<BenchmarkPage />} />
+        <Route path="/duck-chess/info" element={<InfoPage />} />
+        <Route path="/duck-chess" element={<Navigate to="/duck-chess/analysis" replace />} />
+      </Routes>
+    </Router>
+  );
+}
 
 export default App;
