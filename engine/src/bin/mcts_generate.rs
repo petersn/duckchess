@@ -31,8 +31,11 @@ struct Args {
 async fn main() {
   let args = Args::parse();
 
+  let batch_size = TensorFlowEngine::<()>::DESIRED_BATCH_SIZE;
+  println!("Using batch size: {}", batch_size);
+
   let inference_engine: &TensorFlowEngine<(usize, PendingPath)> = Box::leak(Box::new(
-    TensorFlowEngine::new(TensorFlowEngine::<()>::DESIRED_BATCH_SIZE, &args.model_dir),
+    TensorFlowEngine::new(batch_size, &args.model_dir),
   ));
 
   let search_params: &'static SearchParams = Box::leak(Box::new(args.search_params));
@@ -53,7 +56,7 @@ async fn main() {
     Box::leak(Box::new(Mutex::new(create_output_file(&args.output_dir))));
 
   let (tx_channels, rx_channels): (Vec<_>, Vec<_>) = (0..5
-    * TensorFlowEngine::<()>::DESIRED_BATCH_SIZE)
+    * batch_size)
     .map(|_| tokio::sync::mpsc::unbounded_channel())
     .unzip();
   let tx_channels: &'static _ = Box::leak(Box::new(tx_channels));

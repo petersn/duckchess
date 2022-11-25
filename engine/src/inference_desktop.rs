@@ -124,7 +124,7 @@ impl<Cookie> TensorFlowEngine<Cookie> {
 }
 
 impl<Cookie> inference::InferenceEngine<Cookie> for TensorFlowEngine<Cookie> {
-  const DESIRED_BATCH_SIZE: usize = 128;
+  const DESIRED_BATCH_SIZE: usize = 256;
 
   fn add_work(&self, state: &crate::rules::State, cookie: Cookie) -> bool {
     let mut input_blocks = self.input_blocks.lock().unwrap();
