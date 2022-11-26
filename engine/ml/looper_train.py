@@ -3,7 +3,7 @@ import torch
 import random
 from tqdm import tqdm
 
-import model_pytorch
+import model_pytorch_BIG as model_pytorch
 
 import wandb
 

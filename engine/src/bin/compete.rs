@@ -6,7 +6,7 @@ use engine::inference_desktop::TensorFlowEngine;
 use engine::mcts::{Mcts, PendingPath, SearchParams};
 use tokio::sync::Mutex;
 
-const GAME_LEN_LIMIT: usize = 300;
+const GAME_LEN_LIMIT: usize = 500;
 const BATCH_SIZE: usize = 64;
 
 #[derive(Parser, Debug)]
