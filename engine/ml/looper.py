@@ -164,9 +164,10 @@ technically statistically biases the games slightly towards being shorter.)
         if not os.path.exists(index_to_keras_model_path(current_model_number)):
             print("=========================== Converting pytorch -> keras")
             subprocess.check_call([
-                "python", "ml/convert_model.py",
+                "python", "ml/convert_model_BIG.py",
                 "--input", old_model,
                 "--output", index_to_keras_model_path(current_model_number),
+                "--big",
             ])
 
         print("=========================== Doing data generation for:", old_model)
