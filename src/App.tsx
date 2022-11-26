@@ -148,15 +148,15 @@ function TopBar(props: {}) {
         Duck Chess Engine
       </div>
 
-      <Link to={process.env.PUBLIC_URL + '/analysis'} style={path === 'analysis' ? selectedTab : unselectedTab} replace>
+      <Link to={'/analysis'} style={path === 'analysis' ? selectedTab : unselectedTab} replace>
         Analysis
       </Link>
 
-      <Link to={process.env.PUBLIC_URL + '/benchmark'} style={path === 'benchmark' ? selectedTab : unselectedTab} replace>
+      <Link to={'/benchmark'} style={path === 'benchmark' ? selectedTab : unselectedTab} replace>
         Benchmark
       </Link>
 
-      <Link to={process.env.PUBLIC_URL + '/info'} style={path === 'info' ? selectedTab : unselectedTab} replace>
+      <Link to={'/info'} style={path === 'info' ? selectedTab : unselectedTab} replace>
         Info
       </Link>
     </div>
@@ -498,7 +498,7 @@ function App() {
         <Route path="/analysis" element={<AnalysisPage workers={workers} />} />
         <Route path="/benchmark" element={<BenchmarkPage workers={workers} />} />
         <Route path="/info" element={<InfoPage />} />
-        <Route path="/" element={<Navigate to={process.env.PUBLIC_URL + "/analysis"} replace />} />
+        <Route path="/" element={<Navigate to={"/analysis"} replace />} />
       </Routes>
     </Router>
   );
