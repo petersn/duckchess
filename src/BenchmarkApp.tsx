@@ -1,5 +1,7 @@
 import React from 'react';
 import * as tf from '@tensorflow/tfjs';
+import { Workers } from './App';
+import { AlphaBetaBenchmarkResults } from './WorkerMessages';
 
 // This is the number of input feature layers to the model.
 const featureCount = 29;
@@ -93,7 +95,7 @@ async function evalLoop(app: BenchmarkApp) {
 /*
 
     console.log('Initializing tfjs...');
-    tf.loadLayersModel('/duck-chess/model-small/model.json')
+    tf.loadLayersModel(process.env.PUBLIC_URL + '/model-small/model.json')
       .then((model) => {
         setModel(model);
         // Start a loop of evaluating the model.
@@ -137,20 +139,26 @@ async function evalLoop(app: BenchmarkApp) {
   }, []);
 */
 
+interface BenchmarkAppProps {
+  workers: Workers;
+}
+
 interface BenchmarkAppState {
   batchSize: string;
   maxInFlight: string;
   modelSize: string;
   latencies: number[];
   runTfjs: boolean;
+  runningAlphaBetaBenchmark: boolean;
+  benchmarkResults: AlphaBetaBenchmarkResults | null;
   loadedSmall: boolean;
   loadedMedium: boolean;
 }
 
-export class BenchmarkApp extends React.PureComponent<{}, BenchmarkAppState> {
+export class BenchmarkApp extends React.PureComponent<BenchmarkAppProps, BenchmarkAppState> {
   keepRunning: boolean = true;
 
-  constructor(props: {}) {
+  constructor(props: BenchmarkAppProps) {
     super(props);
     this.state = {
       batchSize: '16',
@@ -158,6 +166,8 @@ export class BenchmarkApp extends React.PureComponent<{}, BenchmarkAppState> {
       modelSize: 'small',
       latencies: [],
       runTfjs: false,
+      runningAlphaBetaBenchmark: false,
+      benchmarkResults: null,
       loadedSmall: false,
       loadedMedium: false,
     };
@@ -179,7 +189,7 @@ export class BenchmarkApp extends React.PureComponent<{}, BenchmarkAppState> {
 
   componentDidMount() {
     if (modelSmall == null) {
-      tf.loadLayersModel('/duck-chess/model-small/model.json')
+      tf.loadLayersModel(process.env.PUBLIC_URL + '/model-small/model.json')
         .then((model) => {
           modelSmall = model;
           this.setState({ loadedSmall: true });
@@ -187,7 +197,7 @@ export class BenchmarkApp extends React.PureComponent<{}, BenchmarkAppState> {
         .catch(console.error);
     }
     if (modelMedium == null) {
-      tf.loadLayersModel('/duck-chess/model-medium/model.json')
+      tf.loadLayersModel(process.env.PUBLIC_URL + '/model-medium/model.json')
         .then((model) => {
           modelMedium = model;
           this.setState({ loadedMedium: true });
@@ -253,14 +263,14 @@ export class BenchmarkApp extends React.PureComponent<{}, BenchmarkAppState> {
             <option value="medium">Medium</option>
           </select></label>
         </p>
-        <p>
+        <div>
           Latencies:<br/>
           <div style={{ display: 'inline-flex' }}>
             {this.state.latencies.slice(5).map((latency, i) => (
               <div style={{ display: 'inline-block', width: 50 }} key={i}>{latency.toFixed(1)} ms</div>
             ))}
           </div>
-        </p>
+        </div>
         <p>
           Batch size: {Number(this.state.batchSize)} -
           Parallel batches in flight: {Number(this.state.maxInFlight)} -
@@ -270,6 +280,30 @@ export class BenchmarkApp extends React.PureComponent<{}, BenchmarkAppState> {
           Mean latency: {meanLatency.toFixed(1)} ms<br/>
           Nodes per second: {nps.toFixed(1)}
         </p>
+        <h2>Alpha-beta benchmark</h2>
+        <div>
+          {/* Run button */}
+          <button
+            onClick={() => {
+              this.setState({ runningAlphaBetaBenchmark: true });
+              this.props.workers.runAlphaBetaBenchmark((results) => {
+                this.setState({ runningAlphaBetaBenchmark: false, benchmarkResults: results });
+                console.log(results);
+              });
+            }}
+            disabled={this.state.runningAlphaBetaBenchmark}
+          >
+            Run benchmark
+          </button><br/>
+
+          {/* Results */}
+          {this.state.runningAlphaBetaBenchmark ? 'Running...' : ''}<br/>
+          {this.state.benchmarkResults !== null && <div>
+            <div>Raw nodes per second: {this.state.benchmarkResults.megaNodesPerSecondRaw.toFixed(3)} M</div>
+            <div>Eval nodes per second: {this.state.benchmarkResults.megaNodesPerSecondEval.toFixed(3)} M</div>
+            <div>NNUE nodes per second: {this.state.benchmarkResults.megaNodesPerSecondNnue.toFixed(3)} M</div>
+          </div>}
+        </div>
       </div>
     );
   }

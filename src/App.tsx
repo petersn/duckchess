@@ -1,7 +1,7 @@
 import { engine } from '@tensorflow/tfjs';
 import React from 'react';
 import './App.css';
-import { MessageFromEngineWorker, MessageFromSearchWorker } from './WorkerMessages';
+import { AlphaBetaBenchmarkResults, MessageFromEngineWorker, MessageFromSearchWorker } from './WorkerMessages';
 import { ChessBoard, ChessPiece, PieceKind } from './ChessBoard';
 import { BrowserRouter as Router, Route, Link, Routes, Navigate } from 'react-router-dom';
 import { BenchmarkApp } from './BenchmarkApp';
@@ -14,7 +14,7 @@ function getRouterPath(): string {
   return routerPath;
 }
 
-class Workers {
+export class Workers {
   engineWorker: Worker;
   searchWorker: Worker;
   initCallback: (ew: Workers) => void;
@@ -26,6 +26,7 @@ class Workers {
   nodes: number = 0;
   initFlags: boolean[] = [false, false];
   forceUpdateCallback: () => void;
+  benchmarkCallback: (results: AlphaBetaBenchmarkResults) => void;
 
   constructor(initCallback: () => void, forceUpdateCallback: () => void) {
     this.engineWorker = new Worker(new URL('./EngineWorker.ts', import.meta.url));
@@ -34,6 +35,7 @@ class Workers {
     this.searchWorker.onmessage = this.onSearchMessage;
     this.initCallback = initCallback;
     this.forceUpdateCallback = forceUpdateCallback;
+    this.benchmarkCallback = () => {};
     for (const worker of [this.engineWorker, this.searchWorker]) {
       worker.postMessage({ type: 'init' });
     }
@@ -76,6 +78,10 @@ class Workers {
       case 'initted':
         this.setInitFlag(1);
         break;
+      case 'alphaBetaBenchmarkResults':
+        this.benchmarkCallback(e.data.results);
+        this.benchmarkCallback = () => {};
+        break;
     }
     this.forceUpdateCallback();
   }
@@ -98,6 +104,11 @@ class Workers {
     for (const worker of [this.engineWorker, this.searchWorker]) {
       worker.postMessage({ type: 'setRunEngine', runEngine });
     }
+  }
+
+  runAlphaBetaBenchmark(callback: (results: AlphaBetaBenchmarkResults) => void) {
+    this.searchWorker.postMessage({ type: 'runAlphaBetaBenchmark' });
+    this.benchmarkCallback = callback;
   }
 }
 
@@ -137,15 +148,15 @@ function TopBar(props: {}) {
         Duck Chess Engine
       </div>
 
-      <Link to='/duck-chess/analysis' style={path === 'analysis' ? selectedTab : unselectedTab} replace>
+      <Link to={'/analysis'} style={path === 'analysis' ? selectedTab : unselectedTab} replace>
         Analysis
       </Link>
 
-      <Link to='/duck-chess/benchmark' style={path === 'benchmark' ? selectedTab : unselectedTab} replace>
+      <Link to={'/benchmark'} style={path === 'benchmark' ? selectedTab : unselectedTab} replace>
         Benchmark
       </Link>
 
-      <Link to='/duck-chess/info' style={path === 'info' ? selectedTab : unselectedTab} replace>
+      <Link to={'/info'} style={path === 'info' ? selectedTab : unselectedTab} replace>
         Info
       </Link>
     </div>
@@ -437,7 +448,7 @@ function AnalysisPage(props: { workers: Workers | null }) {
   );
 }
 
-function BenchmarkPage(props: {}) {
+function BenchmarkPage(props: { workers: Workers | null }) {
   return (
     <div style={{
       display: 'flex',
@@ -445,7 +456,7 @@ function BenchmarkPage(props: {}) {
       alignItems: 'center',
     }}>
       <TopBar />
-      <BenchmarkApp />
+      {props.workers === null ? <div>Loading...</div> : <BenchmarkApp workers={props.workers} />}
     </div>
   );
 }
@@ -479,14 +490,15 @@ function App() {
       },
     );
   }, []);
+  console.log('process.env.PUBLIC_URL:', process.env.PUBLIC_URL);
 
   return (
-    <Router>
+    <Router basename={process.env.PUBLIC_URL}>
       <Routes>
-        <Route path="/duck-chess/analysis" element={<AnalysisPage workers={workers} />} />
-        <Route path="/duck-chess/benchmark" element={<BenchmarkPage />} />
-        <Route path="/duck-chess/info" element={<InfoPage />} />
-        <Route path="/duck-chess" element={<Navigate to="/duck-chess/analysis" replace />} />
+        <Route path="/analysis" element={<AnalysisPage workers={workers} />} />
+        <Route path="/benchmark" element={<BenchmarkPage workers={workers} />} />
+        <Route path="/info" element={<InfoPage />} />
+        <Route path="/" element={<Navigate to={"/analysis"} replace />} />
       </Routes>
     </Router>
   );
