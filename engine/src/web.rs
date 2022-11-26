@@ -248,16 +248,19 @@ fn run_perft<const NNUE: bool, const EVAL: bool>() -> usize {
     state: State::starting_state(),
     m:     Move::from_uci("e2e4").unwrap(),
   }];
-  let mut nnue = crate::nnue::Nnue::new(&State::starting_state(), crate::nnue::BUNDLED_NETWORK);
+  //let mut nnue = crate::nnue::Nnue::new(&State::starting_state(), crate::nnue::BUNDLED_NETWORK);
+  // FIXME: Support NNUE again!
+  assert!(!NNUE);
   while let Some(mut entry) = stack.pop() {
     nodes += 1;
-    let adjustment = entry.state.apply_move::<NNUE>(entry.m, Some(&mut nnue)).unwrap();
+    //let adjustment = entry.state.apply_move::<NNUE>(entry.m, Some(&mut nnue)).unwrap();
+    let adjustment = entry.state.apply_move::<NNUE>(entry.m, None).unwrap();
     if EVAL {
       crate::eval::basic_eval(&entry.state);
     }
-    if NNUE {
-      nnue.evaluate(&entry.state);
-    }
+    //if NNUE {
+    //  nnue.evaluate(&entry.state);
+    //}
     if entry.depth == 4 {
       // ...
     } else {
@@ -273,10 +276,10 @@ fn run_perft<const NNUE: bool, const EVAL: bool>() -> usize {
       }
       moves.clear();
     }
-    if NNUE {
-      // FIXME: This is WRONG! I need to pass in the parent state!
-      nnue.apply_adjustment::<true>(&entry.state, &adjustment);
-    }
+    //if NNUE {
+    //  // FIXME: This is WRONG! I need to pass in the parent state!
+    //  nnue.apply_adjustment::<true>(&entry.state, &adjustment);
+    //}
   }
   nodes
 

@@ -36,9 +36,19 @@ export type MessageToSearchWorker = {
 } | {
   type: 'setRunEngine';
   runEngine: boolean;
+} | {
+  type: 'runAlphaBetaBenchmark';
 };
 
 export type MessageFromSearchWorker = {
   type: 'initted';
+} | {
+  type: 'alphaBetaBenchmarkResults';
+  results: AlphaBetaBenchmarkResults;
 };
 
+export interface AlphaBetaBenchmarkResults {
+  megaNodesPerSecondRaw: number;
+  megaNodesPerSecondEval: number;
+  megaNodesPerSecondNnue: number;
+}
