@@ -1,5 +1,7 @@
 import React from 'react';
 
+export const BOARD_MAX_SIZE = 400;
+
 export type PieceKind = 'wP' | 'wN' | 'wB' | 'wR' | 'wQ' | 'wK' | 'bP' | 'bN' | 'bB' | 'bR' | 'bQ' | 'bK' | 'duck' | null;
 
 export interface Move {
@@ -207,22 +209,27 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
           key={`arrow-${move.from}-${move.to}`}
           cx={toX * 50 + 25} cy={toY * 50 + 25}
           r={10}
-          stroke="red"
+          //stroke="rgba(0, 0, 255, 0.35)"
           strokeWidth="5"
-          fill="red"
+          fill="rgba(0, 0, 255, 0.35)"
         />;
         svgElements.push(arrow);
         continue;
       }
-      let d = `M ${fromX * 50 + 25} ${fromY * 50 + 25} L ${endX} ${endY}`;
-      d += ` L ${endX + 5 * dy} ${endY - 5 * dx} L ${endX + 10 * dx} ${endY + 10 * dy} L ${endX - 5 * dy} ${endY + 5 * dx} L ${endX} ${endY} Z`;
+      const w = 4;
+      const headW = 7;
+      const headL = 18;
+      let d = `M ${fromX * 50 + 25 - w * dy} ${fromY * 50 + 25 + w * dx} L ${endX - w * dy} ${endY + w * dx}`;
+      d += ` L ${endX + (w + headW) * dy} ${endY - (w + headW) * dx} L ${endX + headL * dx} ${endY + headL * dy}`;
+      d += ` L ${endX - (w + headW) * dy} ${endY + (w + headW) * dx} L ${endX + w * dy} ${endY - w * dx}`;
+      d += ` L ${fromX * 50 + 25 + w * dy} ${fromY * 50 + 25 - w * dx} Z`;
       const arrow = <path
         style={{ userSelect: 'none', pointerEvents: 'none' }}
         key={`arrow-${move.from}-${move.to}`}
         d={d}
-        stroke="red"
+        //stroke="rgba(0, 0, 255, 0.35)"
         strokeWidth="5"
-        fill="red"
+        fill="rgba(0, 0, 255, 0.35)"
       />;
       svgElements.push(arrow);
     }
@@ -277,8 +284,8 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
         style={{
           width: '100%',
           height: '100%',
-          maxWidth: 600,
-          maxHeight: 600,
+          maxWidth: BOARD_MAX_SIZE,
+          maxHeight: BOARD_MAX_SIZE,
           ...this.props.style,
         }}
       >

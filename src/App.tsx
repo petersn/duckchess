@@ -2,7 +2,7 @@ import { engine } from '@tensorflow/tfjs';
 import React from 'react';
 import './App.css';
 import { AlphaBetaBenchmarkResults, MessageFromEngineWorker, MessageFromSearchWorker } from './WorkerMessages';
-import { ChessBoard, ChessPiece, PieceKind } from './ChessBoard';
+import { ChessBoard, ChessPiece, PieceKind, BOARD_MAX_SIZE } from './ChessBoard';
 import { BrowserRouter as Router, Route, Link, Routes, Navigate } from 'react-router-dom';
 import { BenchmarkApp } from './BenchmarkApp';
 
@@ -112,10 +112,12 @@ export class Workers {
   }
 }
 
-function TopBar(props: { isMobile: boolean }) {
+function TopBar(props: { screenWidth: number, isMobile: boolean }) {
+  // If the window is really narrow we need a different layout.
+  const narrow = props.screenWidth < 320;
   const barEntryStyle: React.CSSProperties = {
-    paddingLeft: 20,
-    paddingRight: 20,
+    paddingLeft: narrow ? 10 : 20,
+    paddingRight: narrow ? 10 : 20,
     borderRight: '1px solid black',
     height: '100%',
     display: 'flex',
@@ -366,6 +368,8 @@ function AnalysisPage(props: { isMobile: boolean, workers: Workers | null }) {
     topMoves = props.workers.pv.slice(0, moveCount);
   }
 
+  const marginTop = props.isMobile ? 3 : 10;
+
   return <>
     <div style={{
       width: '100%',
@@ -377,8 +381,8 @@ function AnalysisPage(props: { isMobile: boolean, workers: Workers | null }) {
     }}>
       {props.isMobile || <div style={{
         flex: 1,
-        height: 600,
-        minHeight: 600,
+        height: BOARD_MAX_SIZE,
+        minHeight: BOARD_MAX_SIZE,
       }}>
         <div style={{
           marginLeft: 'auto',
@@ -413,8 +417,8 @@ function AnalysisPage(props: { isMobile: boolean, workers: Workers | null }) {
       />
       <div style={{
         flex: props.isMobile ? undefined : 1,
-        height: props.isMobile ? undefined : 600,
-        minHeight: props.isMobile ? undefined : 600,
+        height: props.isMobile ? undefined : BOARD_MAX_SIZE,
+        minHeight: props.isMobile ? undefined : BOARD_MAX_SIZE,
         width: props.isMobile ? '100%' : undefined,
       }}>
         <div style={{
@@ -424,6 +428,7 @@ function AnalysisPage(props: { isMobile: boolean, workers: Workers | null }) {
           backgroundColor: '#33333f',
           padding: 10,
           boxSizing: 'border-box',
+          margin: props.isMobile ? 'auto' : undefined,
         }}>
           <div style={{ fontWeight: 'bold', fontSize: '120%', marginBottom: 10 }}>Engine</div>
           <input type="checkbox" checked={runEngine} onChange={e => {
@@ -443,22 +448,26 @@ function AnalysisPage(props: { isMobile: boolean, workers: Workers | null }) {
       </div>
     </div>
 
-    <div style={{ marginTop: 10, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+    <div style={{ width: '100%', marginTop, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <input type="text" value={duckFen} onChange={e => setDuckFen(e.target.value)} style={{
-        width: 400,
+        //width: 400,
+        width: '96%',
+        maxWidth: 400,
         backgroundColor: '#445',
         color: '#eee',
       }} />
       <textarea value={pgn} onChange={e => setPgn(e.target.value)} style={{
         marginTop: 5,
-        width: 400,
+        //width: 400,
+        width: '96%',
+        maxWidth: 400,
         height: 100,
         backgroundColor: '#445',
         color: '#eee',
       }} placeholder="Paste PGN here..." />
     </div>
 
-    <div style={{ marginTop: 10, textAlign: 'center', width: '95vw' }}>
+    <div style={{ marginTop, textAlign: 'center', width: '95vw' }}>
       Created by Peter Schmidt-Nielsen
       (<a href="https://twitter.com/ptrschmdtnlsn">Twitter</a>, <a href="https://peter.website">Website</a>)<br/>
       Engine + web interface: <a href="https://github.com/petersn/duckchess">github.com/petersn/duckchess</a><br/>
@@ -506,7 +515,7 @@ function App() {
     return () => window.removeEventListener('resize', handleWindowSizeChange);
   }, []);
 
-  const isMobile = width <= 768;
+  const isMobile = width < 768;
 
   console.log('process.env.PUBLIC_URL:', process.env.PUBLIC_URL);
 
@@ -517,7 +526,7 @@ function App() {
         flexDirection: 'column',
         alignItems: 'center',
       }}>
-        <TopBar isMobile={isMobile} />
+        <TopBar screenWidth={width} isMobile={isMobile} />
         {element}
       </div>
     );
