@@ -182,6 +182,19 @@ function AnalysisPage(props: { isMobile: boolean, workers: Workers | null }) {
     };
   }, [props.workers]);
 
+  React.useEffect(() => {
+    const shortcutsHandler = (event: KeyboardEvent) => {
+      if (event.key === ' ') {
+        // Make the top move.
+        if (props.workers !== null && props.workers.pv.length !== 0) {
+          props.workers.applyMove(props.workers.pv[0], false);
+        }
+      }
+    };
+    document.addEventListener('keydown', shortcutsHandler);
+    return () => document.removeEventListener('keydown', shortcutsHandler);
+  }, [props.workers]);
+
   // let board: React.ReactNode[][] = [];
   // for (let y = 0; y < 8; y++)
   //   board.push([null, null, null, null, null, null, null, null]);
@@ -346,6 +359,13 @@ function AnalysisPage(props: { isMobile: boolean, workers: Workers | null }) {
   }
   */
 
+  let topMoves = [];
+  if (props.workers !== null && props.workers.boardState !== null) {
+    // If it's a duck move, only show the next 1 move.
+    const moveCount = props.workers.boardState.isDuckMove ? 1 : 2;
+    topMoves = props.workers.pv.slice(0, moveCount);
+  }
+
   return <>
     <div style={{
       width: '100%',
@@ -381,6 +401,7 @@ function AnalysisPage(props: { isMobile: boolean, workers: Workers | null }) {
         board={board as any}
         legalMoves={legalMoves}
         hiddenLegalMoves={hiddenLegalMoves}
+        topMoves={topMoves}
         onMove={(move, isHidden) => {
           if (props.workers !== null) {
             console.log('[snp1] move', move, isHidden);
