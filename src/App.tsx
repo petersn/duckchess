@@ -112,7 +112,7 @@ export class Workers {
   }
 }
 
-function TopBar(props: {}) {
+function TopBar(props: { isMobile: boolean }) {
   const barEntryStyle: React.CSSProperties = {
     paddingLeft: 20,
     paddingRight: 20,
@@ -141,12 +141,12 @@ function TopBar(props: {}) {
       display: 'flex',
       flexDirection: 'row',
       alignItems: 'center',
-      fontSize: '130%',
+      fontSize: props.isMobile ? '100%' : '130%',
       fontWeight: 'bold',
     }}>
-      <div style={barEntryStyle}>
+      {props.isMobile || <div style={barEntryStyle}>
         Duck Chess Engine
-      </div>
+      </div>}
 
       <Link to={'/analysis'} style={path === 'analysis' ? selectedTab : unselectedTab} replace>
         Analysis
@@ -163,7 +163,7 @@ function TopBar(props: {}) {
   );
 }
 
-function AnalysisPage(props: { workers: Workers | null }) {
+function AnalysisPage(props: { isMobile: boolean, workers: Workers | null }) {
   const [selectedSquare, setSelectedSquare] = React.useState<[number, number] | null>(null);
   const [pair, setPair] = React.useState<any>(null);
   const [duckFen, setDuckFen] = React.useState<string>('');
@@ -346,136 +346,120 @@ function AnalysisPage(props: { workers: Workers | null }) {
   }
   */
 
-  return (
+  return <>
     <div style={{
+      width: '100%',
+      height: '100%',
       display: 'flex',
-      flexDirection: 'column',
+      flexDirection: props.isMobile ? 'column' : 'row',
       alignItems: 'center',
+      justifyContent: 'center',
     }}>
-      <TopBar />
-      <div style={{
-        width: '100%',
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
+      {props.isMobile || <div style={{
+        flex: 1,
+        height: 600,
+        minHeight: 600,
       }}>
         <div style={{
-          flex: 1,
-          height: 600,
-          minHeight: 600,
+          marginLeft: 'auto',
+          height: '100%',
+          maxWidth: 400,
+          border: '1px solid #eee',
+          padding: 10,
+          boxSizing: 'border-box',
+          overflow: 'scroll',
         }}>
-          <div style={{
-            marginLeft: 'auto',
-            height: '100%',
-            maxWidth: 400,
-            border: '1px solid #eee',
-            padding: 10,
-            boxSizing: 'border-box',
-            overflow: 'scroll',
-          }}>
-            <div style={{ fontWeight: 'bold', fontSize: '120%', marginBottom: 10 }}>Duck Chess Analysis Board</div>
+          <div style={{ fontWeight: 'bold', fontSize: '120%', marginBottom: 10 }}>Duck Chess Analysis Board</div>
 
-            <a href="https://duckchess.com/">Duck chess</a> is a variant in which there is one extra piece, the duck, which is shared between the two players and cannot be captured.
-            Each turn consists of making a regular move, and then moving the duck to any empty square (the duck may not stay in place).
-            There is no check or checkmate, you win by capturing the opponent's king.
-          </div>
+          <a href="https://duckchess.com/">Duck chess</a> is a variant in which there is one extra piece, the duck, which is shared between the two players and cannot be captured.
+          Each turn consists of making a regular move, and then moving the duck to any empty square (the duck may not stay in place).
+          There is no check or checkmate, you win by capturing the opponent's king.
         </div>
-        <ChessBoard
-          board={board as any}
-          legalMoves={legalMoves}
-          hiddenLegalMoves={hiddenLegalMoves}
-          onMove={(move, isHidden) => {
-            if (props.workers !== null) {
-              console.log('[snp1] move', move, isHidden);
-              props.workers.applyMove(move, isHidden);
-            }
-          }}
-        />
+      </div>}
+      <ChessBoard
+        isMobile={props.isMobile}
+        board={board as any}
+        legalMoves={legalMoves}
+        hiddenLegalMoves={hiddenLegalMoves}
+        onMove={(move, isHidden) => {
+          if (props.workers !== null) {
+            console.log('[snp1] move', move, isHidden);
+            props.workers.applyMove(move, isHidden);
+          }
+        }}
+      />
+      <div style={{
+        flex: props.isMobile ? undefined : 1,
+        height: props.isMobile ? undefined : 600,
+        minHeight: props.isMobile ? undefined : 600,
+        width: props.isMobile ? '100%' : undefined,
+      }}>
         <div style={{
-          flex: 1,
-          height: 600,
-          minHeight: 600,
+          height: '100%',
+          maxWidth: 400,
+          border: '1px solid #eee',
+          padding: 10,
+          boxSizing: 'border-box',
         }}>
-          <div style={{
-            height: '100%',
-            maxWidth: 400,
-            border: '1px solid #eee',
-            padding: 10,
-            boxSizing: 'border-box',
-          }}>
-            <div style={{ fontWeight: 'bold', fontSize: '120%', marginBottom: 10 }}>Engine</div>
-            <input type="checkbox" checked={runEngine} onChange={e => {
-              setRunEngine(e.target.checked);
-              if (props.workers !== null) {
-                props.workers.setRunEngine(e.target.checked);
-              }
-            }} /> Run engine
+          <div style={{ fontWeight: 'bold', fontSize: '120%', marginBottom: 10 }}>Engine</div>
+          <input type="checkbox" checked={runEngine} onChange={e => {
+            setRunEngine(e.target.checked);
+            if (props.workers !== null) {
+              props.workers.setRunEngine(e.target.checked);
+            }
+          }} /> Run engine
 
-            {props.workers !== null && <div>
-              Evaluation: {props.workers.evaluation}<br/>
-              Nodes: {props.workers.nodes}<br/>
-              PV: {props.workers.pv.map((m: any) => m.from + ' ' + m.to).join(' ')}
-            </div>}
+          {props.workers !== null && <div>
+            Evaluation: {props.workers.evaluation}<br/>
+            Nodes: {props.workers.nodes}<br/>
+            PV: {props.workers.pv.map((m: any) => m.from + ' ' + m.to).join(' ')}
+          </div>}
 
-          </div>
         </div>
       </div>
-
-      <div style={{ marginTop: 10, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <input type="text" value={duckFen} onChange={e => setDuckFen(e.target.value)} style={{
-          width: 400,
-          backgroundColor: '#445',
-          color: '#eee',
-        }} />
-        <textarea value={pgn} onChange={e => setPgn(e.target.value)} style={{
-          marginTop: 5,
-          width: 400,
-          height: 100,
-          backgroundColor: '#445',
-          color: '#eee',
-        }} placeholder="Paste PGN here..." />
-      </div>
-
-      <div style={{ marginTop: 10, textAlign: 'center' }}>
-        Created by Peter Schmidt-Nielsen
-        (<a href="https://twitter.com/ptrschmdtnlsn">Twitter</a>, <a href="https://peter.website">Website</a>)<br/>
-        Engine + web interface: <a href="https://github.com/petersn/duckchess">github.com/petersn/duckchess</a><br/>
-        <span style={{ fontSize: '50%', opacity: 0.5 }}>Piece SVGs: Cburnett (CC BY-SA 3), Duck SVG + all code: my creation (CC0)</span>
-      </div>
     </div>
-  );
+
+    <div style={{ marginTop: 10, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <input type="text" value={duckFen} onChange={e => setDuckFen(e.target.value)} style={{
+        width: 400,
+        backgroundColor: '#445',
+        color: '#eee',
+      }} />
+      <textarea value={pgn} onChange={e => setPgn(e.target.value)} style={{
+        marginTop: 5,
+        width: 400,
+        height: 100,
+        backgroundColor: '#445',
+        color: '#eee',
+      }} placeholder="Paste PGN here..." />
+    </div>
+
+    <div style={{ marginTop: 10, textAlign: 'center', width: '95vw' }}>
+      Created by Peter Schmidt-Nielsen
+      (<a href="https://twitter.com/ptrschmdtnlsn">Twitter</a>, <a href="https://peter.website">Website</a>)<br/>
+      Engine + web interface: <a href="https://github.com/petersn/duckchess">github.com/petersn/duckchess</a><br/>
+      <span style={{ fontSize: '50%', opacity: 0.5 }}>Piece SVGs: Cburnett (CC BY-SA 3), Duck SVG + all code: my creation (CC0)</span>
+    </div>
+  </>;
 }
 
-function BenchmarkPage(props: { workers: Workers | null }) {
-  return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-    }}>
-      <TopBar />
-      {props.workers === null ? <div>Loading...</div> : <BenchmarkApp workers={props.workers} />}
-    </div>
-  );
+function BenchmarkPage(props: { isMobile: boolean, workers: Workers | null }) {
+  if (props.workers === null)
+    return <div>Loading...</div>;
+  return <BenchmarkApp isMobile={props.isMobile} workers={props.workers} />;
 }
 
-function InfoPage(props: {}) {
+function InfoPage(props: { isMobile: boolean }) {
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-    }}>
-      <TopBar />
-    </div>
+    <>Hello</>
   );
 }
 
 function App() {
   const [workers, setWorkers] = React.useState<Workers | null>(null);
-  const [forceUpdateCounter, setForceUpdateCounter] = React.useState(0);
+  const setForceUpdateCounter = React.useState(0)[1];
+  const [width, setWidth] = React.useState<number>(window.innerWidth);
+
   React.useEffect(() => {
     console.log('Initializing worker...');
     const workers = new Workers(
@@ -486,19 +470,42 @@ function App() {
       },
       () => {
         setTimeout(() => setForceUpdateCounter(Math.random()), 1);
-//        setForceUpdateCounter(forceUpdateCounter + 1);
       },
     );
   }, []);
+
+  function handleWindowSizeChange() {
+    setWidth(window.innerWidth);
+  }
+  React.useEffect(() => {
+    window.addEventListener('resize', handleWindowSizeChange);
+    return () => window.removeEventListener('resize', handleWindowSizeChange);
+  }, []);
+
+  const isMobile = width <= 768;
+
   console.log('process.env.PUBLIC_URL:', process.env.PUBLIC_URL);
+
+  function navigation(element: React.ReactNode): React.ReactNode {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+      }}>
+        <TopBar isMobile={isMobile} />
+        {element}
+      </div>
+    );
+  }
 
   return (
     <Router basename={process.env.PUBLIC_URL}>
       <Routes>
-        <Route path="/analysis" element={<AnalysisPage workers={workers} />} />
-        <Route path="/benchmark" element={<BenchmarkPage workers={workers} />} />
-        <Route path="/info" element={<InfoPage />} />
-        <Route path="/" element={<Navigate to={"/analysis"} replace />} />
+        <Route path="/analysis" element={navigation(<AnalysisPage isMobile={isMobile} workers={workers} />)} />
+        <Route path="/benchmark" element={navigation(<BenchmarkPage isMobile={isMobile} workers={workers} />)} />
+        <Route path="/info" element={navigation(<InfoPage isMobile={isMobile} />)} />
+        <Route path="/" element={navigation(<Navigate to={"/analysis"} replace />)} />
       </Routes>
     </Router>
   );

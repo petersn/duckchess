@@ -34,6 +34,7 @@ export function ChessPiece(props: { piece: PieceKind; style?: React.CSSPropertie
 }
 
 export interface ChessBoardProps {
+  isMobile: boolean;
   board: PieceKind[][];
   legalMoves: Move[];
   hiddenLegalMoves: Move[];
@@ -87,6 +88,8 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
   }
 
   render() {
+    const scale = this.props.isMobile ? 50 : 75;
+
     const svgElements = [];
     let k = 0;
     for (const move of [] as any) {
@@ -138,10 +141,10 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
           piece={piece}
           style={{
             position: 'absolute',
-            left: x * 75,
-            top: y * 75,
-            width: 75,
-            height: 75,
+            left: x * scale,
+            top: y * scale,
+            width: scale,
+            height: scale,
             userSelect: 'none',
             pointerEvents: 'none',
             zIndex: 2,
@@ -169,7 +172,14 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
     }
 
     return (
-      <div style={{ margin: 10, position: 'relative', width: 600, height: 600, minWidth: 600, minHeight: 600 }}>
+      <div style={{
+        margin: 10,
+        position: 'relative',
+        width: 8 * scale,
+        height: 8 * scale,
+        minWidth: 8 * scale,
+        minHeight: 8 * scale,
+      }}>
         <svg
           viewBox="0 0 400 400"
           style={{ width: 600, height: 600, position: 'absolute', zIndex: 1, pointerEvents: 'none' }}
@@ -232,10 +242,10 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
                       <div
                         style={{
                           position: 'relative',
-                          width: 75,
-                          maxWidth: 75,
-                          height: 75,
-                          maxHeight: 75,
+                          width: scale,
+                          maxWidth: scale,
+                          height: scale,
+                          maxHeight: scale,
                           backgroundColor,
                           textAlign: 'center',
                         }}

@@ -140,6 +140,7 @@ async function evalLoop(app: BenchmarkApp) {
 */
 
 interface BenchmarkAppProps {
+  isMobile: boolean;
   workers: Workers;
 }
 
@@ -217,7 +218,7 @@ export class BenchmarkApp extends React.PureComponent<BenchmarkAppProps, Benchma
     const batchesPerSecond = Number(this.state.maxInFlight) * 1e3 / meanLatency;
     const nps = Number(this.state.batchSize) * batchesPerSecond;
     return (
-      <div style={{ width: 550, margin: 10, textAlign: 'center' }}>
+      <div style={{ width: this.props.isMobile ? 350 : 550, margin: 10, textAlign: 'center' }}>
         <h1>Performance tester</h1>
         <p>
           This duck chess engine has two parts: a neural network engine (trained from self-play à la AlphaZero, or lc0)
