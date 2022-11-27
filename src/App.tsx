@@ -120,7 +120,7 @@ function TopBar(props: { isMobile: boolean }) {
     height: '100%',
     display: 'flex',
     alignItems: 'center',
-    color: 'white',
+    color: '#ddd',
     textDecoration: 'none',
   };
   const selectedTab: React.CSSProperties = {
@@ -384,7 +384,8 @@ function AnalysisPage(props: { isMobile: boolean, workers: Workers | null }) {
           marginLeft: 'auto',
           height: '100%',
           maxWidth: 400,
-          border: '1px solid #eee',
+          border: '1px solid #222',
+          backgroundColor: '#33333f',
           padding: 10,
           boxSizing: 'border-box',
           overflow: 'scroll',
@@ -408,6 +409,7 @@ function AnalysisPage(props: { isMobile: boolean, workers: Workers | null }) {
             props.workers.applyMove(move, isHidden);
           }
         }}
+        style={{ margin: 10 }}
       />
       <div style={{
         flex: props.isMobile ? undefined : 1,
@@ -418,7 +420,8 @@ function AnalysisPage(props: { isMobile: boolean, workers: Workers | null }) {
         <div style={{
           height: '100%',
           maxWidth: 400,
-          border: '1px solid #eee',
+          border: '1px solid #222',
+          backgroundColor: '#33333f',
           padding: 10,
           boxSizing: 'border-box',
         }}>

@@ -56,6 +56,7 @@ export interface ChessBoardProps {
   hiddenLegalMoves: Move[];
   topMoves: Move[];
   onMove: (move: Move, isHidden: boolean) => void;
+  style?: React.CSSProperties;
 }
 
 interface ChessBoardState {
@@ -278,6 +279,7 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
           height: '100%',
           maxWidth: 600,
           maxHeight: 600,
+          ...this.props.style,
         }}
       >
         {svgElements}

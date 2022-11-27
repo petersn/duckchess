@@ -5,5 +5,15 @@
 
 body {
     background-color: #282c34;
-    color: #eee;
+    color: #ddd;
+}
+
+/* unvisited link */
+a:link {
+    color: #88f;
+}
+
+/* visited link */
+a:visited {
+    color: #a6d;
 }
