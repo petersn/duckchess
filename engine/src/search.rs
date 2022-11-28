@@ -166,7 +166,7 @@ impl Engine {
     &mut self,
     depth: u16,
     state: &State,
-    alpha: IntEvaluation,
+    mut alpha: IntEvaluation,
     beta: IntEvaluation,
   ) -> (IntEvaluation, Option<(Move, Move)>) {
     let eval = eval_terminal_state(state);
@@ -189,13 +189,20 @@ impl Engine {
       let mut new_state = state.clone();
       new_state.apply_move::<false>(m, None).unwrap();
 
-      let (score, _) = self.mate_search_inner(depth - 1, &new_state, -beta, -alpha);
+      let (score, inner_moves) = self.mate_search_inner(depth - 1, &new_state, -beta, -alpha);
       let score = -score;
       if score >= beta {
-        return (beta, Some(MovePair { regular: m, duck: Move::INVALID }));
+        return (score, match inner_moves {
+          Some((m1, _)) => Some((m, m1)),
+          None => Some((m, Move::INVALID)),
+        });
       }
       if score > alpha {
         alpha = score;
+        best_pair = match inner_moves {
+          Some((m1, _)) => Some((m, m1)),
+          None => Some((m, Move::INVALID)),
+        };
       }
     }
     let score = make_mate_score_slightly_less_extreme(alpha);
