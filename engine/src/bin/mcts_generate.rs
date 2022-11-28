@@ -112,6 +112,8 @@ async fn main() {
         let mut was_rand: Vec<bool> = vec![];
         // This array contains the training targets for the policy head.
         let mut train_dists: Vec<Option<Vec<(engine::rules::Move, f32)>>> = vec![];
+        // This array contains the average value of the entire MCTS tree at each move.
+        let mut root_values: Vec<f32> = vec![];
         // This array says if we attempted a full search to choose a training move.
         let mut full_search: Vec<bool> = vec![];
         // This array tracks how many steps were actually performed to compute this move.
@@ -184,6 +186,7 @@ async fn main() {
                 true => Some(mcts.get_train_distribution()),
                 false => None,
               });
+              root_values.push(mcts.get_root_score().0);
               steps_performed.push(steps);
               moves.push(game_move);
               mcts.apply_move(game_move);
@@ -213,6 +216,7 @@ async fn main() {
             "states": states,
             "was_rand": was_rand,
             "train_dists": train_dists,
+            "root_values": root_values,
             "full_search": full_search,
             "steps_performed": steps_performed,
             "playout_cap_randomization_p": PLAYOUT_CAP_RANDOMIZATION_P,
