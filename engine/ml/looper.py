@@ -95,6 +95,9 @@ def index_to_dir(i):
 def index_to_model_path(i):
     return f"{args.prefix}/step-{i:03}/model-{i:03}.pt"
 
+def index_to_optim_state_path(i):
+    return f"{args.prefix}/step-{i:03}/optim-state-{i:03}.pt"
+
 def index_to_keras_model_path(i):
     return f"{args.prefix}/step-{i:03}/model-keras"
 
@@ -155,6 +158,8 @@ technically statistically biases the games slightly towards being shorter.)
         start = time.time()
         old_model = index_to_model_path(current_model_number)
         new_model = index_to_model_path(current_model_number + 1)
+        old_optim_state = index_to_optim_state_path(current_model_number)
+        new_optim_state = index_to_optim_state_path(current_model_number + 1)
 
         if os.path.exists(new_model):
             print("Model already exists, skipping:", new_model)
@@ -202,15 +207,20 @@ technically statistically biases the games slightly towards being shorter.)
         learning_rate = math.exp( math.log(4e-4) * (1 - lerp_coef) + math.log(5e-6) * lerp_coef )
         print("\x1b[91mLearning rate:", learning_rate, "\x1b[0m")
 
+        optional_old_optim_state = []
+        if os.path.exists(old_optim_state):
+            optional_old_optim_state = ["--old-optim-state-path", old_optim_state]
+
         subprocess.check_call([
             "python", "ml/looper_train.py",
                 "--steps", str(steps),
                 "--games"] + games_paths + [
                 "--old-path", old_model,
                 "--new-path", new_model,
+                "--new-optim-state-path", new_optim_state,
                 "--learning-rate", str(learning_rate),
                 "--project-name", project_name,
-        ], close_fds=True)
+        ] + optional_old_optim_state, close_fds=True)
 
         end = time.time()
         print("Total seconds for iteration:", end - start)
