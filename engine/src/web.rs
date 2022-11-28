@@ -223,10 +223,10 @@ impl Pvs {
   }
 
   pub fn mate_search(&mut self, depth: u16) -> JsValue {
-    // We can only do mate searches at non-duck moves.
-    if self.engine.get_state().is_duck_move {
-      return JsValue::NULL;
-    }
+    //// We can only do mate searches at non-duck moves.
+    //if self.engine.get_state().is_duck_move {
+    //  return JsValue::NULL;
+    //}
     let p = self.engine.mate_search(depth);
     serde_wasm_bindgen::to_value(&(p, self.engine.nodes_searched)).unwrap_or_else(|e| {
       log(&format!("Failed to serialize score: {}", e));
