@@ -227,6 +227,14 @@ impl Pvs {
     //if self.engine.get_state().is_duck_move {
     //  return JsValue::NULL;
     //}
+
+    // Note that only a non-duck move can capture a king.
+    // Therefore it only makes sense to search to even depths from duck moves,
+    // and odd depths from non-duck moves.
+    let depth = match self.engine.get_state().is_duck_move {
+      true => 2 * depth,
+      false => 2 * depth + 1,
+    };
     let p = self.engine.mate_search(depth);
     serde_wasm_bindgen::to_value(&(p, self.engine.nodes_searched)).unwrap_or_else(|e| {
       log(&format!("Failed to serialize score: {}", e));

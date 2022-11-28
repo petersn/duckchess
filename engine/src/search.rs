@@ -168,15 +168,23 @@ impl Engine {
     depth: u16,
     state: &State,
     mut alpha: i32,
-    mut beta: i32,
+    beta: i32,
     //mut alpha: IntEvaluation,
     //beta: IntEvaluation,
   ) -> (IntEvaluation, Option<(Move, Move)>) {
     //println!("mate_search_inner: depth={}", depth);
-    match (state.get_outcome(), state.turn, depth) {
-      (Some(GameOutcome::Draw), _, _) | (None, _, 0) => return (0, None),
-      (Some(GameOutcome::Win(a)), b, _) => return (if a == b { 1000 } else { -1000 }, None),
+    match (state.get_outcome(), state.turn) {
+      (Some(GameOutcome::Draw), _) => return (0, None),
+      (Some(GameOutcome::Win(a)), b) => return (if a == b { 1000 } else { -1000 }, None),
       _ => {}
+    }
+    if depth == 0 {
+      // If we're at depth 0 then we should be in a duck move.
+      if !state.is_duck_move {
+        crate::log("mate_search_inner: depth=0 but not in duck move");
+      }
+      assert!(state.is_duck_move);
+      return (0, None);
     }
 
     // Search over all moves here.
