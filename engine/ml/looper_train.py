@@ -20,7 +20,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--games", metavar="PATH", nargs="+", help="Path to .json self-play games files.")
     parser.add_argument("--old-path", metavar="PATH", help="Path for input network.")
+    parser.add_argument("--old-optim-state-path", metavar="PATH", help="Path for input AdamW state.")
     parser.add_argument("--new-path", metavar="PATH", required=True, help="Path for output network.")
+    parser.add_argument("--new-optim-state-path", metavar="PATH", help="Path for output AdamW state.")
     parser.add_argument("--steps", metavar="COUNT", type=int, default=1000, help="Training steps.")
     parser.add_argument("--minibatch-size", metavar="COUNT", type=int, default=1024, help="Minibatch size.")
     parser.add_argument("--learning-rate", metavar="LR", type=float, default=5e-5, help="Learning rate.")
@@ -105,17 +107,26 @@ if __name__ == "__main__":
     model.cuda()
     print("Parameter count:", sum(p.numel() for p in model.parameters() if p.requires_grad))
 
-    # Load up the model
-    if args.old_path is not None:
-        print("Loading from:", args.old_path)
-        model.load_state_dict(torch.load(args.old_path))
-
-    # Perform generator pretraining.
     cross_en = torch.nn.CrossEntropyLoss()
     mse_func = torch.nn.MSELoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
     policy_loss_ewma = EWMA()
     value_loss_ewma = EWMA()
+
+    # Load up the model
+    if args.old_path is not None:
+        print("Loading from:", args.old_path)
+        model.load_state_dict(torch.load(args.old_path))
+    if args.old_optim_state_path is not None:
+        print("Loading optimizer state from:", args.old_optim_state_path)
+        optimizer.load_state_dict(torch.load(args.old_optim_state_path))
+
+    def save_model():
+        print("Saving to:", args.new_path)
+        torch.save(model.state_dict(), args.new_path)
+        if args.new_optim_state_path is not None:
+            print("Saving optimizer state to:", args.new_optim_state_path)
+            torch.save(optimizer.state_dict(), args.new_optim_state_path)
 
     for i in range(args.steps):
         optimizer.zero_grad()
@@ -140,8 +151,6 @@ if __name__ == "__main__":
                 i, policy_loss_ewma.value + value_loss_ewma.value, policy_loss_ewma.value, value_loss_ewma.value,
             ))
         if args.save_every and i % args.save_every == 0:
-            print("Saving to:", args.new_path)
-            torch.save(model.state_dict(), args.new_path)
+            save_model()
 
-    print("Saving to:", args.new_path)
-    torch.save(model.state_dict(), args.new_path)
+    save_model()
