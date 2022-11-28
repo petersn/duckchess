@@ -159,31 +159,62 @@ impl Engine {
   pub fn mate_search(&mut self, depth: u16) -> (IntEvaluation, Option<(Move, Move)>) {
     self.nodes_searched = 0;
     let start_state = self.state.clone();
-    self.mate_search_inner(depth, &start_state, EVAL_VERY_NEGATIVE, EVAL_VERY_POSITIVE)
+    //self.mate_search_inner(depth, &start_state, EVAL_VERY_NEGATIVE, EVAL_VERY_POSITIVE)
+    self.mate_search_inner(depth, &start_state, -1000, 1000)
   }
 
   fn mate_search_inner(
     &mut self,
     depth: u16,
     state: &State,
-    mut alpha: IntEvaluation,
-    beta: IntEvaluation,
+    mut alpha: i32,
+    mut beta: i32,
+    //mut alpha: IntEvaluation,
+    //beta: IntEvaluation,
   ) -> (IntEvaluation, Option<(Move, Move)>) {
-    let eval = eval_terminal_state(state);
-    match eval {
-      Some(score) => return (score, None),
-      None => (),
-    }
-    if depth == 0 {
-      return (EVAL_DRAW, None);
+    //println!("mate_search_inner: depth={}", depth);
+    match (state.get_outcome(), state.turn, depth) {
+      (Some(GameOutcome::Draw), _, _) | (None, _, 0) => return (0, None),
+      (Some(GameOutcome::Win(a)), b, _) => return (if a == b { 1000 } else { -1000 }, None),
+      _ => {}
     }
 
     // Search over all moves here.
     let mut moves = vec![];
     state.move_gen::<false>(&mut moves);
     assert!(!moves.is_empty());
+    let mut best_score = -2000;
     let mut best_pair = None;
 
+    for m in moves {
+      self.nodes_searched += 1;
+      let mut new_state = state.clone();
+      new_state.apply_move::<false>(m, None).unwrap();
+      // We must match on is_duck_move, because we only negate scores when switching between players.
+      let (score, inner_moves) = match state.is_duck_move {
+        // Must negate in this case.
+        true => {
+          let (score, inner_moves) = self.mate_search_inner(depth - 1, &new_state, -beta, -alpha);
+          (-score, inner_moves)
+        }
+        false => self.mate_search_inner(depth - 1, &new_state, alpha, beta),
+      };
+      let move_pair = match inner_moves {
+        Some((a, _)) => (m, a),
+        None => (m, Move::INVALID),
+      };
+      if score >= beta {
+        return (score, Some(move_pair));
+      }
+      alpha = alpha.max(score);
+      if score > best_score {
+        best_score = score;
+        best_pair = Some(move_pair);
+      }
+    }
+    (best_score, best_pair)
+
+    /*
     for m in moves {
       self.nodes_searched += 1;
       let mut new_state = state.clone();
@@ -207,6 +238,7 @@ impl Engine {
     }
     let score = make_mate_score_slightly_less_extreme(alpha);
     (score, best_pair)
+    */
   }
 
   fn probe_tt(&mut self, hash: u64) -> Option<&mut TTEntry> {
