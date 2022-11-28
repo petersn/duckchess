@@ -46,7 +46,7 @@ const KILLER_MOVE_COUNT: usize = 64;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub struct MovePair {
   regular: Move,
-  duck: Move,  
+  duck: Move,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -154,6 +154,231 @@ impl Engine {
       //));
     }
     p
+  }
+
+  pub fn mate_search(&mut self, depth: u16) -> (IntEvaluation, Option<MovePair>) {
+    self.nodes_searched = 0;
+    let start_state = self.state.clone();
+    // Apply iterative deepening.
+    let mut p = (EVAL_DRAW, None);
+    for d in 1..=depth {
+      p = self.mate_search_pvs(
+        d,
+        &start_state,
+        EVAL_VERY_NEGATIVE,
+        EVAL_VERY_POSITIVE,
+      );
+    }
+    p
+  }
+
+  fn mate_search_pvs(
+    &mut self,
+    depth: u16,
+    state: &State,
+    mut alpha: IntEvaluation,
+    mut beta: IntEvaluation,
+  ) -> (IntEvaluation, Option<MovePair>) {
+    let state_hash = state.get_transposition_table_hash();
+    let mut tt_move_pair = MovePair { regular: Move::INVALID, duck: Move::INVALID };
+    // Check the transposition table.
+    if let Some(entry) = self.probe_tt(state_hash) {
+      tt_move_pair = entry.best_move.unwrap_or(tt_move_pair);
+      if entry.depth >= depth {
+        match entry.node_type {
+          NodeType::Exact => return (entry.score, entry.best_move),
+          NodeType::LowerBound => alpha = alpha.max(entry.score),
+          NodeType::UpperBound => beta = beta.min(entry.score),
+        }
+        if alpha >= beta {
+          return (entry.score, entry.best_move);
+        }
+      }
+    }
+
+    let eval = eval_terminal_state(state);
+    match eval {
+      Some(score) => return (score, None),
+      None => (),
+    }
+    if depth == 0 {
+      return (EVAL_DRAW, None);
+    }
+
+    // We now generate (regular, duck) move pairs, and sort all of them.
+    // For regular search we apply some light pruning on duck moves.
+    // For quiescence search we prune much more aggressively on both.
+    //let mut naive_move_pairs = 0;
+    let mut move_pairs = vec![];
+    {
+      let mut single_moves = Vec::new();
+      state.move_gen::<false>(&mut single_moves);
+      for m in single_moves {
+        let mut child = state.clone();
+        child.apply_move::<false>(m, None).unwrap();
+        // If the child is terminal then generate just a single dummy duck move.
+        if child.get_outcome().is_some() {
+          move_pairs.push(MovePair {
+            regular: m,
+            duck: Move::INVALID,
+          });
+          continue;
+        }
+        let child_occupied = child.get_occupied();
+        // Forcibly skip over our duck move.
+        assert!(child.is_duck_move);
+        child.is_duck_move = false;
+        child.turn = child.turn.other_player();
+        // Do move-gen for the opponent, to find candidate moves for us to block.
+        let mut block_mask: u64 = child.generate_duck_block_mask::<false>();
+        // If they only have one or zero blockable moves then make up another place to put the duck,
+        // or we might (with absolutely tiny probability) end up stalemating them, or in quiescence
+        // search we might force the duck somewhere silly.
+        if block_mask.count_ones() <= 1 {
+          crate::log(&format!("Forcing duck move for {}", m));
+          //println!("Only one blockable move after {}  QUIESCENCE = {}", m, QUIESCENCE);
+          panic!("This should be extremely rare, so I want to know if it happens for now.");
+          let other_free_spots = !child_occupied & !block_mask;
+          assert!(other_free_spots != 0);
+          // Find the bottom set bit in other_free_spots.
+          let first_free_spot = other_free_spots & other_free_spots.wrapping_neg();
+          debug_assert!(first_free_spot.count_ones() == 1);
+          block_mask |= first_free_spot;
+          //// FIXME: Do something less wasteful here!
+          //block_mask = u64::MAX;
+        }
+        block_mask &= !child_occupied;
+        //block_mask = !child.get_occupied();
+        //naive_move_pairs += child_occupied.count_zeros() - 1;
+        let current_duck_pos = get_square(child.ducks.0);
+        while let Some(pos) = iter_bits(&mut block_mask) {
+          let m_duck = Move {
+            // Our encoding of the initial duck placement move requires this match.
+            from: match child.ducks.0 == 0 {
+              true => pos,
+              false => current_duck_pos,
+            },
+            to: pos,
+          };
+          move_pairs.push(MovePair {
+            regular: m,
+            duck: m_duck,
+          });
+        }
+      }
+      //println!("{} move pairs (naive {})", move_pairs.len(), naive_move_pairs);
+    }
+
+    assert!(!move_pairs.is_empty());
+
+    // Reorder based on our move order table.
+    //let state_hash: u64 = state.get_transposition_table_hash();
+
+    let killer_move = self.probe_killer_move(state);
+
+    //if mot_move.is_some() || killer_move.is_some() {
+    move_pairs.sort_by(|&a, &b| {
+      //let mut a_score = (100.0 * nnue.outputs[a.to as usize]) as i32;
+      //let mut b_score = (100.0 * nnue.outputs[b.to as usize]) as i32;
+      let mut a_score = 0;
+      let mut b_score = 0;
+      macro_rules! adjust_scores {
+        ($good_move:expr, $score_regular:expr, $score_duck:expr) => {
+          if $good_move.regular == a.regular {
+            a_score += $score_regular;
+          }
+          if $good_move.regular == b.regular {
+            b_score += $score_regular;
+          }
+          if $good_move.duck == a.duck {
+            a_score += $score_duck;
+          }
+          if $good_move.duck == b.duck {
+            b_score += $score_duck;
+          }
+        };
+      }
+      adjust_scores!(killer_move, 100, 50);
+      adjust_scores!(tt_move_pair, 150, 120);
+      b_score.cmp(&a_score)
+    });
+    //moves.sort_by(|_, _| {
+    //  self.next_random().cmp(&self.next_random())
+    //});
+
+    //log(&format!("pvs({}, {}, {}) moves={}", depth, alpha, beta, moves.len()));
+    let mut best_score = EVAL_VERY_NEGATIVE;
+    let mut best_pair = None;
+
+    let mut node_type = NodeType::UpperBound;
+    let mut first = true;
+    for move_pair in move_pairs {
+      self.nodes_searched += 1;
+      let mut new_state = state.clone();
+      let adjustments = {
+        let adjustment0 = new_state.apply_move::<false>(move_pair.regular, None).unwrap();
+        if new_state.get_outcome().is_some() {
+          // FIXME: I don't need to do PVS here!
+          continue;
+          panic!("This should be impossible.");
+        }
+        let adjustment1 = new_state.apply_move::<false>(move_pair.duck, None).unwrap();
+        (adjustment0, adjustment1)
+      };
+      //nnue.undo(undo_cookie);
+      //let debugging_hash = nnue.get_debugging_hash();
+      //println!("Undo debugging hash: {:016x}", debugging_hash);
+
+      let mut score;
+      let mut next_pair;
+
+      // Two cases:
+      // If new_state is a duck move state, we *don't* invert the score, as we take the next move.
+      assert!(!new_state.is_duck_move);
+      if first {
+        (score, next_pair) =
+          self.mate_search_pvs(depth - 1, &new_state, -beta, -alpha);
+        score *= -1;
+      } else {
+        (score, next_pair) =
+          self.mate_search_pvs(depth - 1, &new_state, -alpha - 1, -alpha);
+        score *= -1;
+        if alpha < score && score < beta {
+          (score, next_pair) =
+            self.mate_search_pvs(depth - 1, &new_state, -beta, -score);
+          score *= -1;
+        }
+      }
+
+      //assert_eq!(debugging_hash, nnue.get_debugging_hash());
+      //if state.is_duck_move {
+      //  let eval = nnue.evaluate().expected_score;
+      //  self.total_eval += eval;
+      //}
+
+      if score > best_score {
+        best_score = score;
+        best_pair = Some(move_pair);
+      }
+      if score > alpha {
+        node_type = NodeType::Exact;
+        //self.tt_insert(state_hash, m, score, depth);
+        //self.move_order_table.insert(state_hash, m);
+        //self.move_order_table_insert(&state, m);
+      }
+      alpha = alpha.max(score);
+      if alpha >= beta {
+        self.insert_killer_move(state, move_pair);
+        node_type = NodeType::LowerBound;
+        break;
+      }
+      first = false;
+    }
+
+    let score = make_mate_score_slightly_less_extreme(alpha);
+    //self.tt_insert(state.zobrist, depth, score, best_pair.0, NodeType::Exact);
+    self.insert_tt(state_hash, depth, score, best_pair, node_type);
+    (score, best_pair)
   }
 
   fn probe_tt(&mut self, hash: u64) -> Option<&mut TTEntry> {
@@ -295,7 +520,7 @@ impl Engine {
         // Forcibly skip over our duck move.
         assert!(child.is_duck_move);
         child.is_duck_move = false;
-        child.turn = child.turn.other_player();      
+        child.turn = child.turn.other_player();
         // Do move-gen for the opponent, to find candidate moves for us to block.
         let mut block_mask: u64 = child.generate_duck_block_mask::<QUIESCENCE>();
         // If they only have one or zero blockable moves then make up another place to put the duck,

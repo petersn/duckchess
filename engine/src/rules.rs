@@ -675,6 +675,33 @@ impl State {
     mask
   }
 
+  pub fn compute_duck_skip_move(&self, m: Move) -> Option<Move> {
+    // If this is a duck move, also get the moves for the next state.
+    if !self.is_duck_move || self.get_outcome().is_some() {
+      crate::log("BUG BUG BUG: Invalid hidden move");
+      return None;
+    }
+    let mut next_state = self.clone();
+    next_state.turn = next_state.turn.other_player();
+    next_state.is_duck_move = false;
+    // Find all duck positions that interfere with this move.
+    let mut duck_allowed = !(next_state.get_move_duck_block_mask(m) | next_state.get_occupied());
+    // Find the first allowed location for the duck.
+    let duck_from = crate::rules::get_square(self.ducks.0);
+    // We now figure out a nice spot to put the duck.
+    let mut duck_to = 0;
+    while let Some(square) = crate::rules::iter_bits(&mut duck_allowed) {
+      // Pick whichever move has a lower x-coordinate, and a y-coordinate closer to the middle.
+      let better_y = ((square as i32 / 8) - 3).abs() < ((duck_to as i32 / 8) - 3).abs();
+      if square % 8 < duck_to % 8 || better_y {
+        duck_to = square;
+      }
+    }
+    // Handle the initial placement of the duck here too.
+    let move_duck = Move { from: if self.ducks.0 == 0 { duck_to } else { duck_from }, to: duck_to };
+    Some(move_duck)
+  }
+
   pub fn adjust_zobrist(&mut self, adjustment: &NnueAdjustment) {
     //match adjustment {
     //  

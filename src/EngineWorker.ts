@@ -8,7 +8,6 @@ declare function postMessage(message: MessageFromEngineWorker): void;
 
 let model: tf.LayersModel;
 let engine: Engine;
-let worker: Worker;
 let runEngine: boolean = false;
 
 function sendBoardState() {
@@ -110,12 +109,11 @@ async function initWorker() {
   //postMessage({ type: 'board', board: fakeState, moves: [] });
   sendBoardState();
   workLoop();
-  return;
 
-  // Create a search worker.
-  worker = new Worker(new URL('./SearchWorker.ts', import.meta.url));
-  worker.onmessage = onSearchWorkerMessage;
-  worker.postMessage({ type: 'init', mem: sharedArrayBuffer });
+  //// Create a search worker.
+  //worker = new Worker(new URL('./SearchWorker.ts', import.meta.url));
+  //worker.onmessage = onSearchWorkerMessage;
+  //worker.postMessage({ type: 'init', mem: sharedArrayBuffer });
 }
 
 onmessage = function(e: MessageEvent<MessageToEngineWorker>) {

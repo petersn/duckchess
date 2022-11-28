@@ -20,7 +20,7 @@ extern "C" {
 #[wasm_bindgen]
 pub struct Engine {
   inference_engine: &'static inference_web::TensorFlowJsEngine<(usize, PendingPath)>,
-  engine:           search::Engine,
+  //engine:           search::Engine,
   mcts:             mcts::Mcts<'static, inference_web::TensorFlowJsEngine<(usize, PendingPath)>>,
   //input_array: Box<[f32; MAX_BATCH_SIZE * FEATURES_SIZE]>,
   //policy_array: Box<[f32; MAX_BATCH_SIZE * POLICY_LEN]>,
@@ -30,24 +30,26 @@ pub struct Engine {
 #[wasm_bindgen]
 impl Engine {
   pub fn get_state(&self) -> JsValue {
-    serde_wasm_bindgen::to_value(self.engine.get_state()).unwrap_or_else(|e| {
+    serde_wasm_bindgen::to_value(self.mcts.get_state()).unwrap_or_else(|e| {
       log(&format!("Failed to serialize state: {}", e));
       JsValue::NULL
     })
   }
 
   pub fn set_state(&mut self, state: JsValue) {
-    let new_state = serde_wasm_bindgen::from_value(state).unwrap_or_else(|e| {
-      log(&format!("Failed to deserialize state: {}", e));
-      panic!("Failed to deserialize state: {}", e);
-    });
-    self.engine.set_state(new_state);
+    panic!("Not implemented");
+    //let new_state = serde_wasm_bindgen::from_value(state).unwrap_or_else(|e| {
+    //  log(&format!("Failed to deserialize state: {}", e));
+    //  panic!("Failed to deserialize state: {}", e);
+    //});
+    //self.mcts.set_state(new_state);
   }
 
   pub fn get_moves(&self) -> JsValue {
     let mut moves = Vec::new();
     let mut optional_moves = Vec::new();
-    let current_state = self.engine.get_state();
+    let current_state = self.mcts.get_state();
+    //let current_state = self.engine.get_state();
     current_state.move_gen::<false>(&mut moves);
     // If this is a duck move, also get the moves for the next state.
     if current_state.is_duck_move && current_state.get_outcome().is_none() {
@@ -75,49 +77,25 @@ impl Engine {
 
     // First check if we need to apply a duck move first.
     if is_hidden {
-      let current_state = self.engine.get_state();
-      // If this is a duck move, also get the moves for the next state.
-      if !current_state.is_duck_move || current_state.get_outcome().is_some() {
-        log("BUG BUG BUG: Invalid hidden move");
-        return false;
-      }
-      let mut next_state = current_state.clone();
-      next_state.turn = next_state.turn.other_player();
-      next_state.is_duck_move = false;
-      // Find all duck positions that interfere with this move.
-      let mut duck_allowed = !(next_state.get_move_duck_block_mask(m) | next_state.get_occupied());
-      // Find the first allowed location for the duck.
-      let duck_from = crate::rules::get_square(current_state.ducks.0);
-      // We now figure out a nice spot to put the duck.
-      let mut duck_to = 0;
-      while let Some(square) = crate::rules::iter_bits(&mut duck_allowed) {
-        // Pick whichever move has a lower x-coordinate, and a y-coordinate closer to the middle.
-        let better_y = ((square as i32 / 8) - 3).abs() < ((duck_to as i32 / 8) - 3).abs();
-        if square % 8 < duck_to % 8 || better_y {
-          duck_to = square;
+      match self.mcts.get_state().compute_duck_skip_move(m) {
+        Some(duck_move) => {
+          self.mcts.apply_move(duck_move);
+          //self.engine.apply_move(duck_move);
         }
-      }
-      // Handle the initial placement of the duck here too.
-      let move_duck = Move { from: if current_state.ducks.0 == 0 { duck_to } else { duck_from }, to: duck_to };
-      // Move the duck out of the way first.
-      log(&format!("Applying duck movement move: {:?} (duck_allowed: {:016x})", move_duck, duck_allowed));
-      match self.engine.get_state_mut().apply_move::<false>(move_duck, None) {
-        Ok(_) => {}
-        Err(msg) => {
-          log(&format!("Failed to apply move: {}", msg));
+        None => {
+          log("Invalid duck move");
           return false;
         }
       }
-      self.mcts.apply_move(move_duck);
     }
 
-    match self.engine.get_state_mut().apply_move::<false>(m, None) {
-      Ok(_) => {}
-      Err(msg) => {
-        log(&format!("Failed to apply move: {}", msg));
-        return false;
-      }
-    }
+    //match self.engine.get_state_mut().apply_move::<false>(m, None) {
+    //  Ok(_) => {}
+    //  Err(msg) => {
+    //    log(&format!("Failed to apply move: {}", msg));
+    //    return false;
+    //  }
+    //}
     log(&format!("Applied move: {:?}", m));
     self.mcts.apply_move(m);
     use crate::inference::InferenceEngine;
@@ -186,7 +164,6 @@ pub fn new_engine(seed: u64) -> Engine {
   log(&format!("Created (1) inference engine"));
   Engine {
     inference_engine: tfjs_inference_engine,
-    engine:           search::Engine::new(seed, WEB_TRANSPOSITION_TABLE_SIZE),
     mcts:             mcts::Mcts::new(0, seed, tfjs_inference_engine, SearchParams::default()),
     //input_array: Box::new([0.0; MAX_BATCH_SIZE * FEATURES_SIZE]),
     //policy_array: Box::new([0.0; MAX_BATCH_SIZE * POLICY_LEN]),
@@ -202,6 +179,67 @@ pub fn max_batch_size() -> usize {
 #[wasm_bindgen]
 pub fn channel_count() -> usize {
   inference::CHANNEL_COUNT
+}
+
+#[wasm_bindgen]
+pub struct Pvs {
+  engine: search::Engine,
+}
+
+#[wasm_bindgen]
+impl Pvs {
+  pub fn apply_move(&mut self, m: JsValue, is_hidden: bool) -> bool {
+    let m: Move = serde_wasm_bindgen::from_value(m).unwrap_or_else(|e| {
+      log(&format!("Failed to deserialize move: {}", e));
+      panic!("Failed to deserialize move: {}", e);
+    });
+    if is_hidden {
+      // FIXME: I need to make this properly insert duck moves.
+      match self.engine.get_state().compute_duck_skip_move(m) {
+        Some(duck_move) => {
+          match self.engine.get_state_mut().apply_move::<false>(duck_move, None) {
+            Ok(_) => {}
+            Err(msg) => {
+              log(&format!("Failed to apply move: {}", msg));
+              return false;
+            }
+          }
+          //self.engine.apply_move(duck_move);
+        }
+        None => {
+          log("Invalid duck move");
+          return false;
+        }
+      }
+    }
+    match self.engine.get_state_mut().apply_move::<false>(m, None) {
+      Ok(_) => {}
+      Err(msg) => {
+        log(&format!("Failed to apply move: {}", msg));
+        return false;
+      }
+    }
+    true
+  }
+
+  pub fn mate_search(&mut self, depth: u16) -> JsValue {
+    // We can only do mate searches at non-duck moves.
+    if self.engine.get_state().is_duck_move {
+      return JsValue::NULL;
+    }
+    let p = self.engine.mate_search(depth);
+    serde_wasm_bindgen::to_value(&(p, self.engine.nodes_searched)).unwrap_or_else(|e| {
+      log(&format!("Failed to serialize score: {}", e));
+      JsValue::NULL
+    })
+  }
+}
+
+#[wasm_bindgen]
+pub fn new_pvs(seed: u64) -> Pvs {
+  Pvs {
+    engine: search::Engine::new(seed, WEB_TRANSPOSITION_TABLE_SIZE),
+  }
 }
 
 #[wasm_bindgen]

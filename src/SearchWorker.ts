@@ -1,12 +1,16 @@
-import init, { new_engine, max_batch_size, channel_count, parse_pgn4, Engine, perft, perft_nnue, perft_eval, test_threads, test_simd, test_shared_mem } from 'engine';
+import init, { new_engine, max_batch_size, channel_count, parse_pgn4, Engine, perft, perft_nnue, perft_eval, test_threads, test_simd, test_shared_mem, Pvs, new_pvs } from 'engine';
 import { MessageFromSearchWorker } from './WorkerMessages';
 
 // Declare the type of postMessage
 declare function postMessage(message: MessageFromSearchWorker): void;
 
+let pvs: Pvs;
+
 async function initSearchWorker(sharedArrayBuffer: SharedArrayBuffer) {
   await init();
   console.log('Search worker initialized');
+  const seed = Math.floor(Math.random() * 1e9);
+  pvs = new_pvs(BigInt(seed));
   postMessage({ type: 'initted' });
   //const array = new Int32Array(sharedArrayBuffer);
   //setInterval(() => {
@@ -48,6 +52,11 @@ onmessage = function(e: MessageEvent<any>) {
   switch (e.data.type) {
     case 'init':
       initSearchWorker(e.data.mem);
+      break;
+    case 'applyMove':
+      pvs.apply_move(e.data.move, e.data.isHidden);
+      const result = pvs.mate_search(5);
+      console.log('Mate search result', result);
       break;
     case 'runAlphaBetaBenchmark':
       runAlphaBetaBenchmark();
