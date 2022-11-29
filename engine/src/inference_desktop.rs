@@ -37,6 +37,14 @@ fn load_model(model_dir: &str) -> Result<Model, String> {
     .meta_graph_def()
     .get_signature("serving_default")
     .map_err(|e| format!("Failed to get signature: {}", e))?;
+  // We now enumerate all of the devices in the session.
+  let devices = bundle.session
+    .device_list()
+    .map_err(|e| format!("Failed to list devices: {}", e))?;
+  println!("Available devices:");
+  for device in devices {
+    println!("  {} - {}", device.name, device.device_type);
+  }
   // Print all inputs.
   println!("Inputs:");
   for (name, tensor_info) in signature.inputs() {
@@ -124,7 +132,7 @@ impl<Cookie> TensorFlowEngine<Cookie> {
 }
 
 impl<Cookie> inference::InferenceEngine<Cookie> for TensorFlowEngine<Cookie> {
-  const DESIRED_BATCH_SIZE: usize = 128;
+  const DESIRED_BATCH_SIZE: usize = 256;
 
   fn add_work(&self, state: &crate::rules::State, cookie: Cookie) -> bool {
     let mut input_blocks = self.input_blocks.lock().unwrap();
@@ -176,7 +184,7 @@ impl<Cookie> inference::InferenceEngine<Cookie> for TensorFlowEngine<Cookie> {
       let slice: &[f32] = &policy_output[range];
       // Policy should already be normalized.
       let sum: f32 = slice.iter().sum();
-      debug_assert!((sum - 1.0).abs() < 1e-4);
+      debug_assert!((sum - 1.0).abs() < 1e-2);
       policies.push(slice.try_into().unwrap());
     }
     // Pass the outputs to the callback.

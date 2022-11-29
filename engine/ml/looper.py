@@ -44,12 +44,13 @@ def generate_games(prefix, model_number):
                     prefix + "/mcts_generate", #"--release", "--bin", "mcts_generate", "--",
                         "--model-dir", model_dir,
                         "--output-dir", output_dir,
+                        "--batch-size", "256" if game_id == 0 else "128"
                 ],
                 close_fds=True,
                 env=dict(
                     os.environ,
                     TF_FORCE_GPU_ALLOW_GROWTH="true",
-                    LD_LIBRARY_PATH="./run-005",
+                    LD_LIBRARY_PATH="/usr/local/cuda/lib64:./run-011-duck-chess",
                     CUDA_VISIBLE_DEVICES=str(game_id),
                 ),
                 stdin=subprocess.PIPE,
@@ -220,7 +221,12 @@ technically statistically biases the games slightly towards being shorter.)
                 "--new-optim-state-path", new_optim_state,
                 "--learning-rate", str(learning_rate),
                 "--project-name", project_name,
-        ] + optional_old_optim_state, close_fds=True)
+        ] + optional_old_optim_state, close_fds=True,
+            env=dict(
+                os.environ,
+                CUDA_VISIBLE_DEVICES="0",
+            ),
+        )
 
         end = time.time()
         print("Total seconds for iteration:", end - start)

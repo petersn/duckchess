@@ -25,13 +25,17 @@ struct Args {
 
   #[arg(short, long, default_value = "default")]
   search_params: SearchParams,
+
+  #[arg(short, long)]
+  batch_size: usize,
 }
 
 #[tokio::main]
 async fn main() {
   let args = Args::parse();
 
-  let batch_size = TensorFlowEngine::<()>::DESIRED_BATCH_SIZE;
+  //let batch_size = TensorFlowEngine::<()>::DESIRED_BATCH_SIZE;
+  let batch_size = args.batch_size;
   println!("Using batch size: {}", batch_size);
 
   let inference_engine: &TensorFlowEngine<(usize, PendingPath)> = Box::leak(Box::new(

@@ -1,3 +1,5 @@
+#![feature(let_chains)]
+
 use std::sync::atomic::AtomicU64;
 
 use clap::Parser;
