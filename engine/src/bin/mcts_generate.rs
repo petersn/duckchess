@@ -140,7 +140,14 @@ async fn main() {
           // We early out only if we're not doing a full search, to properly compute our training target.
           let mut steps = 0;
           for _ in 0..playouts {
-            if !do_full_search && mcts.have_reached_visit_count(playouts) {
+
+            // For training moves we need the full 1000 visits to have an accurate distribution.
+            // But for fast moves we can stop once we know that the second most visited move can't surpass the most.
+            if if do_full_search {
+              mcts.have_reached_visit_count(playouts)
+            } else {
+              mcts.have_reached_visit_count_short_circuiting(playouts)
+            } {
               break;
             }
             steps += 1;

@@ -232,7 +232,7 @@ async fn main() {
           // We early out only if we're not doing a full search, to properly compute our training target.
           let mut steps = 0;
           for _ in 0..args.playouts {
-            if mcts.have_reached_visit_count(args.playouts) {
+            if mcts.have_reached_visit_count_short_circuiting(args.playouts) {
               break;
             }
             steps += 1;

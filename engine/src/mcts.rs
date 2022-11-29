@@ -606,6 +606,10 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
   }
 
   pub fn have_reached_visit_count(&self, tree_size: u32) -> bool {
+    self.get_sum_child_visits(self.root) as u32 >= tree_size
+  }
+
+  pub fn have_reached_visit_count_short_circuiting(&self, tree_size: u32) -> bool {
     // Find the most and second most visited children at the root.
     let mut best_child_visits = 0;
     let mut second_best_child_visits = 0;
