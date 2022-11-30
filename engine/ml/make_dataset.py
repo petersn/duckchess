@@ -1,87 +1,87 @@
+import os
 import json
 import glob
 import numpy as np
 import random
+import multiprocessing
+from dataclasses import dataclass
 from tqdm import tqdm
 
 import show_game
 import engine
 
-policy_truncation = 32
+CHANNEL_COUNT = engine.channel_count()
+POLICY_TRUNCATION = 32
 
-def process_game_paths(paths):
-    # Read all of the game files into RAM, to freeze them against edits.
-    game_file_contents = []
-    for path in tqdm(paths):
-        with open(path) as f:
-            game_file_contents.append(f.read())
+@dataclass
+class Dataset:
+    game_offsets: np.ndarray
+    features: np.ndarray
+    policy_indices: np.ndarray
+    policy_probs: np.ndarray
+    value: np.ndarray
 
-    def games_iterator(final_iter=False):
-        if final_iter:
-            # Consume the game_file_contents to save memory.
-            for i in tqdm(range(len(game_file_contents))):
-                game_file_string = game_file_contents[i]
-                game_file_contents[i] = None
-                for line in game_file_string.splitlines():
-                    yield json.loads(line)
-        else:
-            for game_file_string in tqdm(game_file_contents):
-                for line in game_file_string.splitlines():
-                    yield json.loads(line)
+    def sanity_check(self):
+        assert len(self.features) == len(self.policy_indices) == len(self.policy_probs) == len(self.value)
 
-    #all_games = []
-    #for path in tqdm(paths):
-    #    with open(path) as f:
-    #        for line in f:
-    #            all_games.append(json.loads(line))
+    def save(self, path):
+        self.sanity_check()
+        np.savez_compressed(
+            path,
+            game_count=len(self.game_offsets),
+            move_count=len(self.features),
+            game_offsets=self.game_offsets,
+            features=self.features,
+            policy_indices=self.policy_indices,
+            policy_probs=self.policy_probs,
+            value=self.value,
+        )
 
-    # First we count all moves.
-    game_count = 0
+    @classmethod
+    def load(cls, path):
+        data = np.load(path)
+        ds = cls(
+            game_offsets=data["game_offsets"],
+            features=data["features"],
+            policy_indices=data["policy_indices"],
+            policy_probs=data["policy_probs"],
+            value=data["value"],
+        )
+        ds.sanity_check()
+        return ds
+
+def process_game_path(path: str):
+    cache_path = path + ".cache.npz"
+    # If there's a newer cache file, skip this step.
+    if os.path.exists(cache_path) and os.path.getmtime(cache_path) > os.path.getmtime(path):
+        return cache_path
+    with open(path) as f:
+        games = f.readlines()
+    # Figure out the size of the array we're allocating, and where each game fits in.
+    game_offsets = []
     total_moves = 0
-    for game in games_iterator(final_iter=False):
-        game_count += 1
-        #if "version" not in game:
-        #    continue
+    for game in games:
+        game_offsets.append(total_moves)
+        game = json.loads(game)
         version = game["version"]
-        #if version != 3:
-        #    continue
-        #version = "pvs-1"
         if version == "pvs-1":
             total_moves += sum(not was_rand for was_rand in game["was_rand"])
         elif version == "mcts-1":
             total_moves += sum(td is not None for td in game["train_dists"])
         else:
             raise RuntimeError("Unknown game version: " + str(version))
-
-    print("Total games:", game_count)
-    print("Total moves:", total_moves)
-
-    features_array = np.zeros((total_moves, engine.channel_count(), 8, 8), dtype=np.int8)
-    policy_indices_array = np.ones((total_moves, policy_truncation), dtype=np.int16)
+    print("Processing", path, "with", len(games), "games and", total_moves, "moves")
+    features_array = np.zeros((total_moves, CHANNEL_COUNT, 8, 8), dtype=np.int8)
+    policy_indices_array = np.ones((total_moves, POLICY_TRUNCATION), dtype=np.int16)
     policy_indices_array *= -1
-    policy_probs_array = np.zeros((total_moves, policy_truncation), dtype=np.float32)
-    #policy_array = np.zeros((total_moves, 64, 64), dtype=np.float16)
+    policy_probs_array = np.zeros((total_moves, POLICY_TRUNCATION), dtype=np.float32)
     value_array = np.zeros((total_moves, 1), dtype=np.float32)
-    byte_length = (
-        features_array.nbytes
-        + policy_indices_array.nbytes
-        + policy_probs_array.nbytes
-        #+ policy_array.nbytes
-        + value_array.nbytes
-    )
-    print("Total storage:", byte_length / 1024 / 1024, "MiB")
-
     entry = 0
-    for game in games_iterator(final_iter=True):
-        #if "version" not in game:
-        #    continue
+    for game in games:
+        game = json.loads(game)
         version = game["version"]
-        #if version != 3:
-        #    continue
-        #version = "pvs-1"
         value_for_white = {"1-0": +1, "0-1": -1, None: 0}[game["outcome"]]
         e = engine.Engine(0)
-
         for i, move in enumerate(game["moves"]):
             white_to_move = {"white": True, "black": False}[json.loads(e.get_state())["turn"]]
             this_move_flip = 0 if white_to_move else 56
@@ -140,7 +140,7 @@ def process_game_paths(paths):
             #    #move = json.loads(move_str)
             #    policy_slice[move["from"] ^ this_move_flip][move["to"] ^ this_move_flip] = p
             policy_dist.sort(key=lambda x: x[1], reverse=True)
-            for j, (m, prob) in enumerate(policy_dist[:policy_truncation]):
+            for j, (m, prob) in enumerate(policy_dist[:POLICY_TRUNCATION]):
                 # We have to take into the flip of the move.
                 possibly_flipped_move = {"from": m["from"] ^ this_move_flip, "to": m["to"] ^ this_move_flip}
                 policy_indices_array[entry, j] = engine.move_to_index(json.dumps(possibly_flipped_move))
@@ -163,26 +163,79 @@ def process_game_paths(paths):
             #state = json.loads(e.get_state())
             #show_game.render_state(state)
             #input("> ")
-        #assert e.get_outcome() == game["outcome"]
-    #assert entry == total_moves
-    if entry != total_moves:
-        print(f"FAILURE: entry != total_moves: {entry} != {total_moves}")
-        features_array = features_array[:entry]
-        policy_indices_array = policy_indices_array[:entry]
-        policy_probs_array = policy_probs_array[:entry]
-        value_array = value_array[:entry]
-
-    return features_array, policy_indices_array, policy_probs_array, value_array
-
-if __name__ == "__main__":
-    game_paths = "games/games-*.json"
-    features_array, policy_indices_array, policy_probs_array, value_array = process_game_paths(glob.glob(game_paths))
-    # Save the output as three numpy arrays packed into a single .npz file.
-    np.savez_compressed(
-        "train.npz",
+    assert entry == total_moves, f"entry = {entry} total_moves = {total_moves}"
+    dataset = Dataset(
+        game_offsets=game_offsets,
         features=features_array,
         policy_indices=policy_indices_array,
         policy_probs=policy_probs_array,
         value=value_array,
     )
-    print("Done")
+    dataset.save(cache_path)
+    print("Saved dataset to", cache_path)
+    return cache_path
+
+pool = multiprocessing.Pool()
+
+def collect_data(json_paths: list[str]) -> Dataset:
+    numpy_paths = pool.map(process_game_path, json_paths)
+    for path in numpy_paths:
+        assert path.endswith(".cache.npz")
+    total_games = 0
+    total_moves = 0
+    for path in numpy_paths:
+        x = np.load(path)
+        total_games += x["game_count"]
+        total_moves += x["move_count"]
+    # Make arrays to hold everything.
+    game_offsets = np.zeros(total_games, dtype=np.int32)
+    features_array = np.zeros((total_moves, CHANNEL_COUNT, 8, 8), dtype=np.int8)
+    policy_indices_array = np.ones((total_moves, POLICY_TRUNCATION), dtype=np.int16)
+    policy_indices_array *= -1
+    policy_probs_array = np.zeros((total_moves, POLICY_TRUNCATION), dtype=np.float32)
+    value_array = np.zeros((total_moves, 1), dtype=np.float32)
+    # Now fill them in.
+    entry = 0
+    game = 0
+    for path in tqdm(numpy_paths):
+        x = np.load(path)
+        game_count = x["game_count"]
+        move_count = x["move_count"]
+        game_offsets[game:game + game_count] = x["game_offsets"] + entry
+        game += game_count
+        features_array[entry:entry + move_count] = x["features"]
+        policy_indices_array[entry:entry + move_count] = x["policy_indices"]
+        policy_probs_array[entry:entry + move_count] = x["policy_probs"]
+        value_array[entry:entry + move_count] = x["value"]
+        entry += move_count
+    assert entry == total_moves
+    print(f"Total games = {total_games} total moves = {total_moves}")
+    return Dataset(
+        game_offsets=game_offsets,
+        features=features_array,
+        policy_indices=policy_indices_array,
+        policy_probs=policy_probs_array,
+        value=value_array,
+    )
+
+if __name__ == "__main__":
+    #import sys, multiprocessing
+    #pool = multiprocessing.Pool(30)
+    #feature_counts = pool.map(process_game_path, sys.argv[1:])
+    #print("Feature counts:", feature_counts)
+    #print("Total features:", sum(feature_counts))
+
+    import sys
+    collect_data(sys.argv[1:])
+
+    #game_paths = "games/games-*.json"
+    #features_array, policy_indices_array, policy_probs_array, value_array = process_game_paths(glob.glob(game_paths))
+    ## Save the output as three numpy arrays packed into a single .npz file.
+    #np.savez_compressed(
+    #    "train.npz",
+    #    features=features_array,
+    #    policy_indices=policy_indices_array,
+    #    policy_probs=policy_probs_array,
+    #    value=value_array,
+    #)
+    #print("Done")

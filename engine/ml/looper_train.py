@@ -37,21 +37,16 @@ if __name__ == "__main__":
 
     if args.data_file:
         print("Loading data from:", args.data_file)
-        data = np.load(args.data_file)
-        train_features = data["features"]
-        train_policy_indices = data["policy_indices"]
-        train_policy_probs = data["policy_probs"]
-        train_value = data["value"]
+        dataset = make_dataset.Dataset.load(args.data_file)
     else:
-        train_features, train_policy_indices, train_policy_probs, train_value = \
-            make_dataset.process_game_paths(args.games)
+        dataset = make_dataset.collect_data(args.games)
 
     print("Converting tensors")
-    train_features = torch.tensor(train_features)
-    train_policy_indices = torch.tensor(train_policy_indices)
-    train_policy_probs = torch.tensor(train_policy_probs)
+    train_features = torch.tensor(dataset.train_features)
+    train_policy_indices = torch.tensor(dataset.train_policy_indices)
+    train_policy_probs = torch.tensor(dataset.train_policy_probs)
     #train_policy = torch.tensor(train_policy.reshape((-1, 64 * 64)))
-    train_value = torch.tensor(train_value)
+    train_value = torch.tensor(dataset.train_value)
 
     print("Got data:", train_features.shape, train_policy_indices.shape, train_policy_probs.shape, train_value.shape)
 
