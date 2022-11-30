@@ -1,3 +1,5 @@
+#![feature(extern_types)]
+
 pub mod inference;
 pub mod mcts;
 pub mod nnue;
@@ -20,8 +22,12 @@ pub mod python;
 #[cfg(target_arch = "wasm32")]
 pub mod inference_web;
 
+//#[cfg(not(target_arch = "wasm32"))]
+//pub mod inference_desktop;
 #[cfg(not(target_arch = "wasm32"))]
-pub mod inference_desktop;
+pub mod tensorrt;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod inference_tensorrt;
 
 // Define a log function that can be used in both web and desktop builds.
 

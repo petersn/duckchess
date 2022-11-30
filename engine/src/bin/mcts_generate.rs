@@ -1,6 +1,6 @@
 use clap::Parser;
 use engine::inference::InferenceEngine;
-use engine::inference_desktop::TensorFlowEngine;
+use engine::inference_tensorrt::TensorRTEngine;
 use engine::mcts::Mcts;
 use engine::mcts::PendingPath;
 use engine::mcts::SearchParams;
@@ -34,12 +34,12 @@ struct Args {
 async fn main() {
   let args = Args::parse();
 
-  //let batch_size = TensorFlowEngine::<()>::DESIRED_BATCH_SIZE;
+  //let batch_size = TensorRTEngine::<()>::DESIRED_BATCH_SIZE;
   let batch_size = args.batch_size;
   println!("Using batch size: {}", batch_size);
 
-  let inference_engine: &TensorFlowEngine<(usize, PendingPath)> = Box::leak(Box::new(
-    TensorFlowEngine::new(batch_size, &args.model_dir),
+  let inference_engine: &TensorRTEngine<(usize, PendingPath)> = Box::leak(Box::new(
+    TensorRTEngine::new(batch_size, &args.model_dir),
   ));
 
   let search_params: &'static SearchParams = Box::leak(Box::new(args.search_params));
@@ -140,7 +140,6 @@ async fn main() {
           // We early out only if we're not doing a full search, to properly compute our training target.
           let mut steps = 0;
           for _ in 0..playouts {
-
             // For training moves we need the full 1000 visits to have an accurate distribution.
             // But for fast moves we can stop once we know that the second most visited move can't surpass the most.
             if if do_full_search {

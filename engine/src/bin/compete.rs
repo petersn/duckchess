@@ -4,7 +4,7 @@ use std::sync::atomic::AtomicU64;
 
 use clap::Parser;
 use engine::inference::InferenceEngine;
-use engine::inference_desktop::TensorFlowEngine;
+use engine::inference_tensorrt::TensorRTEngine;
 use engine::mcts::{Mcts, PendingPath, SearchParams};
 use tokio::sync::Mutex;
 
@@ -72,10 +72,10 @@ async fn main() {
   let model1_dir: &'static str = Box::leak(String::into_boxed_str(args.model1_dir));
   let model2_dir: &'static str = Box::leak(String::into_boxed_str(args.model2_dir));
 
-  let inference_engine1: &TensorFlowEngine<(usize, PendingPath)> =
-    Box::leak(Box::new(TensorFlowEngine::new(BATCH_SIZE, model1_dir)));
-  let inference_engine2: &TensorFlowEngine<(usize, PendingPath)> =
-    Box::leak(Box::new(TensorFlowEngine::new(BATCH_SIZE, model2_dir)));
+  let inference_engine1: &TensorRTEngine<(usize, PendingPath)> =
+    Box::leak(Box::new(TensorRTEngine::new(BATCH_SIZE, model1_dir)));
+  let inference_engine2: &TensorRTEngine<(usize, PendingPath)> =
+    Box::leak(Box::new(TensorRTEngine::new(BATCH_SIZE, model2_dir)));
 
   let randomize_search_params: &'static _ = Box::leak(Box::new(args.randomize_search_params));
   //let search_params1: &'static SearchParams = Box::leak(Box::new(args.search_params1));

@@ -1,3 +1,5 @@
+import os
+import subprocess
 import numpy as np
 import tensorflow as tf
 import torch
@@ -57,5 +59,32 @@ if __name__ == "__main__":
         tfjs.converters.save_keras_model(model, args.output)
         print("Saved TFJS model:", args.output)
     else:
-        model.save(args.output)
-        print("Saved Keras model:", args.output)
+        model.save(args.output + "-keras")
+        print("Saved Keras model:", args.output + "-keras")
+        # Convert the Keras model to ONNX.
+        subprocess.check_call([
+            "python", "-m", "tf2onnx.convert",
+            "--saved-model", args.output + "-keras",
+            "--output", args.output + ".onnx",
+            "--opset", "11",
+            "--verbose",
+            "--target", "tensorrt",
+        ])
+        print("Saved ONNX model:", args.output + ".onnx")
+        # Convert the ONNX to a TensorRT engine.
+        # FIXME: This is turbo-hacky, but I need to generate one plan per GPU type,
+        # to avoid issues with compute capabilities on loading.
+        for compute_capability, gpu_index in [("compute8.9", 0), ("compute8.6", 1)]:
+            output_path = args.output + "-" + compute_capability + ".trt"
+            subprocess.check_call(
+                [
+                    "trtexec",
+                    "--fp16",
+                    "--onnx=" + args.output + ".onnx",
+                    "--shapes=inp_features:128x29x8x8",
+                    "--saveEngine=" + output_path,
+                    "--timingCacheFile=trtexec-timing-cache",
+                ],
+                env=dict(os.environ, CUDA_VISIBLE_DEVICES=str(gpu_index)),
+            )
+            print("Saved TensorRT engine:", output_path)

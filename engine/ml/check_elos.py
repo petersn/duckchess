@@ -16,14 +16,19 @@ if len(sys.argv) != 2 or sys.argv[1] in ["-h", "--help"]:
 
 prefix = sys.argv[1]
 
+def hacky_fixup(model_path):
+    assert model_path.endswith("-keras")
+    return model_path.replace("-keras", "-compute8.6.trt")
+
 def generate_games(output_dir, model_a, model_b, game_count):
     print("Generating games between", model_a, "and", model_b)
     proc = subprocess.Popen(
         [
             #"cargo", "run", "--bin", "compete", "--release", "--", "--playouts", "400",
             prefix + "/compete", "--playouts", "100",
-            "--model1-dir", model_a,
-            "--model2-dir", model_b,
+            # FIXME: This is unspeakably hacky also.
+            "--model1-dir", hacky_fixup(model_a),
+            "--model2-dir", hacky_fixup(model_b),
             "--output-dir", output_dir,
         ],
         stdout=subprocess.PIPE,
@@ -98,6 +103,8 @@ def process_name(name):
         name = name[2:]
     if name.endswith("/"):
         name = name[:-1]
+    # FIXME: This is unspeakably hacky.
+    name = name.replace("compute8.6.trt", "keras")
     return name
 
 def check():
@@ -112,7 +119,7 @@ def check():
     print("Games:", games)
 
     # Get a list of all the model pairs we have so far.
-    steps = [process_name(step) for step in glob.glob(prefix + "/step-*/model-keras/")]
+    steps = [process_name(step) for step in glob.glob(prefix + "/step-*/model-compute8.6.trt")]
     steps.sort()
 
     if games:

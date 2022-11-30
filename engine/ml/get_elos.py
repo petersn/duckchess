@@ -66,8 +66,8 @@ def get_step(name):
     return int(re.search(r"step-(\d+)", name).group(1))
 
 names = sorted(ratings.keys())
-xs = [get_step(name) for name in names]
-ys = [ratings[name] for name in names]
+xs = [get_step(name) for name in names][-85:]
+ys = [ratings[name] for name in names][-85:]
 import matplotlib.pyplot as plt
 plt.plot(xs, ys)
 plt.title("Elo progression of DuckChessZero")

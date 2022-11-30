@@ -33,30 +33,36 @@ def generate_games(prefix, model_number):
         print("Enough games to start with!")
         return
 
-    model_dir = index_to_keras_model_path(model_number)
+    model_dir = index_to_converted_model_prefix(model_number)
     output_dir = index_to_games_dir(model_number)
+
+    def get_trt_path(index):
+        compute_capability = "compute8.9" if index == 0 else "compute8.6"
+        return f"{model_dir}-{compute_capability}.trt"
 
     # If we don't have any game processes already, then launch them.
     if game_processes is None:
+        # FIXME: This is super hacky, but I just hardcode which GPUs have which compute capability.
         game_processes = [
             subprocess.Popen(
                 [
                     prefix + "/mcts_generate", #"--release", "--bin", "mcts_generate", "--",
-                        "--model-dir", model_dir,
+                        "--model-dir", get_trt_path(process_index),
                         "--output-dir", output_dir,
-                        "--batch-size", "256" if game_id == 0 else "128"
+                        # FIXME: Now that I'm using TensorRT this *must* match the saved engine.
+                        "--batch-size", "128" # "256" if process_index == 0 else "128"
                 ],
                 close_fds=True,
                 env=dict(
                     os.environ,
                     TF_FORCE_GPU_ALLOW_GROWTH="true",
-                    LD_LIBRARY_PATH="/usr/local/cuda/lib64:./run-011-duck-chess",
-                    CUDA_VISIBLE_DEVICES=str(game_id),
+                    LD_LIBRARY_PATH="/usr/local/cuda/lib64", #:./run-011-duck-chess",
+                    CUDA_VISIBLE_DEVICES=str(process_index),
                 ),
                 stdin=subprocess.PIPE,
                 #, LD_LIBRARY_PATH="/usr/lib/python3/dist-packages/tensorflow/"),
             )
-            for game_id in range(args.parallel_games_processes)
+            for process_index in range(args.parallel_games_processes)
         ]
         # If our process dies take the games generation down with us.
         def _(game_processes):
@@ -67,9 +73,9 @@ def generate_games(prefix, model_number):
         _(game_processes)
     else:
         # Otherwise, we simply tell our existing processes to swap to a new model.
-        message = f"swap:::{model_dir}:::{output_dir}\n"
-        print("===== Sending message to game processes:", message.strip())
-        for proc in game_processes:
+        for process_index, proc in enumerate(game_processes):
+            message = f"swap:::{get_trt_path(process_index)}:::{output_dir}\n"
+            print(f"\x1b[91m===== Sending message to game process {process_index}:\xb1[0m", message.strip())
             proc.stdin.write(message.encode())
             proc.stdin.flush()
 
@@ -99,8 +105,8 @@ def index_to_model_path(i):
 def index_to_optim_state_path(i):
     return f"{args.prefix}/step-{i:03}/optim-state-{i:03}.pt"
 
-def index_to_keras_model_path(i):
-    return f"{args.prefix}/step-{i:03}/model-keras"
+def index_to_converted_model_prefix(i):
+    return f"{args.prefix}/step-{i:03}/model"
 
 def index_to_games_dir(i):
     return f"{args.prefix}/step-{i:03}/games"
@@ -138,7 +144,7 @@ technically statistically biases the games slightly towards being shorter.)
     parser.add_argument("--prefix", metavar="PATH", default=".", help="Prefix directory. Make sure this directory contains games/ and models/ subdirectories.")
     parser.add_argument("--game-count", metavar="N", type=int, default=5000, help="Minimum number of games to generate per iteration.")
     parser.add_argument("--training-steps-const", metavar="N", type=int, default=500, help="Base number of training steps to perform per iteration.")
-    parser.add_argument("--training-steps-linear", metavar="N", type=int, default=100, help="We also apply an additional N steps for each additional iteration included in the training window.")
+    parser.add_argument("--training-steps-linear", metavar="N", type=int, default=50, help="We also apply an additional N steps for each additional iteration included in the training window.")
     parser.add_argument("--training-window", metavar="N", type=int, default=20, help="When training include games from the past N iterations.")
     #parser.add_argument("--training-window-exclude", metavar="N", type=int, default=3, help="To help things get started faster we exclude games from the very first N iterations from later training game windows.")
     parser.add_argument("--parallel-games-processes", metavar="N", type=int, default=2, help="Number of games processes to run in parallel.")
@@ -167,14 +173,18 @@ technically statistically biases the games slightly towards being shorter.)
             current_model_number += 1
             continue
 
-        if not os.path.exists(index_to_keras_model_path(current_model_number)):
-            print("=========================== Converting pytorch -> keras")
-            subprocess.check_call([
-                "python", "ml/convert_model_BIG.py",
-                "--input", old_model,
-                "--output", index_to_keras_model_path(current_model_number),
-                "--big",
-            ])
+        new_trt = index_to_converted_model_prefix(current_model_number) + "-compute8.6.trt"
+        if not os.path.exists(new_trt):
+            print("=========================== Converting pytorch -> keras -> onnx -> tensorrt")
+            subprocess.check_call(
+                [
+                    "python", "ml/convert_model_BIG.py",
+                    "--input", old_model,
+                    "--output", index_to_converted_model_prefix(current_model_number),
+                    "--big",
+                ],
+            )
+        assert os.path.exists(new_trt)
 
         print("=========================== Doing data generation for:", old_model)
         print("Start time:", start)
