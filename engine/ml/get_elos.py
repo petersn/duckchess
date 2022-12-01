@@ -2,16 +2,18 @@ import re
 import sys
 import json
 import subprocess
+from tqdm import tqdm
 
 def process_name(name):
     if name.startswith("./"):
         name = name[2:]
     if name.endswith("/"):
         name = name[:-1]
+    name = name.replace("compute8.6.trt", "keras")
     return name
 
 all_games = []
-for path in sys.argv[1:]:
+for path in tqdm(sys.argv[1:]):
     with open(path) as f:
         for line in f:
             all_games.append(json.loads(line))

@@ -8,7 +8,7 @@ use engine::inference_tensorrt::TensorRTEngine;
 use engine::mcts::{Mcts, PendingPath, SearchParams};
 use tokio::sync::Mutex;
 
-const GAME_LEN_LIMIT: usize = 500;
+const GAME_LEN_LIMIT: usize = 800;
 const BATCH_SIZE: usize = 64;
 
 #[derive(Parser, Debug)]

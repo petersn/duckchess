@@ -17,9 +17,13 @@ pub struct TensorRTEngine<Cookie> {
   next_stream_id: std::sync::atomic::AtomicUsize,
 }
 
+// Regardless of the maximum batch size we care about, the saved TensorRT engine
+// always wants buffers big enough to accomodate 128 inputs/outputs.
+const SAVED_MODEL_BATCH_SIZE: usize = 128;
+
 impl<Cookie> TensorRTEngine<Cookie> {
   pub fn new(max_batch_size: usize, model_path: &str) -> Self {
-    let mut tensorrt = TensorRT::new(0, max_batch_size as i32);
+    let mut tensorrt = TensorRT::new(0, SAVED_MODEL_BATCH_SIZE as i32);
     tensorrt.load_model(model_path);
     Self {
       max_batch_size,

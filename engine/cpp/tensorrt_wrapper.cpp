@@ -37,7 +37,7 @@ std::string slurp_file(std::string path) {
   return buffer.str();
 }
 
-constexpr int STREAM_COUNT = 3;
+constexpr int STREAM_COUNT = 1;
 
 struct TensorRTWrapper {
   int max_batch_size;
@@ -63,6 +63,7 @@ struct TensorRTWrapper {
       cuda_check(cudaMallocManaged(&inp_features[i], max_batch_size * 29 * 8 * 8 * sizeof(float)));
       cuda_check(cudaMallocManaged(&out_value[i], max_batch_size * 1 * sizeof(float)));
       cuda_check(cudaMallocManaged(&out_policy[i], max_batch_size * 4096 * sizeof(float)));
+      printf("Allocated at %p %p %p\n", inp_features[i], out_value[i], out_policy[i]);
       // Zero out the buffers.
       cuda_check(cudaMemsetAsync(inp_features[i], 0, max_batch_size * 29 * 8 * 8 * sizeof(float), streams[i]));
       cuda_check(cudaMemsetAsync(out_value[i], 0, max_batch_size * 1 * sizeof(float), streams[i]));
@@ -108,8 +109,8 @@ struct TensorRTWrapper {
     }) {
       //std::cout << name << ": " << engine->getBindingIndex(name) << std::endl;
       auto dims = engine->getTensorShape(name);
-      std::cout << dims.d[0] << " == " << max_batch_size << std::endl;
-      assert(dims.d[0] == max_batch_size);
+      std::cout << dims.d[0] << " >= " << max_batch_size << std::endl;
+      assert(dims.d[0] >= max_batch_size);
       //std::cout << name << ": dims=" << d.nbDims << std::endl;
       //for (int i = 0; i < d.nbDims; i++) {
       //  std::cout << name << ": dim=" << d.d[i] << std::endl;
@@ -120,6 +121,7 @@ struct TensorRTWrapper {
       contexts[i]->setTensorAddress("inp_features", inp_features[i]);
       contexts[i]->setTensorAddress("out_value", out_value[i]);
       contexts[i]->setTensorAddress("out_policy", out_policy[i]);
+      printf("Set addresses at %p %p %p\n", inp_features[i], out_value[i], out_policy[i]);
     }
   }
 
@@ -158,6 +160,7 @@ extern "C" void TensorRTWrapper_get_pointers(
   *inp_features = wrapper->inp_features[stream_id];
   *out_value = wrapper->out_value[stream_id];
   *out_policy = wrapper->out_policy[stream_id];
+  printf("Returning addresses at %p %p %p\n", *inp_features, *out_value, *out_policy);
 }
 
 extern "C" void TensorRTWrapper_run_inference(TensorRTWrapper* wrapper, int stream_id) {
