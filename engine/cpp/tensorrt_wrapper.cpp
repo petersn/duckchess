@@ -160,7 +160,7 @@ extern "C" void TensorRTWrapper_get_pointers(
   *inp_features = wrapper->inp_features[stream_id];
   *out_value = wrapper->out_value[stream_id];
   *out_policy = wrapper->out_policy[stream_id];
-  printf("Returning addresses at %p %p %p\n", *inp_features, *out_value, *out_policy);
+  //printf("Returning addresses at %p %p %p\n", *inp_features, *out_value, *out_policy);
 }
 
 extern "C" void TensorRTWrapper_run_inference(TensorRTWrapper* wrapper, int stream_id) {
