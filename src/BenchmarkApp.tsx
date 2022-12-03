@@ -1,5 +1,6 @@
 import React from 'react';
 import * as tf from '@tensorflow/tfjs';
+import '@tensorflow/tfjs-backend-webgl';
 import { Workers } from './App';
 import { AlphaBetaBenchmarkResults } from './WorkerMessages';
 
@@ -189,6 +190,7 @@ export class BenchmarkApp extends React.PureComponent<BenchmarkAppProps, Benchma
   }
 
   componentDidMount() {
+    tf.setBackend('webgl');
     if (modelSmall == null) {
       tf.loadLayersModel(process.env.PUBLIC_URL + '/model-small/model.json')
         .then((model) => {

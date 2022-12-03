@@ -55,8 +55,9 @@ onmessage = function(e: MessageEvent<any>) {
       break;
     case 'applyMove':
       pvs.apply_move(e.data.move, e.data.isHidden);
-      const result = pvs.mate_search(5);
-      console.log('Mate search result', result);
+      //const result = pvs.mate_search(2);
+      //console.log('Mate search result', result[0][0], 'nodes:', result[1]);
+      //postMessage({ type: 'mateSearch', mateEval: result[0][0], nextMoves: result[0][1] });
       break;
     case 'runAlphaBetaBenchmark':
       runAlphaBetaBenchmark();

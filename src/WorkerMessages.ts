@@ -45,6 +45,10 @@ export type MessageFromSearchWorker = {
 } | {
   type: 'alphaBetaBenchmarkResults';
   results: AlphaBetaBenchmarkResults;
+} | {
+  type: 'mateSearch';
+  mateEval: number;
+  nextMoves: any[];
 };
 
 export interface AlphaBetaBenchmarkResults {

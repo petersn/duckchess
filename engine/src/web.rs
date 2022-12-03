@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 use crate::inference::{FEATURES_SIZE, POLICY_LEN};
 use crate::inference_web::MAX_BATCH_SIZE;
 use crate::mcts::{PendingPath, SearchParams};
-use crate::{inference, inference_web, mcts, rules::Move, search};
+use crate::{inference, inference_web, mcts, rules::{Move, Player}, search};
 
 const MAX_STEPS_BEFORE_INFERENCE: usize = 40 * MAX_BATCH_SIZE;
 const WEB_TRANSPOSITION_TABLE_SIZE: usize = 1 << 20;
@@ -235,8 +235,13 @@ impl Pvs {
       true => 2 * depth,
       false => 2 * depth + 1,
     };
-    let p = self.engine.mate_search(depth);
-    serde_wasm_bindgen::to_value(&(p, self.engine.nodes_searched)).unwrap_or_else(|e| {
+    let (eval, moves) = self.engine.mate_search(depth);
+    // Change the eval to be from white's perspective.
+    let eval = match self.engine.get_state().turn {
+      Player::White => eval,
+      Player::Black => -eval,
+    };
+    serde_wasm_bindgen::to_value(&(eval, moves, self.engine.nodes_searched)).unwrap_or_else(|e| {
       log(&format!("Failed to serialize score: {}", e));
       JsValue::NULL
     })
