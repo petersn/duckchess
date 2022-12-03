@@ -72,6 +72,7 @@ xs = [get_step(name) for name in names][-85:]
 ys = [ratings[name] for name in names][-85:]
 import matplotlib.pyplot as plt
 plt.plot(xs, ys)
+plt.scatter(xs, ys, s=6)
 plt.title("Elo progression of DuckChessZero")
 plt.ylabel("Elo rating")
 plt.xlabel("Model number")
