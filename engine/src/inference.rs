@@ -137,11 +137,13 @@ pub fn featurize_state<T: From<u8>>(state: &State, array: &mut [T; FEATURES_SIZE
 
 pub type QuantizedProbability = u16;
 
+#[inline]
 fn quantize_probability(probability: f32) -> QuantizedProbability {
-  assert!(0.0 <= probability && probability <= 1.0);
+  debug_assert!(0.0 <= probability && probability <= 1.0);
   (probability * (QuantizedProbability::MAX as f32)) as QuantizedProbability
 }
 
+#[inline]
 fn dequantize_probability(probability: QuantizedProbability) -> f32 {
   (probability as f32) / (QuantizedProbability::MAX as f32)
 }
@@ -188,23 +190,26 @@ impl ModelOutputs {
       full_prec.policy[i] = temp[i] * rescale;
     }
     // Check that the output policy is normalized.
-    let sum = full_prec.policy.iter().sum::<f32>();
+    let sum = {
+      let policy: &[f32] = &full_prec.policy[..];
+      policy.iter().sum::<f32>()
+    };
     debug_assert!(sum <= 1.001);
     let deficiency = (1.0 - sum).max(0.0);
     for m in moves {
       let idx = m.to_index() as usize;
       full_prec.policy[idx] += deficiency / moves.len() as f32;
     }
-    let sum = full_prec.policy.iter().sum::<f32>();
-    if !moves.is_empty() && (sum - 1.0).abs() > 1e-5 {
-      println!("Renormalization failed: sum is {}", sum);
-      for m in moves {
-        let idx = m.to_index() as usize;
-        println!("  {:?} -> {}", m, full_prec.policy[idx]);
-      }
-      panic!();
-    }
-    debug_assert!(moves.is_empty() || (sum - 1.0).abs() < 1e-5);
+    //let sum = full_prec.policy.iter().sum::<f32>();
+    //if !moves.is_empty() && (sum - 1.0).abs() > 1e-5 {
+    //  println!("Renormalization failed: sum is {}", sum);
+    //  for m in moves {
+    //    let idx = m.to_index() as usize;
+    //    println!("  {:?} -> {}", m, full_prec.policy[idx]);
+    //  }
+    //  panic!();
+    //}
+    //debug_assert!(moves.is_empty() || (sum - 1.0).abs() < 1e-5);
     // Finally, quantize and emit.
     let mut quantized_policy = Box::new([0; POLICY_LEN]);
     for i in 0..POLICY_LEN {
