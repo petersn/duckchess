@@ -9,6 +9,8 @@ crate-type = ["rlib", "cdylib"]
 
 [dependencies]
 cfg-if = "1.0.0"
+ndarray = "0.15.6"
+ndarray-npy = "0.8.1"
 serde = { version = "1.0.145", features = ["derive"] }
 serde_json = "1.0.87"
 slotmap = "1.0.6"
@@ -27,9 +29,10 @@ serde-wasm-bindgen = "0.4.5"
 rand = "0.8.5"
 num_cpus = "1.13.1"
 pyo3 = { version = "0.17.2", features = ["extension-module"] }
-tensorflow = { version = "0.19.1", features = ["tensorflow_gpu"] }
+#tensorflow = { version = "0.19.1", features = ["tensorflow_gpu"] }
 clap = { version = "4.0.18", features = ["derive"] }
 tokio = { version = "1.21.2", features = ["full"] }
 
 [profile.release]
 lto = true
+debug = true

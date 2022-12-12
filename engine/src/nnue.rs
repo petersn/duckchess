@@ -496,6 +496,16 @@ impl<'a> Nnue<'a> {
     compute_state_layers(state, |layer| self.apply_layer::<false, false>(layer)).unwrap_or(())
   }
 
+  pub fn compute_from_indices(&mut self, indices: &[i32]) {
+    self.linear_state = self.main_bias;
+    self.layer_count = 0;
+    for &index in indices {
+      if index != -1 {
+        self.apply_layer::<false, false>(index as LayerIndex);
+      }
+    }
+  }
+
   pub fn get_debugging_hash(&self) -> u64 {
     use std::hash::{Hash, Hasher};
     // We cast our linear state to a u8 array.
@@ -655,5 +665,17 @@ impl<'a> Nnue<'a> {
     //  perspective_player: Player::White
     //  //perspective_player: state.turn,
     //}
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  #[test]
+  fn test_veci16_horizontal_sat_sum() {
+    use super::*;
+    let data: [i16; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
+    let v = unsafe { std::mem::transmute::<[i16; 8], VecI16>(data) };
+    let sum = veci16_horizontal_sat_sum(v);
+    assert_eq!(sum, 36);
   }
 }

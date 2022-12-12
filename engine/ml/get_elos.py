@@ -78,3 +78,7 @@ plt.ylabel("Elo rating")
 plt.xlabel("Model number")
 plt.grid(True)
 plt.savefig("./web/ratings.png")
+
+print(f"top-elo={max(ys)}")
+print(f"last-elo={ys[-1]}")
+

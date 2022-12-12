@@ -57,7 +57,13 @@ def short_name(s):
     return "s%i" % x
 
 def regenerate_report(steps, games):
-    subprocess.check_call(["python", "ml/get_elos.py"] + glob.glob(prefix + "/eval-games/*.json"))
+    output = subprocess.check_output(["python", "ml/get_elos.py"] + glob.glob(prefix + "/eval-games/*.json"))
+    elos = {"top-elo": 0, "last-elo": 0}
+    for line in output.decode().split("\n"):
+        for name in elos:
+            if line.startswith(name + "="):
+                elos[name] = int(line.split("=", 1)[1])
+
     with open("web/template.html") as f:
         template = f.read()
     # Make the table.
@@ -96,6 +102,8 @@ def regenerate_report(steps, games):
             "table": table,
             "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
             "game_count": game_count,
+            "top_elo": elos["top-elo"],
+            "last_elo": elos["last-elo"],
         })
 
 def process_name(name):
