@@ -36,6 +36,13 @@ impl Engine {
     moves.into_iter().map(|m| serde_json::to_string(&m).unwrap()).collect()
   }
 
+  fn have_quiescence_moves(&self) -> bool {
+    // Figure out if we have any legal quiescence moves from this position.
+    let mut quiescence_moves = Vec::new();
+    self.engine.get_state().move_gen::<true>(&mut quiescence_moves);
+    !quiescence_moves.is_empty()
+  }
+
   fn run(&mut self, depth: u16) -> (i32, String) {
     let (score, best_move) = self.engine.run(depth, false);
     let serialized = serde_json::to_string(&best_move).unwrap();

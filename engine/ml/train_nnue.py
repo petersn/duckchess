@@ -8,6 +8,8 @@ import random
 import multiprocessing
 from typing import Any
 from tqdm import tqdm
+import wandb
+
 import engine
 
 MAX_INDICIES = 66
@@ -47,15 +49,20 @@ class Nnue(torch.nn.Module):
         self.main_bias = torch.nn.Parameter(torch.zeros(self.ACCUM_SIZE))
         self.clipped_relu = AnnealedLeakyClippedRelu()
         self.tanh = torch.nn.Tanh()
-        make_net = lambda: torch.nn.Sequential(
+        make_value_net = lambda: torch.nn.Sequential(
             torch.nn.Linear(self.ACCUM_SIZE, 16),
             self.clipped_relu,
             torch.nn.Linear(16, 32),
             self.clipped_relu,
             torch.nn.Linear(32, 1),
         )
-        self.main_net = make_net()
-        self.networks = torch.nn.ModuleList([make_net() for _ in range(4 * 8)])
+        make_policy_net = lambda: torch.nn.Sequential(
+            torch.nn.Linear(8, 64),
+        )
+        #self.main_net = make_net()
+        self.value_networks = torch.nn.ModuleList([make_value_net() for _ in range(4 * 8)])
+        self.policy_from_networks = torch.nn.ModuleList([make_policy_net() for _ in range(4 * 8)])
+        self.policy_to_networks = torch.nn.ModuleList([make_policy_net() for _ in range(4 * 8)])
         #self.white_main = make_net()
         #self.black_main = make_net()
         #self.white_duck = make_net()
@@ -68,16 +75,25 @@ class Nnue(torch.nn.Module):
         accum = self.main_embed(indices, offsets) + self.main_bias
         psqt = accum[:, :1]
         embedding = self.clipped_relu(accum)
+        policy_from_inputs = embedding[:, 8:16]
+        policy_to_inputs = embedding[:, 16:24]
         #value = self.main_net(embedding)
-        network_outputs = [net(embedding) for net in self.networks]
+        value_network_outputs = [net(embedding) for net in self.value_networks]
+        policy_from_network_outputs = [net(policy_from_inputs) for net in self.policy_from_networks]
+        policy_to_network_outputs = [net(policy_to_inputs) for net in self.policy_to_networks]
         ##white_main = self.white_main(embedding)
         ##black_main = self.black_main(embedding)
         ##white_duck = self.white_duck(embedding)
         ##black_duck = self.black_duck(embedding)
         ##data = torch.stack([black_main, white_main, black_duck, white_duck])
-        data = torch.stack(network_outputs)
-        value = data[which_model, torch.arange(len(which_model))]
-        return self.tanh(value + psqt)
+        arange = torch.arange(len(which_model))
+        value_data = torch.stack(value_network_outputs)
+        value = value_data[which_model, arange]
+        policy_from_data = torch.stack(policy_from_network_outputs)
+        policy_from = policy_from_data[which_model, arange]
+        policy_to_data = torch.stack(policy_to_network_outputs)
+        policy_to = policy_to_data[which_model, arange]
+        return self.tanh(value + psqt), policy_from, policy_to
 
 class PieceSquareTable(torch.nn.Module):
     PIECE_SQUARE_POSITIONS = 2 * 64 * ((6 + 6 + 1) * 64) #13 * 64
@@ -114,9 +130,8 @@ def process_one_path(path: str):
         e = engine.Engine(0)
         value_for_white = {"1-0": +1, "0-1": -1, None: 0}[game["outcome"]]
         for move in game["moves"]:
-            move_str = json.dumps(move)
-            r = e.apply_move(move_str)
-            assert r is None, f"Move {move_str} failed: {r}"
+            legal_moves = [json.loads(m) for m in e.get_moves()]
+
             pair = e.get_nnue_feature_indices()
             if pair is None:
                 continue
@@ -131,19 +146,31 @@ def process_one_path(path: str):
                 net_index,
                 move["from"],
                 move["to"],
+                legal_moves,
+                e.have_quiescence_moves(),
             ))
+
+            r = e.apply_move(json.dumps(move))
+            assert r is None, f"Move {move} failed: {r}"
+
     print(f"Examples: {len(examples)}")
     indices = -np.ones((len(examples), MAX_INDICIES), dtype=np.int32)
     moves = np.zeros((len(examples), 2), dtype=np.int32)
-    meta = np.zeros((len(examples), 5), dtype=np.int32)
-    for i, (new_feature_indices, turn, is_duck_move, value_for_white, net_index, move_from, move_to) in enumerate(examples):
+    meta = np.zeros((len(examples), 6), dtype=np.int32)
+    legal_move_masks = np.zeros((len(examples), 2, 64), dtype=np.int8)
+    for i, (
+        new_feature_indices, turn, is_duck_move, value_for_white, net_index, move_from, move_to, legal_moves, have_quiescence_moves,
+    ) in enumerate(examples):
         indices[i, :len(new_feature_indices)] = new_feature_indices
         moves[i, :] = move_from, move_to
-        meta[i, :] = len(new_feature_indices), value_for_white, turn, is_duck_move, net_index
-    np.savez_compressed(result_path, indices=indices, moves=moves, meta=meta)
+        meta[i, :] = len(new_feature_indices), value_for_white, turn, is_duck_move, net_index, have_quiescence_moves
+        for move in legal_moves:
+            legal_move_masks[i, 0, move["from"]] = 1
+            legal_move_masks[i, 1, move["to"]] = 1
+    np.savez_compressed(result_path, indices=indices, moves=moves, meta=meta, legal_move_masks=legal_move_masks)
 
 def process(paths: list[str]):
-    pool = multiprocessing.Pool(25)
+    pool = multiprocessing.Pool(18)
     pool.map(process_one_path, paths)
     print("Done")
 
@@ -152,25 +179,36 @@ class EWMA:
         self.alpha = alpha
         self.value = None
 
-    def apply(self, x):
+    def update(self, x):
         self.value = x if self.value is None else (1 - self.alpha) * self.value + self.alpha * x
 
 def get_make_batch(paths: list[str], device: str):
     total_examples = 0
     all_indices = []
     all_meta = []
+    all_moves = []
+    all_legal_move_masks = []
     for path in tqdm(paths):
         assert path.endswith(".npz")
-        data = np.load(path)
-        all_indices.append(data["indices"])
-        all_meta.append(data["meta"])
+        try:
+            data = np.load(path)
+            all_indices.append(data["indices"])
+            all_meta.append(data["meta"])
+            all_moves.append(data["moves"])
+            all_legal_move_masks.append(data["legal_move_masks"])
+        except:
+            print("BAD FILE", path)
+            raise
     concat_indices = np.concatenate(all_indices)
     concat_meta = np.concatenate(all_meta)
-    assert concat_indices.shape[0] == concat_meta.shape[0]
+    concat_moves = np.concatenate(all_moves)
+    concat_legal_move_masks = np.concatenate(all_legal_move_masks)
+    assert concat_indices.shape[0] == concat_meta.shape[0] == concat_moves.shape[0]
     print(f"Total examples: {len(concat_indices)}")
     all_indices_length = concat_meta[:, 0]
     all_value_for_white = concat_meta[:, 1]
     all_net_index = concat_meta[:, 4]
+    all_have_quiescence_moves = concat_meta[:, 5]
     #all_turn = concat_meta[:, 2]
     #all_is_duck_move = concat_meta[:, 3]
     print("Constant model loss:", np.var(all_value_for_white))
@@ -201,18 +239,41 @@ def get_make_batch(paths: list[str], device: str):
             torch.tensor(which_model, dtype=torch.int64, device=device),
             torch.tensor(lengths, dtype=torch.int64, device=device),
             torch.tensor(all_value_for_white[subset].reshape((-1, 1)), dtype=torch.float32, device=device),
+            torch.tensor(concat_moves[subset, 0], dtype=torch.int64, device=device),
+            torch.tensor(concat_moves[subset, 1], dtype=torch.int64, device=device),
+            torch.tensor(concat_legal_move_masks[subset], dtype=torch.int8, device=device),
+            torch.tensor(all_have_quiescence_moves[subset], dtype=torch.int32, device=device),
         )
     return make_batch
 
+mse_func = torch.nn.MSELoss()
+cross_ent_func = torch.nn.CrossEntropyLoss()
+
+def eval_losses(model, batch):
+    indices, offsets, which_model, lengths, value_for_white, moves_from, moves_to, legal_move_masks, have_quiescence_moves = batch
+    value_output, from_output, to_output = model(indices, offsets, which_model, lengths)
+    # We don't grade on unquiescenced states, as we'll never actually evaluate the NNUE on them.
+    value_output = torch.where(have_quiescence_moves == 1, value_for_white, value_output)
+    value_loss = mse_func(value_output, value_for_white)
+    # We use the legal_move_masks to help out the model, and only count the loss for the legal moves.
+    from_output = torch.where(legal_move_masks[:, 0, :] == 1, from_output, -100)
+    to_output = torch.where(legal_move_masks[:, 1, :] == 1, to_output, -100)
+    policy_loss = cross_ent_func(from_output, moves_from) + cross_ent_func(to_output, moves_to)
+    return value_loss, policy_loss
+
 def train(paths: list[str], device="cuda"):
+    wandb.init(project="train-nnue", name="nnue-1")
+    wandb.config.update({
+        "paths": paths,
+    })
     print(f"Training on {len(paths)} files on {device}")
     # Begin a training loop.
     model = Nnue().to(device)
     #model = PieceSquareTable().to(device)
     print("Parameters:", sum(np.product(t.shape) for t in model.parameters()))
-    mse_func = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0)
-    loss_ewma = EWMA()
+    value_loss_ewma = EWMA()
+    policy_loss_ewma = EWMA()
 
     make_batch = get_make_batch(paths, device)
 
@@ -226,18 +287,26 @@ def train(paths: list[str], device="cuda"):
             g['lr'] = lr
 
         optimizer.zero_grad()
-        indices, offsets, which_model, lengths, value_for_white = make_batch(256)
-        value_output = model(indices, offsets, which_model, lengths)
-        loss = mse_func(value_output, value_for_white)
+        value_loss, policy_loss = eval_losses(model, make_batch(256))
+        loss = value_loss + policy_loss
         loss.backward()
+        wandb.log({
+            "loss": loss.item(),
+            "policy_loss": policy_loss.item(),
+            "value_loss": value_loss.item(),
+            "grad_norm": torch.nn.utils.clip_grad_norm_(model.parameters(), 10.0),
+        })
         optimizer.step()
-        loss_ewma.apply(loss.item())
+        value_loss_ewma.update(value_loss.item())
+        policy_loss_ewma.update(policy_loss.item())
 
         if i % 1000 == 0:
-            print("(%7.1f) [%7i] loss = %.4f  leak = %.4f  lr = %.6f" % (
+            print("(%7.1f) [%7i] loss = %.4f  (value-loss = %.4f  policy-loss = %.4f)  leak = %.4f  lr = %.6f" % (
                 time.time() - start_time,
                 i,
-                loss_ewma.value,
+                value_loss_ewma.value + policy_loss_ewma.value,
+                value_loss_ewma.value,
+                policy_loss_ewma.value,
                 leak,
                 lr,
             ))
@@ -252,10 +321,8 @@ def quantize(model_path: str, val_path: str, device="cpu"):
     # Compute val loss.
     def compute_val_loss():
         with torch.no_grad():
-            indices, offsets, which_model, lengths, value_for_white = val_batch
-            value_output = model(indices, offsets, which_model, lengths)
-            val_loss = torch.nn.MSELoss()(value_output, value_for_white)
-        print("Val loss:", val_loss.item())
+            value_loss, policy_loss = eval_losses(model, val_batch)
+        print(f"Val value loss: {value_loss.item()} - Val policy loss: {policy_loss.item()}")
     compute_val_loss()
     # Each clipped relu wants inputs from -128 to +127 for its active range.
     # If the largest intermediates we care to represent are -2.0 to +2.0,
@@ -285,7 +352,7 @@ def quantize(model_path: str, val_path: str, device="cpu"):
         zero_fraction = (quantized == 0).sum() / v.numel()
         new_values[k] = f
         quantized_weights[k] = quantized
-        print(f"{k:20} {str(tuple(v.shape)):15} {v.min().item():.3f} {v.max().item():.3f} zero={100 * zero_fraction:.3f}%")
+        print(f"{k:30} {str(tuple(v.shape)):15} {v.min().item():.3f} {v.max().item():.3f} zero={100 * zero_fraction:.3f}%")
     # Apply the new values.
     model.load_state_dict(new_values)
     compute_val_loss()
@@ -301,7 +368,7 @@ def write_nnue_format(
     quantized_weights: dict[str, Any],
     output_right_shift: dict[str, int],
 ) -> bytes:
-    header_alloc = 15 * 1024
+    header_alloc = 32 * 1024
     aligned_storage = bytearray(header_alloc)
 
     def add_bytes(b):
@@ -316,14 +383,16 @@ def write_nnue_format(
     for k, v in quantized_weights.items():
         shift = output_right_shift[k]
         v = v.detach().cpu().numpy()
-        k = k.replace("networks.", "n")
+        k = k.replace("value_networks.", "value")
+        k = k.replace("policy_from_networks.", "policy_from")
+        k = k.replace("policy_to_networks.", "policy_to")
         k = k.replace("0.weight", "0.w")
         k = k.replace("2.weight", "1.w")
         k = k.replace("4.weight", "2.w")
         k = k.replace("0.bias", "0.b")
         k = k.replace("2.bias", "1.b")
         k = k.replace("4.bias", "2.b")
-        k = k.replace("main_net.", "n0.")
+        #k = k.replace("main_net.", "n0.")
         offset = add_bytes(v.tobytes())
         assert offset % 32 == 0
         weights[k] = {
