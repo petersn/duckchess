@@ -253,13 +253,17 @@ def eval_losses(model, batch):
     indices, offsets, which_model, lengths, value_for_white, moves_from, moves_to, legal_move_masks, have_quiescence_moves = batch
     value_output, from_output, to_output = model(indices, offsets, which_model, lengths)
     # We don't grade on unquiescenced states, as we'll never actually evaluate the NNUE on them.
-    value_output = torch.where(have_quiescence_moves == 1, value_for_white, value_output)
+    #print("Shapes:", have_quiescence_moves.unsqueeze(-1).shape, value_for_white.shape, value_output.shape)
+    value_output = torch.where(have_quiescence_moves.unsqueeze(-1) == 1, value_for_white, value_output)
+    #print("[v] Relevant shapes:", value_output.shape, value_for_white.shape)
     value_loss = mse_func(value_output, value_for_white)
     # We use the legal_move_masks to help out the model, and only count the loss for the legal moves.
-    from_output = torch.where(legal_move_masks[:, 0, :] == 1, from_output, -100)
-    to_output = torch.where(legal_move_masks[:, 1, :] == 1, to_output, -100)
+    from_output = torch.where(legal_move_masks[:, 0, :] == 1, from_output, -1000)
+    to_output = torch.where(legal_move_masks[:, 1, :] == 1, to_output, -1000)
+    #print("[f] Relevant shapes:", from_output.shape, moves_from.shape)
+    #print("[t] Relevant shapes:", to_output.shape, moves_to.shape)
     policy_loss = cross_ent_func(from_output, moves_from) + cross_ent_func(to_output, moves_to)
-    return value_loss, policy_loss
+    return 10 * value_loss, policy_loss
 
 def train(paths: list[str], device="cuda"):
     wandb.init(project="train-nnue", name="nnue-1")
@@ -271,7 +275,7 @@ def train(paths: list[str], device="cuda"):
     model = Nnue().to(device)
     #model = PieceSquareTable().to(device)
     print("Parameters:", sum(np.product(t.shape) for t in model.parameters()))
-    optimizer = torch.optim.Adam(model.parameters(), lr=0)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0)
     value_loss_ewma = EWMA()
     policy_loss_ewma = EWMA()
 
@@ -312,12 +316,19 @@ def train(paths: list[str], device="cuda"):
             ))
             torch.save(model.state_dict(), "nnue.pt")
 
+def clamp_int8(x):
+    return torch.clamp(x, -128, 127).to(torch.int8)
+
+def clamp_int16(x):
+    return torch.clamp(x, -32768, 32767).to(torch.int16)
+
 def quantize(model_path: str, val_path: str, device="cpu"):
     model = Nnue()
     model.load_state_dict(torch.load(model_path))
+    model.adjust_leak(0.0)
     model = model.to(device)
     make_batch = get_make_batch([val_path], device)
-    val_batch = make_batch(1000)
+    val_batch = make_batch(100_000)
     # Compute val loss.
     def compute_val_loss():
         with torch.no_grad():
@@ -336,23 +347,30 @@ def quantize(model_path: str, val_path: str, device="cpu"):
     quantized_weights = {}
     output_right_shift = {}
     for k, v in model.named_parameters():
-        output_right_shift[k] = 0
+        #output_right_shift[k] = 0
+        shift = 0
         if "main_embed" in k or k == "main_bias":
-            quantized = torch.round(v * 2048).to(torch.int16)
-            f = quantized.float().detach() / 2048
-            output_right_shift[k] = 11
+            clamp_function = clamp_int16
+            shift = 11
         elif "bias" in k:
-            quantized = torch.round(v * 16384).to(torch.int16)
-            f = quantized.float().detach() / 16384
-            output_right_shift[k] = 14
+            clamp_function = clamp_int16
+            shift = 14
+            if "policy" in k:
+                shift = 13
         else:
-            quantized = torch.round(v * 128).to(torch.int8)
-            f = quantized.float().detach() / 128
-            output_right_shift[k] = 7
+            clamp_function = clamp_int8
+            shift = 7
+            if "policy" in k:
+                shift = 6
+        output_right_shift[k] = shift
+        quantized = clamp_function(v * 2 ** shift)
+        f = quantized.float() / 2 ** shift
         zero_fraction = (quantized == 0).sum() / v.numel()
         new_values[k] = f
+        #new_values[k] = v + 0.1 * torch.randn(*v.shape) #f
         quantized_weights[k] = quantized
-        print(f"{k:30} {str(tuple(v.shape)):15} {v.min().item():.3f} {v.max().item():.3f} zero={100 * zero_fraction:.3f}%")
+        kn = k.replace("_networks", "")
+        #print(f"{kn:30} shift={output_right_shift[k]:2} {str(tuple(v.shape)):15} {v.min().item():.3f} {v.max().item():.3f} zero={100 * zero_fraction:.3f}%")
     # Apply the new values.
     model.load_state_dict(new_values)
     compute_val_loss()
