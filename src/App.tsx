@@ -191,6 +191,19 @@ function AnalysisPage(props: { isMobile: boolean, workers: Workers | null }) {
         if (props.workers !== null && props.workers.pv.length !== 0) {
           props.workers.applyMove(props.workers.pv[0], false);
         }
+      } else if (event.key === 'Escape') {
+        // Clear the selected square.
+        setSelectedSquare(null);
+      } else if (event.key === 'ArrowLeft') {
+        // Go back one move.
+        if (props.workers !== null) {
+          props.workers.applyMove({ type: 'undo' }, false);
+        }
+      } else if (event.key === 'ArrowRight') {
+        // Go forward one move.
+        if (props.workers !== null) {
+          props.workers.applyMove({ type: 'redo' }, false);
+        }
       }
     };
     document.addEventListener('keydown', shortcutsHandler);

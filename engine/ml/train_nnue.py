@@ -171,7 +171,7 @@ def process_one_path(path: str):
     np.savez_compressed(result_path, indices=indices, moves=moves, meta=meta, legal_move_masks=legal_move_masks)
 
 def process(paths: list[str]):
-    pool = multiprocessing.Pool(18)
+    pool = multiprocessing.Pool(25)
     pool.map(process_one_path, paths)
     print("Done")
 
