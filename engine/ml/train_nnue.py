@@ -74,14 +74,29 @@ class Nnue(torch.nn.Module):
     def forward(self, indices, offsets, which_model, lengths):
         accum = self.main_embed(indices, offsets) + self.main_bias
         psqt = accum[:, :1]
-        print("VALUES:", accum[0, 16:48].tolist())
         embedding = self.clipped_relu(accum)
-        policy_from_inputs = embedding[:, 16:32]
-        policy_to_inputs = embedding[:, 32:48]
+        policy_from_inputs = [
+            embedding[:, 16:32],
+            embedding[:, 32:48],
+            embedding[:, 48:64],
+            embedding[:, 64:80],
+        ]
+        policy_to_inputs = [
+            embedding[:, 80:96],
+            embedding[:, 96:112],
+            embedding[:, 112:128],
+            embedding[:, 128:144],
+        ]
         #value = self.main_net(embedding)
         value_network_outputs = [net(embedding) for net in self.value_networks]
-        policy_from_network_outputs = [net(policy_from_inputs) for net in self.policy_from_networks]
-        policy_to_network_outputs = [net(policy_to_inputs) for net in self.policy_to_networks]
+        policy_from_network_outputs = [
+            net(policy_from_inputs[i // 8])
+            for i, net in enumerate(self.policy_from_networks)
+        ]
+        policy_to_network_outputs = [
+            net(policy_to_inputs[i // 8])
+            for i, net in enumerate(self.policy_to_networks)
+        ]
         ##white_main = self.white_main(embedding)
         ##black_main = self.black_main(embedding)
         ##white_duck = self.white_duck(embedding)
@@ -266,8 +281,8 @@ def eval_losses(model, batch):
     policy_loss = cross_ent_func(from_output, moves_from) + cross_ent_func(to_output, moves_to)
     return 10 * value_loss, policy_loss
 
-def train(paths: list[str], device="cuda"):
-    wandb.init(project="train-nnue", name="nnue-1")
+def train(run_name: str, paths: list[str], device="cuda"):
+    wandb.init(project="train-nnue", name=run_name)
     wandb.config.update({
         "paths": paths,
     })
@@ -323,7 +338,7 @@ def clamp_int8(x):
 def clamp_int16(x):
     return torch.clamp(x, -32768, 32767).to(torch.int16)
 
-def quantize(model_path: str, val_path: str, device="cpu"):
+def quantize(run_name: str, model_path: str, val_path: str, device="cpu"):
     model = Nnue()
     model.load_state_dict(torch.load(model_path))
     model.adjust_leak(0.0)
@@ -379,6 +394,7 @@ def quantize(model_path: str, val_path: str, device="cpu"):
     model.load_state_dict(new_values)
     compute_val_loss()
     nnue_data = write_nnue_format(
+        run_name,
         quantized_weights,
         output_right_shift,
     )
@@ -387,6 +403,7 @@ def quantize(model_path: str, val_path: str, device="cpu"):
         f.write(nnue_data)
 
 def write_nnue_format(
+    run_name: str,
     quantized_weights: dict[str, Any],
     output_right_shift: dict[str, int],
 ) -> bytes:
@@ -424,6 +441,7 @@ def write_nnue_format(
             "shift": shift,
         }
     message = {
+        "run_name": run_name,
         "version": "v1",
         "weights": weights,
     }
@@ -437,17 +455,17 @@ if __name__ == "__main__":
     if len(sys.argv) < 3:
         print("Usage:")
         print("  python train_nnue.py process input1.json input2.json ...")
-        print("  python train_nnue.py train input1-nnue-data.npz input2-nnue-data.npz ...")
-        print("  python train_nnue.py quantize nnue.pt val-nnue-data.npz")
+        print("  python train_nnue.py train run-name input1-nnue-data.npz input2-nnue-data.npz ...")
+        print("  python train_nnue.py quantize run-name nnue.pt val-nnue-data.npz")
         exit(1)
 
     if sys.argv[1] == "process":
         process(sys.argv[2:])
     elif sys.argv[1] == "train":
-        train(sys.argv[2:])
+        train(sys.argv[2], sys.argv[3:])
     elif sys.argv[1] == "quantize":
-        assert len(sys.argv) == 4
-        quantize(sys.argv[2], sys.argv[3])
+        assert len(sys.argv) == 5
+        quantize(sys.argv[2], sys.argv[3], sys.argv[4])
     else:
         print("Unknown command:", sys.argv[1])
         exit(1)
