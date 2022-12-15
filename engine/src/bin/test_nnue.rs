@@ -1,12 +1,12 @@
 use engine::nnue::Nnue;
-use engine::rules::{State, Move};
+use engine::rules::{Move, State};
 
 fn main() {
   let mut state = State::starting_state();
   let mut nnue = Nnue::new(&state, engine::nnue::BUNDLED_NETWORK);
   let moves = [
-    "e2e4", "a3a3",
-    "e7e5", "a3a4",
+    "e2e4", "a3a3", "e7e5",
+    "a3a4",
     //"d1h5", "a4a3",
     //"g7g6", "a3a4",
     //"e1e2", "a4a3",
@@ -22,6 +22,6 @@ fn main() {
   }
   println!("Initial hash: {:016x}", nnue.get_debugging_hash());
   nnue.dump_state();
-  let eval = nnue.evaluate(&state);
+  let eval = nnue.evaluate_value(&state);
   println!("Eval: {}", eval);
 }

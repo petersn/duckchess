@@ -1,4 +1,7 @@
-use crate::{search::{IntEvaluation, eval_terminal_state}, rules::{Player, iter_bits, State}};
+use crate::{
+  rules::{iter_bits, Player, State},
+  search::{eval_terminal_state, IntEvaluation},
+};
 
 #[rustfmt::skip]
 const PAWN_MIDDLEGAME_PST: [IntEvaluation; 64] = [

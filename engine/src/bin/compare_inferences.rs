@@ -1,5 +1,8 @@
 use clap::Parser;
-use engine::{inference::InferenceEngine, inference_desktop::TensorFlowEngine, inference_tensorrt::TensorRTEngine, rules::Move};
+use engine::{
+  inference::InferenceEngine, inference_desktop::TensorFlowEngine,
+  inference_tensorrt::TensorRTEngine, rules::Move,
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -38,7 +41,10 @@ fn main() {
           }
         }
       }
-      println!("Keras: {:#?}, TensorRT: {:#?}", keras_outputs.values, tensorrt_outputs.values);
+      println!(
+        "Keras: {:#?}, TensorRT: {:#?}",
+        keras_outputs.values, tensorrt_outputs.values
+      );
     });
   });
 }

@@ -32,13 +32,13 @@ impl Player {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PieceKind {
-  Pawn = 0,
-  King = 1,
-  Rook = 2,
+  Pawn   = 0,
+  King   = 1,
+  Rook   = 2,
   Knight = 3,
   Bishop = 4,
-  Queen = 5,
-  Duck = 6,
+  Queen  = 5,
+  Duck   = 6,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -125,7 +125,10 @@ pub struct Move {
 }
 
 impl Move {
-  pub const INVALID: Move = Move { from: Square::MAX, to: Square::MAX };
+  pub const INVALID: Move = Move {
+    from: Square::MAX,
+    to:   Square::MAX,
+  };
 
   pub fn to_index(&self) -> u16 {
     let from = self.from as u16;
@@ -644,8 +647,10 @@ impl State {
     self.move_gen::<QUIESCENCE>(&mut moves);
     for m in moves {
       // Check if the move is queenside castling, which has one more blocking square than it might seem.
-      let white_queenside_castling = m.from == 4 && m.to == 2 && self.kings[Player::White as usize].0 & (1 << 4) != 0;
-      let black_queenside_castling = m.from == 60 && m.to == 58 && self.kings[Player::Black as usize].0 & (1 << 60) != 0;
+      let white_queenside_castling =
+        m.from == 4 && m.to == 2 && self.kings[Player::White as usize].0 & (1 << 4) != 0;
+      let black_queenside_castling =
+        m.from == 60 && m.to == 58 && self.kings[Player::Black as usize].0 & (1 << 60) != 0;
       if white_queenside_castling {
         mask |= 1 << 1;
       }
@@ -662,8 +667,10 @@ impl State {
   pub fn get_move_duck_block_mask(&self, m: Move) -> u64 {
     let mut mask = 0;
     // Check if the move is queenside castling, which has one more blocking square than it might seem.
-    let white_queenside_castling = m.from == 4 && m.to == 2 && self.kings[Player::White as usize].0 & (1 << 4) != 0;
-    let black_queenside_castling = m.from == 60 && m.to == 58 && self.kings[Player::Black as usize].0 & (1 << 60) != 0;
+    let white_queenside_castling =
+      m.from == 4 && m.to == 2 && self.kings[Player::White as usize].0 & (1 << 4) != 0;
+    let black_queenside_castling =
+      m.from == 60 && m.to == 58 && self.kings[Player::Black as usize].0 & (1 << 60) != 0;
     if white_queenside_castling {
       mask |= 1 << 1;
     }
@@ -698,13 +705,20 @@ impl State {
       }
     }
     // Handle the initial placement of the duck here too.
-    let move_duck = Move { from: if self.ducks.0 == 0 { duck_to } else { duck_from }, to: duck_to };
+    let move_duck = Move {
+      from: if self.ducks.0 == 0 {
+        duck_to
+      } else {
+        duck_from
+      },
+      to:   duck_to,
+    };
     Some(move_duck)
   }
 
   pub fn adjust_zobrist(&mut self, adjustment: &NnueAdjustment) {
     //match adjustment {
-    //  
+    //
     //}
   }
 
@@ -738,21 +752,21 @@ impl State {
         self.ducks.0 |= to_mask;
 
         let to_pps = PlayerPieceSquare {
-          player: self.turn,
-          piece_kind:  PieceKind::Duck,
-          square: m.to,
+          player:     self.turn,
+          piece_kind: PieceKind::Duck,
+          square:     m.to,
         };
         let adjustment = match extant_duck {
           true => NnueAdjustment::Normal {
-            from: PlayerPieceSquare {
-              player: self.turn,
-              piece_kind:  PieceKind::Duck,
-              square: m.from,
+            from:    PlayerPieceSquare {
+              player:     self.turn,
+              piece_kind: PieceKind::Duck,
+              square:     m.from,
             },
-            to: to_pps,
+            to:      to_pps,
             capture: None,
           },
-          false => NnueAdjustment::DuckCreation { to: to_pps }
+          false => NnueAdjustment::DuckCreation { to: to_pps },
         };
         // Swap the turn.
         self.is_duck_move = false;
@@ -832,17 +846,17 @@ impl State {
                 Player::White => {
                   them.0 &= !(1 << (m.to - 8));
                   capture_pps = Some(PlayerPieceSquare {
-                    player: Player::Black,
+                    player:     Player::Black,
                     piece_kind: PieceKind::Pawn,
-                    square: m.to - 8,
+                    square:     m.to - 8,
                   });
                 }
                 Player::Black => {
                   them.0 &= !(1 << (m.to + 8));
                   capture_pps = Some(PlayerPieceSquare {
-                    player: Player::White,
+                    player:     Player::White,
                     piece_kind: PieceKind::Pawn,
-                    square: m.to + 8,
+                    square:     m.to + 8,
                   });
                 }
               }
@@ -866,9 +880,9 @@ impl State {
 
             if promotion_mask != 0 {
               to_pps = Some(PlayerPieceSquare {
-                player: self.turn,
+                player:     self.turn,
                 piece_kind: PieceKind::Queen,
-                square: m.to,
+                square:     m.to,
               });
             }
             //match promotion {
@@ -925,10 +939,10 @@ impl State {
     let adjustment = match king_involved {
       true => NnueAdjustment::KingInvolved,
       false => NnueAdjustment::Normal {
-        from: from_pps.ok_or("no piece at from position")?,
-        to: to_pps.ok_or("failed to compute dest piece")?,
+        from:    from_pps.ok_or("no piece at from position")?,
+        to:      to_pps.ok_or("failed to compute dest piece")?,
         capture: capture_pps,
-      }
+      },
     };
 
     // Swap the turn.

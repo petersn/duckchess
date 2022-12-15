@@ -6,7 +6,11 @@ use wasm_bindgen::prelude::*;
 use crate::inference::{FEATURES_SIZE, POLICY_LEN};
 use crate::inference_web::MAX_BATCH_SIZE;
 use crate::mcts::{PendingPath, SearchParams};
-use crate::{inference, inference_web, mcts, rules::{Move, Player}, search};
+use crate::{
+  inference, inference_web, mcts,
+  rules::{Move, Player},
+  search,
+};
 
 const MAX_STEPS_BEFORE_INFERENCE: usize = 40 * MAX_BATCH_SIZE;
 const WEB_TRANSPOSITION_TABLE_SIZE: usize = 1 << 20;

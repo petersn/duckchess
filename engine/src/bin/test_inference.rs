@@ -30,6 +30,9 @@ fn main() {
       //println!("Cookies: {:?}", outputs.cookies);
     });
     let inference_time = start.elapsed();
-    println!("Featurization: {:?}, Inference: {:?}", featurization_time, inference_time);
+    println!(
+      "Featurization: {:?}, Inference: {:?}",
+      featurization_time, inference_time
+    );
   }
 }

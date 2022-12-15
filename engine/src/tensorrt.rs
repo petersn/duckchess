@@ -17,9 +17,15 @@ use std::ffi::CString;
 
 extern "C" {
   pub type TensorRTWrapper;
-  pub fn TensorRTWrapper_new(cuda_device: ::std::os::raw::c_int, max_batch_size: ::std::os::raw::c_int) -> *mut TensorRTWrapper;
+  pub fn TensorRTWrapper_new(
+    cuda_device: ::std::os::raw::c_int,
+    max_batch_size: ::std::os::raw::c_int,
+  ) -> *mut TensorRTWrapper;
   pub fn TensorRTWrapper_delete(wrapper: *mut TensorRTWrapper);
-  pub fn TensorRTWrapper_load_model(wrapper: *mut TensorRTWrapper, model_path: *const ::std::os::raw::c_char);
+  pub fn TensorRTWrapper_load_model(
+    wrapper: *mut TensorRTWrapper,
+    model_path: *const ::std::os::raw::c_char,
+  );
   pub fn TensorRTWrapper_get_pointers(
     wrapper: *mut TensorRTWrapper,
     stream_id: ::std::os::raw::c_int,
@@ -27,8 +33,14 @@ extern "C" {
     out_value: *mut *mut ::std::os::raw::c_float,
     out_policy: *mut *mut ::std::os::raw::c_float,
   );
-  pub fn TensorRTWrapper_run_inference(wrapper: *mut TensorRTWrapper, stream_id: ::std::os::raw::c_int);
-  pub fn TensorRTWrapper_wait_for_inference(wrapper: *mut TensorRTWrapper, stream_id: ::std::os::raw::c_int);
+  pub fn TensorRTWrapper_run_inference(
+    wrapper: *mut TensorRTWrapper,
+    stream_id: ::std::os::raw::c_int,
+  );
+  pub fn TensorRTWrapper_wait_for_inference(
+    wrapper: *mut TensorRTWrapper,
+    stream_id: ::std::os::raw::c_int,
+  );
 }
 
 pub struct TensorRT {

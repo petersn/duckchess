@@ -1,7 +1,7 @@
 use crate::eval::basic_eval;
 use crate::nnue::{Nnue, NnueAdjustment};
 use crate::rng::Rng;
-use crate::rules::{GameOutcome, Move, State, get_square, iter_bits};
+use crate::rules::{get_square, iter_bits, GameOutcome, Move, State};
 
 // Represents an evaluation in a position from the perspective of the player to move.
 pub type IntEvaluation = i32;
@@ -46,7 +46,7 @@ const KILLER_MOVE_COUNT: usize = 64;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub struct MovePair {
   regular: Move,
-  duck: Move,
+  duck:    Move,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,7 +92,10 @@ impl Engine {
       rng: Rng::new(seed),
       state,
       transposition_table,
-      killer_moves: [MovePair { regular: Move::INVALID, duck: Move::INVALID }; KILLER_MOVE_COUNT],
+      killer_moves: [MovePair {
+        regular: Move::INVALID,
+        duck:    Move::INVALID,
+      }; KILLER_MOVE_COUNT],
     }
   }
 
@@ -279,7 +282,6 @@ impl Engine {
     entry.node_type = node_type;
   }
 
-
   fn probe_killer_move(&self, state: &State) -> MovePair {
     // Here we divide by two because the game rules count regular move and duck move as separate plies.
     let index = (state.plies / 2) % KILLER_MOVE_COUNT as u32;
@@ -301,7 +303,10 @@ impl Engine {
     mut beta: IntEvaluation,
   ) -> (IntEvaluation, Option<MovePair>) {
     let state_hash = state.get_transposition_table_hash();
-    let mut tt_move_pair = MovePair { regular: Move::INVALID, duck: Move::INVALID };
+    let mut tt_move_pair = MovePair {
+      regular: Move::INVALID,
+      duck:    Move::INVALID,
+    };
     // Check the transposition table.
     if let Some(entry) = self.probe_tt(state_hash) {
       tt_move_pair = entry.best_move.unwrap_or(tt_move_pair);
@@ -341,11 +346,12 @@ impl Engine {
 
     let get_eval = || {
       let random_bonus = (self.rng.next_random() & 0xf) as i32;
-      random_bonus + if NNUE {
-        nnue.evaluate(state)
-      } else {
-        basic_eval(state)
-      }
+      random_bonus
+        + if NNUE {
+          nnue.evaluate_value(state)
+        } else {
+          basic_eval(state)
+        }
     };
 
     let game_over = state.get_outcome().is_some();
@@ -353,13 +359,7 @@ impl Engine {
       (true, _, _) => return (get_eval(), None),
       (_, 0, true) => return (get_eval(), None),
       (_, 0, false) => {
-        let (score, move_pair) = self.pvs::<true, NNUE>(
-          QUIESCENCE_DEPTH,
-          state,
-          nnue,
-          alpha,
-          beta,
-        );
+        let (score, move_pair) = self.pvs::<true, NNUE>(QUIESCENCE_DEPTH, state, nnue, alpha, beta);
         return (make_mate_score_much_less_extreme(score), move_pair);
       }
       _ => {}
@@ -380,7 +380,7 @@ impl Engine {
         if child.get_outcome().is_some() {
           move_pairs.push(MovePair {
             regular: m,
-            duck: Move::INVALID,
+            duck:    Move::INVALID,
           });
           continue;
         }
@@ -419,11 +419,11 @@ impl Engine {
               true => pos,
               false => current_duck_pos,
             },
-            to: pos,
+            to:   pos,
           };
           move_pairs.push(MovePair {
             regular: m,
-            duck: m_duck,
+            duck:    m_duck,
           });
         }
       }

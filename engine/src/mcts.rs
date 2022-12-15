@@ -685,7 +685,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     //let sum_child_visits = self.get_sum_child_visits(self.root);
     // Naively we could use node.visits - 1, but due to transpositions
     // that might not actually be the right value.
-  
+
     let temperature_sum_child_visits: i64 = self.nodes[self.root]
       .outgoing_edges
       .values()
@@ -700,7 +700,8 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       }
       return None;
     }
-    let mut visit_count = self.rng.generate_range_sketchy(temperature_sum_child_visits as u64) as i64;
+    let mut visit_count =
+      self.rng.generate_range_sketchy(temperature_sum_child_visits as u64) as i64;
     for (m, child_index) in &self.nodes[self.root].outgoing_edges {
       visit_count -= (self.nodes[*child_index].visits as i64).pow(beta);
       if visit_count < 0 {
@@ -729,7 +730,10 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         match new_state.apply_move::<false>(m, None) {
           Ok(_) => (),
           Err(e) => {
-            crate::log(&format!("Failed to apply move {:?} to state: {:?}", m, root_node.state));
+            crate::log(&format!(
+              "Failed to apply move {:?} to state: {:?}",
+              m, root_node.state
+            ));
             panic!("Failed to apply move: {:?}", e);
             //panic!(e);
           }

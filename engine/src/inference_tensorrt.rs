@@ -3,9 +3,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use crate::inference;
-use crate::inference::{
-  InferenceResults, InputBlock, CHANNEL_COUNT, FEATURES_SIZE, POLICY_LEN,
-};
+use crate::inference::{InferenceResults, InputBlock, CHANNEL_COUNT, FEATURES_SIZE, POLICY_LEN};
 use crate::tensorrt::TensorRT;
 
 pub struct TensorRTEngine<Cookie> {
@@ -27,10 +25,10 @@ impl<Cookie> TensorRTEngine<Cookie> {
     tensorrt.load_model(model_path);
     Self {
       max_batch_size,
-      input_blocks:   Mutex::new(VecDeque::new()),
-      tensorrt:       Mutex::new(tensorrt),
-      semaphore:      tokio::sync::Semaphore::new(0),
-      eval_count:     std::sync::atomic::AtomicUsize::new(0),
+      input_blocks: Mutex::new(VecDeque::new()),
+      tensorrt: Mutex::new(tensorrt),
+      semaphore: tokio::sync::Semaphore::new(0),
+      eval_count: std::sync::atomic::AtomicUsize::new(0),
       next_stream_id: std::sync::atomic::AtomicUsize::new(0),
     }
   }
@@ -119,9 +117,7 @@ impl<Cookie> inference::InferenceEngine<Cookie> for TensorRTEngine<Cookie> {
       &last_block.cookies,
       &last_block.players,
       &policies,
-      unsafe {
-        std::slice::from_raw_parts(out_values_ptr, block_len)
-      },
+      unsafe { std::slice::from_raw_parts(out_values_ptr, block_len) },
     ));
     //let elapsed = final_start.elapsed();
     //println!("Use time: {:?}", elapsed);

@@ -1,9 +1,12 @@
-use std::{collections::HashMap, io::BufRead, cell::RefCell};
+use std::{cell::RefCell, collections::HashMap, io::BufRead};
 
 use clap::Parser;
-use engine::{inference_desktop::TensorFlowEngine, mcts::{SearchParams, Mcts}};
 use engine::inference::InferenceEngine;
 use engine::rules::State;
+use engine::{
+  inference_desktop::TensorFlowEngine,
+  mcts::{Mcts, SearchParams},
+};
 
 const MAX_BATCH_SIZE: usize = 32;
 const MAX_STEPS_BEFORE_INFERENCE: usize = 40 * 32;
@@ -30,9 +33,10 @@ struct Args {
 fn main() {
   let args = Args::parse();
   let stdin = std::io::stdin();
-  let options = RefCell::new(HashMap::<String, String>::from([
-    ("Hash".to_string(), "16".to_string()),
-  ]));
+  let options = RefCell::new(HashMap::<String, String>::from([(
+    "Hash".to_string(),
+    "16".to_string(),
+  )]));
 
   let make_new_engine = || {
     let seed: u64 = rand::random();
@@ -42,7 +46,8 @@ fn main() {
   let mut engine = make_new_engine();
 
   let mut mcts_data = args.model.map(|model| {
-    let inference_engine: &'static _ = Box::leak(Box::new(TensorFlowEngine::new(MAX_BATCH_SIZE, &model)));
+    let inference_engine: &'static _ =
+      Box::leak(Box::new(TensorFlowEngine::new(MAX_BATCH_SIZE, &model)));
     let mcts = Mcts::new(0, 0, inference_engine, SearchParams::default());
     (inference_engine, mcts)
   });
@@ -118,7 +123,10 @@ fn main() {
             state.apply_move::<false>(m, None).unwrap();
           }
           // Assert that this state is equal to the last state in the MCTS.
-          assert_eq!(state.get_transposition_table_hash(), mcts.get_state().get_transposition_table_hash());
+          assert_eq!(
+            state.get_transposition_table_hash(),
+            mcts.get_state().get_transposition_table_hash()
+          );
           // Apply the final moves
           for m in &tokens[tokens.len() - moves_wanted..] {
             let m = engine::rules::Move::from_uci(m).unwrap();
@@ -178,7 +186,7 @@ fn main() {
               inference!(inference_engine, mcts);
             }
             (0, (mcts.sample_move_by_visit_count(2), None))
-          },
+          }
         };
         match m1 {
           Some(m1) => {

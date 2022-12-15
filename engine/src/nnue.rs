@@ -6,23 +6,26 @@ use std::collections::{hash_map::DefaultHasher, HashMap};
 
 #[rustfmt::skip]
 use crate::rules::{Player, PieceKind, Square, State};
-use crate::search::{IntEvaluation, eval_terminal_state};
+use crate::search::{eval_terminal_state, IntEvaluation};
 
 #[repr(C, align(32))]
 struct AlignedData<T> {
   data: T,
 }
 
-static BUNDLED_NETWORK_DUMMY: AlignedData<[u8; include_bytes!("nnue-data.bin").len()]> = AlignedData { data: *include_bytes!("nnue-data.bin") };
+static BUNDLED_NETWORK_DUMMY: AlignedData<[u8; include_bytes!("nnue-data.bin").len()]> =
+  AlignedData {
+    data: *include_bytes!("nnue-data.bin"),
+  };
 
 pub static BUNDLED_NETWORK: &'static [u8] = &BUNDLED_NETWORK_DUMMY.data;
 
 #[derive(Debug, serde::Deserialize)]
 struct NnueWeightDescription<'a> {
-  shape: Vec<usize>,
-  dtype: &'a str,
+  shape:  Vec<usize>,
+  dtype:  &'a str,
   offset: usize,
-  shift: usize,
+  shift:  usize,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -32,7 +35,7 @@ struct WeightsMetaData<'a> {
 }
 
 struct NnueWeights<'a> {
-  metadata: WeightsMetaData<'a>,
+  metadata:      WeightsMetaData<'a>,
   file_contents: &'a [u8],
 }
 
@@ -51,21 +54,33 @@ impl<'a> NnueWeights<'a> {
     }
   }
 
-  fn get_weight<T>(&self, vec_divide: usize, name: &str, type_check: &str, shape_check: &[usize], shift_check: usize) -> &'a [T] {
-    self.metadata.weights.get(name).map(|desc| {
-      let offset = desc.offset;
-      let raw_len = desc.shape.iter().product::<usize>();
-      // Make sure the tensor is divisible into this vector type.
-      assert_eq!(raw_len % vec_divide, 0);
-      let len = desc.shape.iter().product::<usize>() / vec_divide;
-      // Slice the contents.
-      let slice = &self.file_contents[offset..offset + len * std::mem::size_of::<T>()];
-      assert_eq!(desc.dtype, type_check);
-      assert_eq!(desc.shape, shape_check);
-      assert_eq!(slice.len(), len * std::mem::size_of::<T>());
-      assert_eq!(desc.shift, shift_check);
-      unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const T, len) }
-    }).expect(name)
+  fn get_weight<T>(
+    &self,
+    vec_divide: usize,
+    name: &str,
+    type_check: &str,
+    shape_check: &[usize],
+    shift_check: usize,
+  ) -> &'a [T] {
+    self
+      .metadata
+      .weights
+      .get(name)
+      .map(|desc| {
+        let offset = desc.offset;
+        let raw_len = desc.shape.iter().product::<usize>();
+        // Make sure the tensor is divisible into this vector type.
+        assert_eq!(raw_len % vec_divide, 0);
+        let len = desc.shape.iter().product::<usize>() / vec_divide;
+        // Slice the contents.
+        let slice = &self.file_contents[offset..offset + len * std::mem::size_of::<T>()];
+        assert_eq!(desc.dtype, type_check);
+        assert_eq!(desc.shape, shape_check);
+        assert_eq!(slice.len(), len * std::mem::size_of::<T>());
+        assert_eq!(desc.shift, shift_check);
+        unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const T, len) }
+      })
+      .expect(name)
   }
 
   fn get_veci8(&self, name: &str, shape_check: &[usize], shift_check: usize) -> &'a [VecI8] {
@@ -76,12 +91,34 @@ impl<'a> NnueWeights<'a> {
     self.get_weight::<VecI16>(VECTOR_LENGTH_I16, name, "i16", shape_check, shift_check)
   }
 
-  fn get_veci8_2d<const INNER: usize>(&self, name: &str, shape_check: &[usize], shift_check: usize) -> &'a [[VecI8; INNER]] {
-    self.get_weight::<[VecI8; INNER]>(VECTOR_LENGTH_I8 * INNER, name, "i8", shape_check, shift_check)
+  fn get_veci8_2d<const INNER: usize>(
+    &self,
+    name: &str,
+    shape_check: &[usize],
+    shift_check: usize,
+  ) -> &'a [[VecI8; INNER]] {
+    self.get_weight::<[VecI8; INNER]>(
+      VECTOR_LENGTH_I8 * INNER,
+      name,
+      "i8",
+      shape_check,
+      shift_check,
+    )
   }
 
-  fn get_veci16_2d<const INNER: usize>(&self, name: &str, shape_check: &[usize], shift_check: usize) -> &'a [[VecI16; INNER]] {
-    self.get_weight::<[VecI16; INNER]>(VECTOR_LENGTH_I16 * INNER, name, "i16", shape_check, shift_check)
+  fn get_veci16_2d<const INNER: usize>(
+    &self,
+    name: &str,
+    shape_check: &[usize],
+    shift_check: usize,
+  ) -> &'a [[VecI16; INNER]] {
+    self.get_weight::<[VecI16; INNER]>(
+      VECTOR_LENGTH_I16 * INNER,
+      name,
+      "i16",
+      shape_check,
+      shift_check,
+    )
   }
 
   fn get_i16(&self, name: &str, shape_check: &[usize], shift_check: usize) -> &'a [i16] {
@@ -131,7 +168,7 @@ cfg_if::cfg_if! {
     fn veci16_sub(a: VecI16, b: VecI16) -> VecI16 { unsafe { _mm_sub_epi16(a, b) } }
 
     #[inline(always)]
-    fn veci16_shr4(a: VecI16) -> VecI16 { unsafe { _mm_srai_epi16(a, 4) } }
+    fn veci16_shr_bias_to_main(a: VecI16) -> VecI16 { unsafe { _mm_srai_epi16(a, 1) } }
 
     #[inline(always)]
     fn vec_narrow_pair(a: VecI16, b: VecI16) -> VecI8 {
@@ -210,7 +247,7 @@ cfg_if::cfg_if! {
     fn veci16_sub(a: VecI16, b: VecI16) -> VecI16 { unsafe { i16x8_sub(a, b) } }
 
     #[inline(always)]
-    fn veci16_shr4(a: VecI16) -> VecI16 { unsafe { i16x8_shr(a, 4) } }
+    fn veci16_shr_bias_to_main(a: VecI16) -> VecI16 { unsafe { i16x8_shr(a, 4) } }
 
     #[inline(always)]
     fn vec_narrow_pair(a: VecI16, b: VecI16) -> VecI8 {
@@ -308,9 +345,9 @@ pub type ZobristLayerIndex = u16;
 
 #[derive(Debug)]
 pub struct PlayerPieceSquare {
-  pub player: Player,
+  pub player:     Player,
   pub piece_kind: PieceKind,
-  pub square: Square,
+  pub square:     Square,
 }
 
 impl PlayerPieceSquare {
@@ -380,9 +417,9 @@ fn compute_state_layers(state: &State, mut callback: impl FnMut(LayerIndex)) -> 
   let mut bitboard = state.ducks.0;
   while let Some(pos) = crate::rules::iter_bits(&mut bitboard) {
     let (black_layer, white_layer) = PlayerPieceSquare {
-      player: Player::Black,
+      player:     Player::Black,
       piece_kind: PieceKind::Duck,
-      square: pos,
+      square:     pos,
     }
     .get_layers(king_positions);
     callback(black_layer);
@@ -413,10 +450,7 @@ pub fn get_state_layers_and_net_index(state: &State) -> Option<(Vec<LayerIndex>,
   let mut layers = Vec::new();
   compute_state_layers(state, |layer| layers.push(layer)).ok()?;
   let layer_count = layers.len() as i32;
-  Some((
-    layers,
-    get_net_index(state, layer_count),
-  ))
+  Some((layers, get_net_index(state, layer_count)))
 }
 
 #[derive(Debug)]
@@ -425,26 +459,34 @@ pub enum NnueAdjustment {
     to: PlayerPieceSquare,
   },
   Normal {
-    from: PlayerPieceSquare,
-    to: PlayerPieceSquare,
+    from:    PlayerPieceSquare,
+    to:      PlayerPieceSquare,
     // The capture needn't be on the same square as to due to en passant.
     capture: Option<PlayerPieceSquare>,
   },
   KingInvolved,
 }
 
-struct NnueNet {
+struct NnueValueNet {
   l0_weights: [[VecI8; 256 / VECTOR_LENGTH_I8]; 16],
-  l0_bias: [i16; 16],
+  l0_bias:    [i16; 16],
   l1_weights: [VecI8; 32],
-  l1_bias: [i16; 32],
+  l1_bias:    [i16; 32],
   l2_weights: [VecI8; 2],
-  l2_bias: i16,
+  l2_bias:    i16,
+}
+
+struct NnuePolicyNet {
+  from_weights: [VecI8; 64],
+  from_bias:    [i16; 64],
+  to_weights:   [VecI8; 64],
+  to_bias:      [i16; 64],
 }
 
 pub struct Nnue<'a> {
   layers:       &'a [[VecI16; LINEAR_STATE_VECTOR_COUNT]],
-  nets:         [NnueNet; 32],
+  value_nets:   [NnueValueNet; 32],
+  policy_nets:  [NnuePolicyNet; 32],
   main_bias:    [VecI16; LINEAR_STATE_VECTOR_COUNT],
   linear_state: [VecI16; LINEAR_STATE_VECTOR_COUNT],
   layer_count:  i32,
@@ -454,24 +496,47 @@ impl<'a> Nnue<'a> {
   pub fn new(state: &State, file_contents: &'a [u8]) -> Self {
     //let linear_state = get_bias1d_i16!(PARAMS_MAIN_EMBED_BIAS, LINEAR_STATE_SIZE);
     let weights = NnueWeights::from_file(file_contents);
-    let layers = weights.get_veci16_2d::<LINEAR_STATE_VECTOR_COUNT>("main_embed.weight", &[106496, LINEAR_STATE_SIZE], 11);
-    let main_bias = weights.get_veci16("main_bias", &[LINEAR_STATE_SIZE], 11);
-    let mut nets = vec![];
+    let layers = weights.get_veci16_2d::<LINEAR_STATE_VECTOR_COUNT>(
+      "main_embed.weight",
+      &[106496, LINEAR_STATE_SIZE],
+      8,
+    );
+    let main_bias = weights.get_veci16("main_bias", &[LINEAR_STATE_SIZE], 8);
+    let mut value_nets = vec![];
+    let mut policy_nets = vec![];
     for i in 0..32 {
-      let net = NnueNet {
-        l0_weights: weights.get_veci8_2d::<16>(&format!("n{i}.0.w"), &[16, 256], 7).try_into().unwrap(),
-        l0_bias:    weights.get_i16(&format!("n{i}.0.b"), &[16], 14).try_into().unwrap(),
-        l1_weights: weights.get_veci8(&format!("n{i}.1.w"), &[32, 16], 7).try_into().unwrap(),
-        l1_bias:    weights.get_i16(&format!("n{i}.1.b"), &[32], 14).try_into().unwrap(),
-        l2_weights: weights.get_veci8(&format!("n{i}.2.w"), &[1, 32], 7).try_into().unwrap(),
-        l2_bias:    weights.get_i16(&format!("n{i}.2.b"), &[1], 14)[0],
-      };
-      nets.push(net);
+      value_nets.push(NnueValueNet {
+        l0_weights: weights
+          .get_veci8_2d::<16>(&format!("value{i}.0.w"), &[16, 256], 7)
+          .try_into()
+          .unwrap(),
+        l0_bias:    weights.get_i16(&format!("value{i}.0.b"), &[16], 14).try_into().unwrap(),
+        l1_weights: weights.get_veci8(&format!("value{i}.1.w"), &[32, 16], 7).try_into().unwrap(),
+        l1_bias:    weights.get_i16(&format!("value{i}.1.b"), &[32], 14).try_into().unwrap(),
+        l2_weights: weights.get_veci8(&format!("value{i}.2.w"), &[1, 32], 7).try_into().unwrap(),
+        l2_bias:    weights.get_i16(&format!("value{i}.2.b"), &[1], 14)[0],
+      });
+      policy_nets.push(NnuePolicyNet {
+        from_weights: weights
+          .get_veci8(&format!("policy_from{i}.0.w"), &[64, 16], 6)
+          .try_into()
+          .unwrap(),
+        from_bias:    weights
+          .get_i16(&format!("policy_from{i}.0.b"), &[64], 13)
+          .try_into()
+          .unwrap(),
+        to_weights:   weights
+          .get_veci8(&format!("policy_to{i}.0.w"), &[64, 16], 6)
+          .try_into()
+          .unwrap(),
+        to_bias:      weights.get_i16(&format!("policy_to{i}.0.b"), &[64], 13).try_into().unwrap(),
+      });
     }
 
     let mut this = Self {
       layers,
-      nets: nets.try_into().map_err(|_| "Wrong number of nets").unwrap(),
+      value_nets: value_nets.try_into().map_err(|_| unreachable!()).unwrap(),
+      policy_nets: policy_nets.try_into().map_err(|_| unreachable!()).unwrap(),
       main_bias: main_bias.try_into().unwrap(),
       linear_state: [veci16_zeros(); LINEAR_STATE_VECTOR_COUNT],
       layer_count: 0,
@@ -482,7 +547,9 @@ impl<'a> Nnue<'a> {
 
   pub fn dump_state(&self) {
     // Cast our linear state to a slice of i16s.
-    let linear_state = unsafe { std::slice::from_raw_parts(self.linear_state.as_ptr() as *const i16, LINEAR_STATE_SIZE) };
+    let linear_state = unsafe {
+      std::slice::from_raw_parts(self.linear_state.as_ptr() as *const i16, LINEAR_STATE_SIZE)
+    };
     print!("[");
     for i in 0..LINEAR_STATE_SIZE {
       print!("{}, ", linear_state[i]);
@@ -564,7 +631,47 @@ impl<'a> Nnue<'a> {
     }
   }
 
-  pub fn evaluate(&self, state: &State) -> IntEvaluation {
+  pub fn evaluate_policy(&self, state: &State, square_from: &mut [i16], square_to: &mut [i16]) {
+    let network_index = get_net_index(state, self.layer_count);
+    let policy_net = &self.policy_nets[network_index];
+
+    //// Cast self.linear_state to &[i16].
+    //let linear_state = unsafe {
+    //  std::slice::from_raw_parts(self.linear_state.as_ptr() as *const i16, LINEAR_STATE_SIZE)
+    //};
+    //print!("linear_state[16:48] = [");
+    //for i in 16..48 {
+    //  print!("{}, ", linear_state[i] as f32 / (1 << 8) as f32);
+    //}
+    //println!("]");
+
+    let from_data_simd: VecI8 = {
+      let v0: VecI16 = veci16_shr_bias_to_main(self.linear_state[2]);
+      let v1: VecI16 = veci16_shr_bias_to_main(self.linear_state[3]);
+      vec_narrow_pair(v0, v1)
+    };
+    let to_data_simd: VecI8 = {
+      let v0: VecI16 = veci16_shr_bias_to_main(self.linear_state[4]);
+      let v1: VecI16 = veci16_shr_bias_to_main(self.linear_state[5]);
+      vec_narrow_pair(v0, v1)
+    };
+    for i in 0..64 {
+      square_from[i] = veci16_horizontal_sat_sum(vec_matmul_sat_fma(
+        veci16_zeros(),
+        from_data_simd,
+        policy_net.from_weights[i],        
+      ))
+      .saturating_add(policy_net.from_bias[i]);
+      square_to[i] = veci16_horizontal_sat_sum(vec_matmul_sat_fma(
+        veci16_zeros(),
+        to_data_simd,
+        policy_net.to_weights[i],
+      ))
+      .saturating_add(policy_net.to_bias[i]);
+    }
+  }
+
+  pub fn evaluate_value(&self, state: &State) -> IntEvaluation {
     if let Some(terminal_eval) = eval_terminal_state(state) {
       return terminal_eval;
     }
@@ -576,31 +683,33 @@ impl<'a> Nnue<'a> {
     //let network_index = state.turn as usize + 2 * state.is_duck_move as usize + 4 * game_phase;
     // FIXME: I need to reimplement everything here.
     let network_index = get_net_index(state, self.layer_count);
-    let net = &self.nets[network_index];
+    let value_net = &self.value_nets[network_index];
 
     // Get the first i16 from the first vector of the linear state by unsafe casting.
-    let linear_state_i16 = unsafe { std::slice::from_raw_parts(self.linear_state.as_ptr() as *const i16, LINEAR_STATE_SIZE) };
+    let linear_state_i16 = unsafe {
+      std::slice::from_raw_parts(self.linear_state.as_ptr() as *const i16, LINEAR_STATE_SIZE)
+    };
     let psqt = linear_state_i16[0] as i32;
 
     // The horizontal sum of all of the entries in accum[i] represents the output of layer 0.
     let mut accums0 = [veci16_zeros(); 16];
     for i in 0..LINEAR_STATE_VECTOR_COUNT / 2 {
-      let v0: VecI16 = veci16_shr4(self.linear_state[2 * i + 0]);
-      let v1: VecI16 = veci16_shr4(self.linear_state[2 * i + 1]);
+      let v0: VecI16 = veci16_shr_bias_to_main(self.linear_state[2 * i + 0]);
+      let v1: VecI16 = veci16_shr_bias_to_main(self.linear_state[2 * i + 1]);
       let v = vec_narrow_pair(v0, v1);
       // Print out this block:
       //let transmuted = unsafe { std::mem::transmute::<VecI8, [i8; 16]>(v) };
       //println!("Block {} = {:?}", i, transmuted);
       for j in 0..16 {
-        let block = net.l0_weights[j][i];
+        let block = value_net.l0_weights[j][i];
         accums0[j] = vec_matmul_sat_fma(accums0[j], v, block);
       }
     }
     // We now horizontally sum the accums0, add the bias, and apply the activation function.
     let mut layer0: [i8; 16] = [0; 16];
     for i in 0..16 {
-      let intermediate = veci16_horizontal_sat_sum(accums0[i]).saturating_add(net.l0_bias[i]);
-      //println!("intermediate: {} (added {})", intermediate, net.l0_bias[i]);
+      let intermediate = veci16_horizontal_sat_sum(accums0[i]).saturating_add(value_net.l0_bias[i]);
+      //println!("intermediate: {} (added {})", intermediate, value_net.l0_bias[i]);
       layer0[i] = (intermediate >> 7).clamp(0, 127) as i8;
     }
     let layer0_simd: VecI8 = unsafe { std::mem::transmute(layer0) };
@@ -615,12 +724,12 @@ impl<'a> Nnue<'a> {
     // Second layer
     let mut accums1 = [veci16_zeros(); 32];
     for j in 0..32 {
-      let block = net.l1_weights[j];
+      let block = value_net.l1_weights[j];
       accums1[j] = vec_matmul_sat_fma(accums1[j], layer0_simd, block);
     }
     let mut layer1: [i8; 32] = [0; 32];
     for i in 0..32 {
-      let intermediate = veci16_horizontal_sat_sum(accums1[i]).saturating_add(net.l1_bias[i]);
+      let intermediate = veci16_horizontal_sat_sum(accums1[i]).saturating_add(value_net.l1_bias[i]);
       layer1[i] = (intermediate >> 7).clamp(0, 127) as i8;
     }
     let layer1_simd: [VecI8; 2] = unsafe { std::mem::transmute(layer1) };
@@ -634,21 +743,21 @@ impl<'a> Nnue<'a> {
 
     // Final layer
     // Print out all of the inputs and weights.
-    //let l2_weights_i8 = unsafe { std::slice::from_raw_parts(&net.l2_weights as *const VecI8 as *const i8, 32) };
+    //let l2_weights_i8 = unsafe { std::slice::from_raw_parts(&value_net.l2_weights as *const VecI8 as *const i8, 32) };
     //print!("l2_weights = [");
     //for i in 0..32 {
     //  print!("{}, ", l2_weights_i8[i]);
     //}
     //println!("]");
     let mut final_accum = veci16_zeros();
-    final_accum = vec_matmul_sat_fma(final_accum, layer1_simd[0], net.l2_weights[0]);
-    final_accum = vec_matmul_sat_fma(final_accum, layer1_simd[1], net.l2_weights[1]);
+    final_accum = vec_matmul_sat_fma(final_accum, layer1_simd[0], value_net.l2_weights[0]);
+    final_accum = vec_matmul_sat_fma(final_accum, layer1_simd[1], value_net.l2_weights[1]);
     let final_accum = veci16_horizontal_sat_sum(final_accum) as i32;
     //println!("final_accum: {} (wo/ bias)", final_accum);
-    let final_accum = final_accum + net.l2_bias as i32;
+    let final_accum = final_accum + value_net.l2_bias as i32;
     //println!("final_accum: {} (w/ bias = {})", final_accum, net.l2_bias);
     //println!("psqt: {}", psqt);
-    let final_accum = final_accum + (psqt << 3);
+    let final_accum = final_accum + (psqt << 6);
     //println!("final_accum: {} (w/ psqt = {})", final_accum, psqt << 3);
 
     // We now negate the value if it's black's turn.

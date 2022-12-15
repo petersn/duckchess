@@ -57,7 +57,7 @@ class Nnue(torch.nn.Module):
             torch.nn.Linear(32, 1),
         )
         make_policy_net = lambda: torch.nn.Sequential(
-            torch.nn.Linear(8, 64),
+            torch.nn.Linear(16, 64),
         )
         #self.main_net = make_net()
         self.value_networks = torch.nn.ModuleList([make_value_net() for _ in range(4 * 8)])
@@ -74,9 +74,10 @@ class Nnue(torch.nn.Module):
     def forward(self, indices, offsets, which_model, lengths):
         accum = self.main_embed(indices, offsets) + self.main_bias
         psqt = accum[:, :1]
+        print("VALUES:", accum[0, 16:48].tolist())
         embedding = self.clipped_relu(accum)
-        policy_from_inputs = embedding[:, 8:16]
-        policy_to_inputs = embedding[:, 16:24]
+        policy_from_inputs = embedding[:, 16:32]
+        policy_to_inputs = embedding[:, 32:48]
         #value = self.main_net(embedding)
         value_network_outputs = [net(embedding) for net in self.value_networks]
         policy_from_network_outputs = [net(policy_from_inputs) for net in self.policy_from_networks]
@@ -351,7 +352,7 @@ def quantize(model_path: str, val_path: str, device="cpu"):
         shift = 0
         if "main_embed" in k or k == "main_bias":
             clamp_function = clamp_int16
-            shift = 11
+            shift = 8 #11
         elif "bias" in k:
             clamp_function = clamp_int16
             shift = 14
@@ -368,9 +369,12 @@ def quantize(model_path: str, val_path: str, device="cpu"):
         zero_fraction = (quantized == 0).sum() / v.numel()
         new_values[k] = f
         #new_values[k] = v + 0.1 * torch.randn(*v.shape) #f
+        # We transpose the policy weights, as we evaluate them differently.
+        #if "policy" in k and "bias" not in k:
+        #    quantized = quantized.T
         quantized_weights[k] = quantized
         kn = k.replace("_networks", "")
-        #print(f"{kn:30} shift={output_right_shift[k]:2} {str(tuple(v.shape)):15} {v.min().item():.3f} {v.max().item():.3f} zero={100 * zero_fraction:.3f}%")
+        print(f"{kn:30} shift={output_right_shift[k]:2} {str(tuple(v.shape)):15} {v.min().item():.3f} {v.max().item():.3f} zero={100 * zero_fraction:.3f}%")
     # Apply the new values.
     model.load_state_dict(new_values)
     compute_val_loss()
