@@ -47,6 +47,23 @@ impl Engine {
     !quiescence_moves.is_empty()
   }
 
+  fn is_gradable_position(&self) -> bool {
+    // We only grade right after making a regular move (so during the duck turn),
+    // and never from a position that would have quiescence moves,
+    // were it the other player's turn.
+    if !self.engine.get_state().is_duck_move {
+      return false;
+    }
+    let mut test_state = self.engine.get_state().clone();
+    // Remove the duck, to allow for any move.
+    test_state.ducks.0 = 0;
+    test_state.is_duck_move = false;
+    test_state.turn = test_state.turn.other_player();
+    let mut quiescence_moves = Vec::new();
+    test_state.move_gen::<true>(&mut quiescence_moves);
+    quiescence_moves.is_empty()
+  }
+
   fn run(&mut self, depth: u16) -> (i32, String) {
     let (score, best_move) = self.engine.run(depth, false);
     let serialized = serde_json::to_string(&best_move).unwrap();

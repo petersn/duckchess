@@ -148,7 +148,7 @@ def process_one_path(path: str):
                 move["from"],
                 move["to"],
                 legal_moves,
-                e.have_quiescence_moves(),
+                e.is_gradable_position(),
             ))
 
             r = e.apply_move(json.dumps(move))
@@ -160,11 +160,11 @@ def process_one_path(path: str):
     meta = np.zeros((len(examples), 6), dtype=np.int32)
     legal_move_masks = np.zeros((len(examples), 2, 64), dtype=np.int8)
     for i, (
-        new_feature_indices, turn, is_duck_move, value_for_white, net_index, move_from, move_to, legal_moves, have_quiescence_moves,
+        new_feature_indices, turn, is_duck_move, value_for_white, net_index, move_from, move_to, legal_moves, is_gradable_position,
     ) in enumerate(examples):
         indices[i, :len(new_feature_indices)] = new_feature_indices
         moves[i, :] = move_from, move_to
-        meta[i, :] = len(new_feature_indices), value_for_white, turn, is_duck_move, net_index, have_quiescence_moves
+        meta[i, :] = len(new_feature_indices), value_for_white, turn, is_duck_move, net_index, is_gradable_position
         for move in legal_moves:
             legal_move_masks[i, 0, move["from"]] = 1
             legal_move_masks[i, 1, move["to"]] = 1
@@ -209,7 +209,7 @@ def get_make_batch(paths: list[str], device: str):
     all_indices_length = concat_meta[:, 0]
     all_value_for_white = concat_meta[:, 1]
     all_net_index = concat_meta[:, 4]
-    all_have_quiescence_moves = concat_meta[:, 5]
+    all_is_gradable_position = concat_meta[:, 5]
     #all_turn = concat_meta[:, 2]
     #all_is_duck_move = concat_meta[:, 3]
     print("Constant model loss:", np.var(all_value_for_white))
@@ -243,7 +243,7 @@ def get_make_batch(paths: list[str], device: str):
             torch.tensor(concat_moves[subset, 0], dtype=torch.int64, device=device),
             torch.tensor(concat_moves[subset, 1], dtype=torch.int64, device=device),
             torch.tensor(concat_legal_move_masks[subset], dtype=torch.int8, device=device),
-            torch.tensor(all_have_quiescence_moves[subset], dtype=torch.int32, device=device),
+            torch.tensor(all_is_gradable_position[subset], dtype=torch.int32, device=device),
         )
     return make_batch
 
@@ -251,11 +251,11 @@ mse_func = torch.nn.MSELoss()
 cross_ent_func = torch.nn.CrossEntropyLoss()
 
 def eval_losses(model, batch):
-    indices, offsets, which_model, lengths, value_for_white, moves_from, moves_to, legal_move_masks, have_quiescence_moves = batch
+    indices, offsets, which_model, lengths, value_for_white, moves_from, moves_to, legal_move_masks, is_gradable_position = batch
     value_output, from_output, to_output = model(indices, offsets, which_model, lengths)
     # We don't grade on unquiescenced states, as we'll never actually evaluate the NNUE on them.
-    #print("Shapes:", have_quiescence_moves.unsqueeze(-1).shape, value_for_white.shape, value_output.shape)
-    value_output = torch.where(have_quiescence_moves.unsqueeze(-1) == 1, value_for_white, value_output)
+    #print("Shapes:", is_gradable_position.unsqueeze(-1).shape, value_for_white.shape, value_output.shape)
+    value_output = torch.where(is_gradable_position.unsqueeze(-1) == 1, value_output, value_for_white)
     #print("[v] Relevant shapes:", value_output.shape, value_for_white.shape)
     value_loss = mse_func(value_output, value_for_white)
     # We use the legal_move_masks to help out the model, and only count the loss for the legal moves.
