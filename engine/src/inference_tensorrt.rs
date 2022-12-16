@@ -75,7 +75,7 @@ impl<Cookie> inference::InferenceEngine<Cookie> for TensorRTEngine<Cookie> {
     };
     let block_len = last_block.cookies.len();
     assert!(block_len <= self.max_batch_size);
-    let (inp_features_ptr, out_values_ptr, out_policy_ptr) = {
+    let (inp_features_ptr, out_wdl_ptr, out_policy_ptr) = {
       let guard = self.tensorrt.lock().unwrap();
       guard.get_pointers(stream_id)
     };
@@ -117,7 +117,10 @@ impl<Cookie> inference::InferenceEngine<Cookie> for TensorRTEngine<Cookie> {
       &last_block.cookies,
       &last_block.players,
       &policies,
-      unsafe { std::slice::from_raw_parts(out_values_ptr, block_len) },
+      unsafe { std::slice::from_raw_parts(
+        out_wdl_ptr as *const [f32; 3],
+        block_len,
+      ) },
     ));
     //let elapsed = final_start.elapsed();
     //println!("Use time: {:?}", elapsed);

@@ -1,7 +1,7 @@
 use crate::eval::basic_eval;
 use crate::nnue::{Nnue, NnueAdjustment};
 use crate::rng::Rng;
-use crate::rules::{get_square, iter_bits, GameOutcome, Move, State};
+use crate::rules::{get_square, iter_bits, GameOutcome, Move, State, RepetitionState};
 
 // Represents an evaluation in a position from the perspective of the player to move.
 pub type IntEvaluation = i32;
@@ -91,6 +91,8 @@ pub struct Engine {
   pub total_eval:      f32,
   rng:                 Rng,
   state:               State,
+  repetition_state:    RepetitionState,
+  is_repetition:       bool,
   transposition_table: Vec<TTEntry>,
   killer_moves:        [Move; KILLER_MOVE_COUNT],
 }
@@ -113,6 +115,8 @@ impl Engine {
       total_eval: 0.0,
       rng: Rng::new(seed),
       state,
+      repetition_state: RepetitionState::new(),
+      is_repetition: false,
       transposition_table,
       killer_moves: [Move::INVALID; KILLER_MOVE_COUNT],
     }
@@ -131,7 +135,9 @@ impl Engine {
   }
 
   pub fn apply_move(&mut self, m: Move) -> Result<NnueAdjustment, &'static str> {
-    self.state.apply_move::<false>(m, None)
+    let adjustment = self.state.apply_move::<false>(m, None)?;
+    self.is_repetition |= self.repetition_state.add(self.state.get_transposition_table_hash());
+    Ok(adjustment)
   }
 
   pub fn get_moves(&self) -> Vec<Move> {
@@ -141,7 +147,11 @@ impl Engine {
   }
 
   pub fn get_outcome(&self) -> Option<GameOutcome> {
-    self.state.get_outcome()
+    if self.is_repetition {
+      Some(GameOutcome::Draw)
+    } else {
+      self.state.get_outcome()
+    }
   }
 
   pub fn run(&mut self, depth: u16, use_nnue: bool) -> PrincipalVariation {
@@ -286,6 +296,7 @@ impl Engine {
   }
 
   fn probe_tt(&mut self, hash: u64) -> Option<&mut TTEntry> {
+    return None;
     let index = (hash % self.transposition_table.len() as u64) as usize;
     let entry = &mut self.transposition_table[index];
     match entry.zobrist == hash {
@@ -305,6 +316,7 @@ impl Engine {
     best_move: Move,
     node_type: NodeType,
   ) {
+    return;
     //println!("TT insert: {} {} {} {:?} {:?}", hash, depth, score, best_move, node_type);
     let index = (hash % self.transposition_table.len() as u64) as usize;
     let entry = &mut self.transposition_table[index];
@@ -382,8 +394,8 @@ impl Engine {
     }
 
     let get_eval = |reason: &str| {
-      //let random_bonus = (self.rng.next_random() & 0xf) as i32;
-      let random_bonus = 0;
+      let random_bonus = (self.rng.next_random() & 0xf) as i32;
+      //let random_bonus = 0;
       random_bonus
         + if NNUE {
           if !(state.is_duck_move || state.get_outcome().is_some()) {
@@ -512,9 +524,9 @@ impl Engine {
     let mut first = true;
     let mut next_depth = depth - 1;
     for (i, &search_move) in moves_to_search.iter().enumerate() {
-      if (i == 3 || i == 10) && next_depth >= 2 {
-        next_depth -= 2;
-      }
+      //if (i == 3 || i == 10) && next_depth >= 2 {
+      //  next_depth -= 2;
+      //}
 
       self.nodes_searched += 1;
       let mut new_state = state.clone();

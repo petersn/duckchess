@@ -46,9 +46,10 @@ if __name__ == "__main__":
     train_policy_indices = torch.tensor(dataset.policy_indices)
     train_policy_probs = torch.tensor(dataset.policy_probs)
     #train_policy = torch.tensor(train_policy.reshape((-1, 64 * 64)))
-    train_value = torch.tensor(dataset.value)
+    train_wdl_index = torch.tensor(dataset.wdl_index)
+    train_mcts_root_value = torch.tensor(dataset.mcts_root_value)
 
-    print("Got data:", train_features.shape, train_policy_indices.shape, train_policy_probs.shape, train_value.shape)
+    print("Got data:", train_features.shape, train_policy_indices.shape, train_policy_probs.shape, train_wdl_index.shape, train_mcts_root_value.shape)
 
     wandb.config.update(args)
     wandb.config.update({
@@ -94,7 +95,9 @@ if __name__ == "__main__":
             # We convert the features array after indexing, to reduce memory consumption.
             train_features[indices].cuda().to(torch.float32),
             policy_block.cuda(),
-            train_value[indices].cuda(),
+            train_wdl_index[indices].cuda(),
+            train_mcts_root_value[indices].cuda(),
+            #train_value[indices].cuda(),
         )
 
     print("Attempting to create model.")
@@ -106,7 +109,9 @@ if __name__ == "__main__":
     mse_func = torch.nn.MSELoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
     policy_loss_ewma = EWMA()
-    value_loss_ewma = EWMA()
+    wdl_loss_ewma = EWMA()
+    mcts_root_value_prediction_loss_ewma = EWMA()
+
 
     # Load up the model
     if args.old_path is not None:
@@ -125,25 +130,32 @@ if __name__ == "__main__":
 
     for i in range(args.steps):
         optimizer.zero_grad()
-        features, target_policy, target_value = make_batch(args.minibatch_size)
-        policy_output, value_output = model(features)
+        features, target_policy, target_wdl_index, target_mcts_root_value = make_batch(args.minibatch_size)
+        policy_output, wdl_output, mcts_root_value_prediction = model(features)
         policy_loss = cross_en(policy_output, target_policy)
-        value_loss = mse_func(value_output, target_value)
-        loss = policy_loss + value_loss
+        wdl_loss = cross_en(wdl_output, target_wdl_index)
+        mcts_root_value_prediction_loss = mse_func(mcts_root_value_prediction, target_mcts_root_value)
+        loss = policy_loss + wdl_loss + mcts_root_value_prediction_loss
         loss.backward()
         wandb.log({
             "loss": loss.item(),
             "policy_loss": policy_loss.item(),
-            "value_loss": value_loss.item(),
+            "wdl_loss": wdl_loss.item(),
+            "mcts_root_value_prediction_loss": mcts_root_value_prediction_loss.item(),
             "grad_norm": torch.nn.utils.clip_grad_norm_(model.parameters(), 10.0),
         })
         optimizer.step()
         policy_loss_ewma.apply(policy_loss.item())
-        value_loss_ewma.apply(value_loss.item())
+        wdl_loss_ewma.apply(wdl_loss.item())
+        mcts_root_value_prediction_loss_ewma.apply(mcts_root_value_prediction_loss.item())
 
         if i % 100 == 0:
-            print("[%7i] loss = %.4f (policy = %.4f  value = %0.4f)" % (
-                i, policy_loss_ewma.value + value_loss_ewma.value, policy_loss_ewma.value, value_loss_ewma.value,
+            print("[%7i] loss = %.4f (policy = %.4f  wdl = %0.4f  root-val = %0.4f)" % (
+                i,
+                policy_loss_ewma.value + wdl_loss_ewma.value + mcts_root_value_prediction_loss_ewma.value,
+                policy_loss_ewma.value,
+                wdl_loss_ewma.value,
+                mcts_root_value_prediction_loss_ewma.value,
             ))
         if args.save_every and i % args.save_every == 0:
             save_model()

@@ -158,5 +158,6 @@ pub fn basic_eval(state: &State) -> IntEvaluation {
       score -= (pst_mult * pst[(pos ^ pst_xor) as usize] as f32) as IntEvaluation;
     }
   }
-  score + 25
+  // FIXME: Presumably the tempo bonus should be lesser on the duck move.
+  score + if state.is_duck_move { 10 } else { 25 }
 }

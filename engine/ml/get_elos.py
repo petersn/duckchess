@@ -67,13 +67,15 @@ print("Ratings:", ratings)
 def get_step(name):
     return int(re.search(r"step-(\d+)", name).group(1))
 
+run_name = open("CURRENT_RUN").read().strip()
+
 names = sorted(ratings.keys())
 xs = [get_step(name) for name in names][-85:]
 ys = [ratings[name] for name in names][-85:]
 import matplotlib.pyplot as plt
 plt.plot(xs, ys)
 plt.scatter(xs, ys, s=6)
-plt.title("Elo progression of DuckChessZero")
+plt.title("Elo progression of DuckChessZero (" + run_name + ")")
 plt.ylabel("Elo rating")
 plt.xlabel("Model number")
 plt.grid(True)
@@ -81,4 +83,3 @@ plt.savefig("./web/ratings.png")
 
 print(f"top-elo={max(ys)}")
 print(f"last-elo={ys[-1]}")
-

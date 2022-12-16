@@ -1,12 +1,14 @@
 include!(concat!(env!("OUT_DIR"), "/tables.rs"));
 
+use std::collections::HashMap;
+
 use serde::{ser::SerializeSeq, Deserialize, Serialize};
 
 use crate::nnue::{Nnue, NnueAdjustment, PlayerPieceSquare};
 
 pub const IS_DUCK_CHESS: bool = true;
 
-pub const MOVE_HISTORY_LEN: usize = 4;
+pub const MOVE_HISTORY_LEN: usize = 8;
 
 #[rustfmt::skip]
 const ALL_BUT_A_FILE:   u64 = 0xfefefefefefefefe;
@@ -100,7 +102,7 @@ pub struct State {
   pub turn:            Player,
   pub is_duck_move:    bool,
   pub move_history:    [Option<Move>; MOVE_HISTORY_LEN],
-  pub zobrist:         u64,
+  //pub zobrist:         u64,
   pub plies:           u32,
 }
 
@@ -280,7 +282,7 @@ impl State {
       turn:            Player::White,
       is_duck_move:    false,
       move_history:    [None; MOVE_HISTORY_LEN],
-      zobrist:         0, // FIXME: Compute this properly.
+      //zobrist:         0, // FIXME: Compute this properly.
       plies:           0,
     }
   }
@@ -905,10 +907,6 @@ impl State {
           }
           (PieceKind::King, _) => {
             king_involved = true;
-            self.castling_rights[self.turn as usize] = CastlingRights {
-              king_side:  false,
-              queen_side: false,
-            };
             // Check if we just castled.
             if (m.from as i8 - m.to as i8).abs() == 2 {
               if m.from < m.to && !self.castling_rights[self.turn as usize].king_side {
@@ -927,6 +925,10 @@ impl State {
               remove_rooks = 1 << rook_from;
               new_rooks = 1 << rook_to;
             }
+            self.castling_rights[self.turn as usize] = CastlingRights {
+              king_side:  false,
+              queen_side: false,
+            };
           }
           (PieceKind::Rook, 0) | (PieceKind::Rook, 56) => {
             self.castling_rights[self.turn as usize].queen_side = false
@@ -1007,5 +1009,30 @@ impl State {
       }
     }
     Ok(())
+  }
+}
+
+#[derive(Clone)]
+pub struct RepetitionState {
+  mapping: HashMap<u64, u16>,
+}
+
+impl RepetitionState {
+  pub fn new() -> RepetitionState {
+    RepetitionState {
+      mapping: HashMap::new(),
+    }
+  }
+
+  pub fn add(&mut self, zobrist: u64) -> bool {
+    let count = self.mapping.entry(zobrist).or_insert(0);
+    *count += 1;
+    *count >= 3
+  }
+
+  pub fn remove(&mut self, zobrist: u64) {
+    let count = self.mapping.entry(zobrist).or_insert(0);
+    assert!(*count > 0);
+    *count -= 1;
   }
 }

@@ -20,6 +20,8 @@ class Dataset:
     policy_indices: np.ndarray
     policy_probs: np.ndarray
     value: np.ndarray
+    wdl_index: np.ndarray
+    mcts_root_value: np.ndarray
 
     def sanity_check(self):
         assert len(self.features) == len(self.policy_indices) == len(self.policy_probs) == len(self.value)
@@ -35,6 +37,8 @@ class Dataset:
             policy_indices=self.policy_indices,
             policy_probs=self.policy_probs,
             value=self.value,
+            wdl_index=self.wdl_index,
+            mcts_root_value=self.mcts_root_value,
         )
 
     @classmethod
@@ -46,6 +50,8 @@ class Dataset:
             policy_indices=data["policy_indices"],
             policy_probs=data["policy_probs"],
             value=data["value"],
+            wdl_index=data["wdl_index"],
+            mcts_root_value=data["mcts_root_value"],
         )
         ds.sanity_check()
         return ds
@@ -76,6 +82,8 @@ def process_game_path(path: str):
     policy_indices_array *= -1
     policy_probs_array = np.zeros((total_moves, POLICY_TRUNCATION), dtype=np.float32)
     value_array = np.zeros((total_moves, 1), dtype=np.float32)
+    wdl_index_array = np.zeros((total_moves, 1), dtype=np.int8)
+    mcts_root_value_array = np.zeros((total_moves, 1), dtype=np.float32)
     entry = 0
     for game in games:
         game = json.loads(game)
@@ -148,7 +156,18 @@ def process_game_path(path: str):
             #policy_array[entry] = engine.move_to_index(move_str)
             #engine.encode_move(move_str, policy.nbytes, policy.ctypes.data)
 
+            # The value array contains values from the side to move's perspective.
             value_array[entry, 0] = value_for_white if white_to_move else -value_for_white
+            # The WDL array contains outcomes from the side to move's perspective.
+            wdl_index_array[entry, 0] = (
+                {"1-0": 0, "0-1": 2, None: 1}[game["outcome"]] if white_to_move else
+                {"1-0": 2, "0-1": 0, None: 1}[game["outcome"]]
+            )
+            # The MCTS root value in the game JSON is from white's perspective, so we must flip it for black.
+            # Also, it's from 0 (loss) to 1 (win) in the JSON, and we want -1 (loss) to +1 (win) in our array.
+            mcts_root_value_array[entry, 0] = (2 * game["root_values"][i] - 1) * (
+                +1 if white_to_move else -1
+            )
             entry += 1
             # Apply the move.
             #print("Applying move", move_str)
@@ -170,6 +189,8 @@ def process_game_path(path: str):
         policy_indices=policy_indices_array,
         policy_probs=policy_probs_array,
         value=value_array,
+        wdl_index=wdl_index_array,
+        mcts_root_value=mcts_root_value_array,
     )
     dataset.save(cache_path)
     print("Saved dataset to", cache_path)
@@ -194,6 +215,8 @@ def collect_data(json_paths: list[str]) -> Dataset:
     policy_indices_array *= -1
     policy_probs_array = np.zeros((total_moves, POLICY_TRUNCATION), dtype=np.float32)
     value_array = np.zeros((total_moves, 1), dtype=np.float32)
+    wdl_index_array = np.zeros((total_moves, 1), dtype=np.int8)
+    mcts_root_value_array = np.zeros((total_moves, 1), dtype=np.float32)
     # Now fill them in.
     entry = 0
     game = 0
@@ -207,6 +230,8 @@ def collect_data(json_paths: list[str]) -> Dataset:
         policy_indices_array[entry:entry + move_count] = x["policy_indices"]
         policy_probs_array[entry:entry + move_count] = x["policy_probs"]
         value_array[entry:entry + move_count] = x["value"]
+        wdl_index_array[entry:entry + move_count] = x["wdl_index"]
+        mcts_root_value_array[entry:entry + move_count] = x["mcts_root_value"]
         entry += move_count
     assert entry == total_moves
     print(f"Total games = {total_games} total moves = {total_moves}")
@@ -216,6 +241,8 @@ def collect_data(json_paths: list[str]) -> Dataset:
         policy_indices=policy_indices_array,
         policy_probs=policy_probs_array,
         value=value_array,
+        wdl_index=wdl_index_array,
+        mcts_root_value=mcts_root_value_array,
     )
 
 if __name__ == "__main__":

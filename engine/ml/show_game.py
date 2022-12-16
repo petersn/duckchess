@@ -4,6 +4,8 @@ import json
 
 import engine
 
+#final_state = {'pawns': [[0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0]], 'knights': [[0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0]], 'bishops': [[0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0]], 'rooks': [[0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 32]], 'queens': [[0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0]], 'kings': [[0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 2, 0]], 'ducks': [0, 0, 0, 0, 16, 0, 0, 0], 'enPassant': [0, 0, 0, 0, 0, 0, 0, 0], 'castlingRights': [{'kingSide': False, 'queenSide': False}, {'kingSide': False, 'queenSide': False}], 'turn': 'white', 'isDuckMove': True, 'moveHistory': [{'from': 41, 'to': 49}, {'from': 58, 'to': 36}, {'from': 57, 'to': 49}, {'from': 59, 'to': 58}], 'zobrist': 0, 'plies': 225}
+
 move_squares = [
     b + a
     for a in "12345678"
@@ -66,10 +68,22 @@ if __name__ == "__main__":
                 games.append(json.loads(line))
     print("Games:", len(games))
 
+    # # Find the game that matches our target final state.
+    # for i, game in enumerate(games):
+    #     if game["final_state"] == final_state:
+    #         print("FOUND GAME", i)
+    #         with open("/tmp/debug-game-step-235.json", "w") as f:
+    #             json.dump(game, f, indent=2)
+    #         break
+    # else:
+    #     print("Failed to find game")
+    #     exit()
+
     game = random.choice(games)
     #game = games[21]
     #game = games[77]
     print("GAME LENGTH:", len(game["moves"]))
+    print(game.keys())
 
     last_state = None
 
@@ -93,9 +107,18 @@ if __name__ == "__main__":
         if r is not None:
             print("BAD:", r)
         state = json.loads(e.get_state())
-        print("AFTER MOVE:")
-        print(state)
+        #print("AFTER MOVE:")
+        #print(state)
         render_state(state)
-        input(move_squares[move["from"]] + move_squares[move["to"]] + " > ")
+        #info_line = "[%3i] " % i + move_squares[move["from"]] + move_squares[move["to"]] + " value=%.2f" % game["root_values"][i]
+        ##info_line = f" {game['full_search'][i]}"
+        #if game["full_search"][i]:
+        #    for move, score in sorted(game["train_dists"][i], key=lambda x: -x[1]):
+        #        info_line += " \x1b[91m" + move_squares[move["from"]] + move_squares[move["to"]] + "\x1b[0m: %.0f%%" % round(100 * score)
+        info_line = "x"
+        if i >= 301 or True:
+            input(info_line + " > ")
+        else:
+            print(info_line)
         print(e.sanity_check())
         last_state = state

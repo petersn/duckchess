@@ -8,12 +8,15 @@ pub struct Evaluation {
   pub expected_score:     f32,
   /// Whose perspective the score is from.
   pub perspective_player: Player,
+  /// Says if the score is certain (as in, it's the provably exact minimax value).
+  pub is_exact:        bool,
 }
 
 impl Evaluation {
   pub const EVEN_EVAL: Self = Self {
     expected_score:     0.5,
     perspective_player: Player::White,
+    is_exact:        false,
   };
 
   /// If a state is terminal, return the evaluation of the state.
@@ -23,6 +26,7 @@ impl Evaluation {
       GameOutcome::Win(player) => Self {
         expected_score:     1.0,
         perspective_player: player,
+        is_exact:           true,
       },
     })
   }
@@ -291,13 +295,26 @@ fn make_perspective_policy(player: Player, policy: &[f32; POLICY_LEN]) -> Box<[f
   result
 }
 
+#[inline]
+fn wdl_to_expected_score(wdl: &[f32; 3]) -> f32 {
+  // Compute softmax:
+  let max = wdl[0].max(wdl[1]).max(wdl[2]);
+  let w = (wdl[0] - max).exp();
+  let d = (wdl[1] - max).exp();
+  let l = (wdl[2] - max).exp();
+  let sum = w + d + l;
+  let w = w / sum;
+  let d = d / sum;
+  w + 0.5 * d
+}
+
 #[derive(Debug)]
 pub struct InferenceResults<'a, Cookie> {
   pub length:   usize,
   pub cookies:  &'a [Cookie],
   pub players:  &'a [Player],
   pub policies: &'a [&'a [f32; POLICY_LEN]],
-  pub values:   &'a [f32],
+  pub wdl:   &'a [[f32; 3]],
 }
 
 impl<'a, Cookie> InferenceResults<'a, Cookie> {
@@ -305,28 +322,30 @@ impl<'a, Cookie> InferenceResults<'a, Cookie> {
     cookies: &'a [Cookie],
     players: &'a [Player],
     policies: &'a [&'a [f32; POLICY_LEN]],
-    values: &'a [f32],
+    wdl: &'a [[f32; 3]],
   ) -> InferenceResults<'a, Cookie> {
     assert_eq!(cookies.len(), policies.len());
     assert_eq!(cookies.len(), players.len());
-    assert_eq!(cookies.len(), values.len());
+    assert_eq!(cookies.len(), wdl.len());
     InferenceResults {
       length: cookies.len(),
       cookies,
       players,
       policies,
-      values,
+      wdl,
     }
   }
 
   pub fn get(&self, index: usize) -> FullPrecisionModelOutputs {
     //println!("Value: {}", self.values[index]);
-    debug_assert!(-1.0 <= self.values[index] && self.values[index] <= 1.0);
+    let expected_score = wdl_to_expected_score(&self.wdl[index]);
+    //debug_assert!(-1.0 <= self.values[index] && self.values[index] <= 1.0);
     FullPrecisionModelOutputs {
       policy: make_perspective_policy(self.players[index], self.policies[index]),
       value:  Evaluation {
-        expected_score:     (self.values[index] + 1.0) / 2.0,
+        expected_score,  //:     (self.values[index] + 1.0) / 2.0,
         perspective_player: self.players[index],
+        is_exact: false,
       },
     }
   }

@@ -45,8 +45,9 @@ struct TensorRTWrapper {
   cudaStream_t streams[STREAM_COUNT];
   IRuntime* runtime;
   float* inp_features[STREAM_COUNT];
-  float* out_value[STREAM_COUNT];
+  float* out_wdl[STREAM_COUNT];
   float* out_policy[STREAM_COUNT];
+  float* out_mcts_value_prediction[STREAM_COUNT];
   // We recreate these for each new model.
   ICudaEngine* engine = nullptr;
   IExecutionContext* contexts[STREAM_COUNT];
@@ -61,13 +62,15 @@ struct TensorRTWrapper {
     // Create buffers for input and output.
     for (int i = 0; i < STREAM_COUNT; i++) {
       cuda_check(cudaMallocManaged(&inp_features[i], max_batch_size * 29 * 8 * 8 * sizeof(float)));
-      cuda_check(cudaMallocManaged(&out_value[i], max_batch_size * 1 * sizeof(float)));
+      cuda_check(cudaMallocManaged(&out_wdl[i], max_batch_size * 3 * sizeof(float)));
       cuda_check(cudaMallocManaged(&out_policy[i], max_batch_size * 4096 * sizeof(float)));
-      printf("Allocated at %p %p %p\n", inp_features[i], out_value[i], out_policy[i]);
+      cuda_check(cudaMallocManaged(&out_mcts_value_prediction[i], max_batch_size * sizeof(float)));
+      printf("Allocated at %p %p %p %p\n", inp_features[i], out_wdl[i], out_policy[i], out_mcts_value_prediction[i]);
       // Zero out the buffers.
       cuda_check(cudaMemsetAsync(inp_features[i], 0, max_batch_size * 29 * 8 * 8 * sizeof(float), streams[i]));
-      cuda_check(cudaMemsetAsync(out_value[i], 0, max_batch_size * 1 * sizeof(float), streams[i]));
+      cuda_check(cudaMemsetAsync(out_wdl[i], 0, max_batch_size * 3 * sizeof(float), streams[i]));
       cuda_check(cudaMemsetAsync(out_policy[i], 0, max_batch_size * 4096 * sizeof(float), streams[i]));
+      cuda_check(cudaMemsetAsync(out_mcts_value_prediction[i], 0, max_batch_size * sizeof(float), streams[i]));
       contexts[i] = nullptr;
     }
   }
@@ -75,8 +78,9 @@ struct TensorRTWrapper {
   ~TensorRTWrapper() {
     for (int i = 0; i < STREAM_COUNT; i++) {
       cuda_check(cudaFree(inp_features[i]));
-      cuda_check(cudaFree(out_value[i]));
+      cuda_check(cudaFree(out_wdl[i]));
       cuda_check(cudaFree(out_policy[i]));
+      cuda_check(cudaFree(out_mcts_value_prediction[i]));
     }
     for (int i = 0; i < STREAM_COUNT; i++)
       cuda_check(cudaStreamDestroy(streams[i]));
@@ -104,8 +108,9 @@ struct TensorRTWrapper {
     engine = runtime->deserializeCudaEngine(model_data.data(), model_data.size());
     for (auto name : {
       "inp_features",
-      "out_value",
+      "out_wdl",
       "out_policy",
+      "out_mcts_value_prediction",
     }) {
       //std::cout << name << ": " << engine->getBindingIndex(name) << std::endl;
       auto dims = engine->getTensorShape(name);
@@ -119,9 +124,10 @@ struct TensorRTWrapper {
     for (int i = 0; i < STREAM_COUNT; i++) {
       contexts[i] = engine->createExecutionContext();
       contexts[i]->setTensorAddress("inp_features", inp_features[i]);
-      contexts[i]->setTensorAddress("out_value", out_value[i]);
+      contexts[i]->setTensorAddress("out_wdl", out_wdl[i]);
       contexts[i]->setTensorAddress("out_policy", out_policy[i]);
-      printf("Set addresses at %p %p %p\n", inp_features[i], out_value[i], out_policy[i]);
+      contexts[i]->setTensorAddress("out_mcts_value_prediction", out_mcts_value_prediction[i]);
+      printf("Set addresses at %p %p %p\n", inp_features[i], out_wdl[i], out_policy[i]);
     }
   }
 
@@ -154,13 +160,13 @@ extern "C" void TensorRTWrapper_get_pointers(
   TensorRTWrapper* wrapper,
   int stream_id,
   float** inp_features,
-  float** out_value,
+  float** out_wdl,
   float** out_policy
 ) {
   *inp_features = wrapper->inp_features[stream_id];
-  *out_value = wrapper->out_value[stream_id];
+  *out_wdl = wrapper->out_wdl[stream_id];
   *out_policy = wrapper->out_policy[stream_id];
-  //printf("Returning addresses at %p %p %p\n", *inp_features, *out_value, *out_policy);
+  //printf("Returning addresses at %p %p %p\n", *inp_features, *out_wdl, *out_policy);
 }
 
 extern "C" void TensorRTWrapper_run_inference(TensorRTWrapper* wrapper, int stream_id) {

@@ -7,7 +7,7 @@
 //   TensorRTWrapper* wrapper,
 //   int stream_id,
 //   float** inp_features,
-//   float** out_value,
+//   float** out_wdl,
 //   float** out_policy,
 // );
 // extern "C" void TensorRTWrapper_run_inference(TensorRTWrapper* wrapper, int stream_id);
@@ -30,7 +30,7 @@ extern "C" {
     wrapper: *mut TensorRTWrapper,
     stream_id: ::std::os::raw::c_int,
     inp_features: *mut *mut ::std::os::raw::c_float,
-    out_value: *mut *mut ::std::os::raw::c_float,
+    out_wdl: *mut *mut ::std::os::raw::c_float,
     out_policy: *mut *mut ::std::os::raw::c_float,
   );
   pub fn TensorRTWrapper_run_inference(
@@ -77,18 +77,18 @@ impl TensorRT {
 
   pub fn get_pointers(&self, stream_id: i32) -> (*mut f32, *mut f32, *mut f32) {
     let mut inp_features: *mut f32 = std::ptr::null_mut();
-    let mut out_value: *mut f32 = std::ptr::null_mut();
+    let mut out_wdl: *mut f32 = std::ptr::null_mut();
     let mut out_policy: *mut f32 = std::ptr::null_mut();
     unsafe {
       TensorRTWrapper_get_pointers(
         self.pointer,
         stream_id,
         &mut inp_features,
-        &mut out_value,
+        &mut out_wdl,
         &mut out_policy,
       );
     }
-    (inp_features, out_value, out_policy)
+    (inp_features, out_wdl, out_policy)
   }
 
   pub fn run_inference(&self, stream_id: i32) {
@@ -107,7 +107,7 @@ impl TensorRT {
 pub fn use_tensorrt() {
   let mut tensorrt = TensorRT::new(0, 128);
   tensorrt.load_model("/tmp/trt_out");
-  let (inp_features, out_value, out_policy) = tensorrt.get_pointers(0);
+  let (inp_features, _out_wdl, _out_policy) = tensorrt.get_pointers(0);
   unsafe {
     *inp_features = 1.0;
   }

@@ -9,7 +9,7 @@ use crate::inference::{
 };
 use crate::rng::Rng;
 //use crate::inference::{ModelOutputs, POLICY_LEN};
-use crate::rules::{Move, State};
+use crate::rules::{Move, State, RepetitionState};
 
 //const EXPLORATION_ALPHA: f32 = 1.0;
 //const DUCK_EXPLORATION_ALPHA: f32 = 0.5;
@@ -78,11 +78,14 @@ impl std::str::FromStr for SearchParams {
 pub struct MctsNode {
   pub depth:             u32,
   pub state:             State,
+  pub repetition_state:  RepetitionState,
+  pub is_repetition:     bool,
   pub moves:             Vec<Move>,
   pub outputs:           ModelOutputs,
   pub dirichlet_applied: bool,
   pub needs_eval:        bool,
   pub total_score:       f32,
+  pub exact_score_and_move:    Option<(f32, Move)>,
   pub visits:            u32,
   pub tail_visits:       u32,
   pub in_flight:         u32,
@@ -93,26 +96,39 @@ pub struct MctsNode {
 }
 
 impl MctsNode {
-  fn new(state: State, depth: u32) -> Self {
-    let needs_eval = state.get_outcome().is_none();
+  fn new(parent_repetition_state: &RepetitionState, state: State, depth: u32) -> Self {
+    let mut repetition_state = parent_repetition_state.clone();
+    let h = state.get_transposition_table_hash();
+    // Ugly hack: We also score a "repetition" if we hit the ply cap.
+    let is_repetition = repetition_state.add(h) || state.plies >= 800;
+
+    let needs_eval = state.get_outcome().is_none() && !is_repetition;
     let mut moves = vec![];
-    state.move_gen::<false>(&mut moves);
-    let outputs = ModelOutputs::quantize_from(
+    if !is_repetition {
+      state.move_gen::<false>(&mut moves);
+    }
+    let mut outputs = ModelOutputs::quantize_from(
       FullPrecisionModelOutputs {
         policy: Box::new([1.0; POLICY_LEN]),
         value:  Evaluation::from_terminal_state(&state).unwrap_or(Evaluation::EVEN_EVAL),
       },
       &moves,
     );
+    if is_repetition {
+      outputs.value = Evaluation::EVEN_EVAL;
+    }
     //outputs.renormalize(&moves);
     Self {
       depth,
       state,
+      repetition_state,
+      is_repetition,
       moves,
       outputs,
       dirichlet_applied: false,
       needs_eval,
       total_score: 0.0,
+      exact_score_and_move: None,
       visits: 0,
       tail_visits: 0,
       in_flight: 0,
@@ -124,17 +140,28 @@ impl MctsNode {
   }
 
   fn get_subtree_value(&self) -> Evaluation {
+    if let Some((exact_score, _)) = self.exact_score_and_move {
+      return Evaluation {
+        expected_score: exact_score,
+        perspective_player: self.state.turn,
+        is_exact: true,
+      };
+    }
     // Implement so called "virtual losses" -- we pretend each in flight evaluation
     // will evaluate to the worst possible outcome, to encourage diversity of paths.
     Evaluation {
       expected_score:     self.total_score / (self.visits + self.in_flight) as f32,
       perspective_player: self.state.turn,
+      is_exact:        false,
     }
   }
 
   fn adjust_score(&mut self, eval: Evaluation) {
+    let new_score = eval.expected_score_for_player(self.state.turn);
     self.visits += 1;
-    self.total_score += eval.expected_score_for_player(self.state.turn);
+    self.total_score += new_score; //eval.expected_score_for_player(self.state.turn);
+    // FIXME: I need to figure out what to do here.
+    // If 
   }
 
   fn total_action_score(
@@ -176,6 +203,9 @@ impl MctsNode {
     //println!("select_action from: {:?}", self.depth);
     if self.moves.is_empty() {
       return None;
+    }
+    if let Some((_, m)) = self.exact_score_and_move {
+      return Some(m);
     }
     let sqrt_policy_explored = self.policy_explored.sqrt();
     let mut best_score = -std::f32::INFINITY;
@@ -312,6 +342,7 @@ pub struct Mcts<'a, Infer: InferenceEngine<(usize, PendingPath)>> {
   pub root:                NodeIndex,
   pub nodes:               SlotMap<NodeIndex, MctsNode>,
   pub transposition_table: HashMap<(u64, u32), NodeIndex>,
+  empty_repetition_state:  RepetitionState,
   //pending_paths:       SlotMap<PendingIndex, PendingPath>,
 }
 
@@ -334,6 +365,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       nodes: SlotMap::with_key(),
       transposition_table: HashMap::new(),
       //pending_paths: SlotMap::with_key(),
+      empty_repetition_state: RepetitionState::new(),
     };
     this.root = this.add_child_and_adjust_scores(vec![], None, State::starting_state(), 0);
     this
@@ -348,6 +380,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
   }
 
   pub fn get_root_score(&self) -> (f32, u32) {
+    // FIXME: I want to average over children here.
     let root = &self.nodes[self.root];
     (
       root.get_subtree_value().expected_score_for_player(crate::rules::Player::White),
@@ -425,6 +458,10 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     state: State,
     depth: u32,
   ) -> NodeIndex {
+    let parent_repetition_state = match path.last() {
+      None => &self.empty_repetition_state,
+      Some(parent_index) => &self.nodes[*parent_index].repetition_state,
+    };
     //println!("Adding child at depth {} (path={:?}).", depth, path);
     // Check our transposition table to see if this new state has already been reached.
     let transposition_table_key = get_transposition_table_key(&state, depth);
@@ -448,14 +485,14 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
               writeln!(f, "{:?}", transposition_node.state).unwrap();
               writeln!(f, "Hash key: {:?}", transposition_table_key).unwrap();
             }
-            let node = MctsNode::new(state, depth);
+            let node = MctsNode::new(parent_repetition_state, state, depth);
             let new_node_index = self.nodes.insert(node);
             entry.insert(new_node_index)
           }
         }
       }
       Entry::Vacant(entry) => {
-        let node = MctsNode::new(state, depth);
+        let node = MctsNode::new(parent_repetition_state, state, depth);
         let new_node_index = self.nodes.insert(node);
         *entry.insert(new_node_index)
       }
@@ -671,7 +708,23 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       .sum()
   }
 
+  fn get_immediately_winning_move(&self) -> Option<Move> {
+    let current_player = self.nodes[self.root].state.turn;
+    for (m, child_index) in &self.nodes[self.root].outgoing_edges {
+      let eval = self.nodes[*child_index].outputs.value;
+      if eval.is_exact && eval.expected_score_for_player(current_player) >= 1.0 {
+        return Some(*m);
+      }
+    }
+    None
+  }
+
   pub fn get_train_distribution(&self) -> Vec<(Move, f32)> {
+    // Check if we have any immediately winning children.
+    if let Some(m) = self.get_immediately_winning_move() {
+      return vec![(m, 1.0)];
+    }
+
     let sum_child_visits = self.get_sum_child_visits(self.root) as f32;
     let mut distribution = Vec::new();
     for (m, child_index) in &self.nodes[self.root].outgoing_edges {
@@ -685,6 +738,11 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     //let sum_child_visits = self.get_sum_child_visits(self.root);
     // Naively we could use node.visits - 1, but due to transpositions
     // that might not actually be the right value.
+
+    // Check if we have any immediately winning children.
+    if let Some(m) = self.get_immediately_winning_move() {
+      return Some(m);
+    }
 
     let temperature_sum_child_visits: i64 = self.nodes[self.root]
       .outgoing_edges
