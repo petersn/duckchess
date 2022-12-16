@@ -64,10 +64,9 @@ impl Engine {
     quiescence_moves.is_empty()
   }
 
-  fn run(&mut self, depth: u16) -> (i32, String) {
-    let (score, best_move) = self.engine.run(depth, false);
-    let serialized = serde_json::to_string(&best_move).unwrap();
-    (score, serialized)
+  fn run(&mut self, depth: u16) -> String {
+    let pv = self.engine.run(depth, false);
+    serde_json::to_string(&pv).unwrap()
   }
 
   fn apply_move(&mut self, m: &str) -> Option<&'static str> {

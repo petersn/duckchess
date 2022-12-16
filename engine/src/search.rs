@@ -43,11 +43,11 @@ pub fn make_mate_score_much_less_extreme(eval: IntEvaluation) -> IntEvaluation {
 const QUIESCENCE_DEPTH: u16 = 10;
 const KILLER_MOVE_COUNT: usize = 64;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-pub struct MovePair {
-  regular: Move,
-  duck:    Move,
-}
+//#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+//pub struct MovePair {
+//  regular: Move,
+//  duck:    Move,
+//}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NodeType {
@@ -56,11 +56,33 @@ enum NodeType {
   UpperBound,
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PrincipalVariation {
+  pub eval: IntEvaluation,
+  pub moves: Vec<Move>,
+}
+
+impl PrincipalVariation {
+  fn new() -> Self {
+    Self {
+      eval: EVAL_DRAW,
+      moves: vec![],
+    }
+  }
+
+  fn from_one_move(eval: IntEvaluation, m: Move) -> Self {
+    Self {
+      eval,
+      moves: vec![m],
+    }
+  }
+}
+
 struct TTEntry {
   zobrist:   u64,
   depth:     u16,
   score:     IntEvaluation,
-  best_move: Option<MovePair>,
+  best_move: Move,
   node_type: NodeType,
 }
 
@@ -70,7 +92,7 @@ pub struct Engine {
   rng:                 Rng,
   state:               State,
   transposition_table: Vec<TTEntry>,
-  killer_moves:        [MovePair; KILLER_MOVE_COUNT],
+  killer_moves:        [Move; KILLER_MOVE_COUNT],
 }
 
 impl Engine {
@@ -82,7 +104,7 @@ impl Engine {
         zobrist:   0,
         depth:     0,
         score:     EVAL_DRAW,
-        best_move: None,
+        best_move: Move::INVALID,
         node_type: NodeType::Exact,
       });
     }
@@ -92,10 +114,7 @@ impl Engine {
       rng: Rng::new(seed),
       state,
       transposition_table,
-      killer_moves: [MovePair {
-        regular: Move::INVALID,
-        duck:    Move::INVALID,
-      }; KILLER_MOVE_COUNT],
+      killer_moves: [Move::INVALID; KILLER_MOVE_COUNT],
     }
   }
 
@@ -125,16 +144,16 @@ impl Engine {
     self.state.get_outcome()
   }
 
-  pub fn run(&mut self, depth: u16, use_nnue: bool) -> (IntEvaluation, Option<MovePair>) {
+  pub fn run(&mut self, depth: u16, use_nnue: bool) -> PrincipalVariation {
     self.nodes_searched = 0;
     let start_state = self.state.clone();
     let mut nnue = Nnue::new(&start_state, crate::nnue::BUNDLED_NETWORK);
     // Apply iterative deepening.
-    let mut p = (EVAL_DRAW, None);
+    let mut pv = PrincipalVariation::new();
     //for d in 1..=depth {
     for d in 1..=depth {
       let nnue_hash = nnue.get_debugging_hash();
-      p = match use_nnue {
+      let (eval, m) = match use_nnue {
         true => self.pvs::<false, true>(
           d,
           &start_state,
@@ -151,12 +170,16 @@ impl Engine {
         ),
       };
       assert_eq!(nnue_hash, nnue.get_debugging_hash());
+      pv = PrincipalVariation {
+        eval,
+        moves: m.into_iter().collect(),
+      };
       //log(&format!(
       //  "Depth {}: {} (nodes={})",
-      //  d, p.0, self.nodes_searched
+      //  d, pv.0, self.nodes_searched
       //));
     }
-    p
+    pv
   }
 
   pub fn mate_search(&mut self, depth: u16) -> (IntEvaluation, Option<(Move, Move)>) {
@@ -269,7 +292,7 @@ impl Engine {
     hash: u64,
     depth: u16,
     score: IntEvaluation,
-    best_move: Option<MovePair>,
+    best_move: Move,
     node_type: NodeType,
   ) {
     //println!("TT insert: {} {} {} {:?} {:?}", hash, depth, score, best_move, node_type);
@@ -282,13 +305,13 @@ impl Engine {
     entry.node_type = node_type;
   }
 
-  fn probe_killer_move(&self, state: &State) -> MovePair {
+  fn probe_killer_move(&self, state: &State) -> Move {
     // Here we divide by two because the game rules count regular move and duck move as separate plies.
     let index = (state.plies / 2) % KILLER_MOVE_COUNT as u32;
     self.killer_moves[index as usize]
   }
 
-  fn insert_killer_move(&mut self, state: &State, m: MovePair) {
+  fn insert_killer_move(&mut self, state: &State, m: Move) {
     // Here we divide by two because the game rules count regular move and duck move as separate plies.
     let index = (state.plies / 2) % KILLER_MOVE_COUNT as u32;
     self.killer_moves[index as usize] = m;
@@ -301,24 +324,21 @@ impl Engine {
     nnue: &mut Nnue,
     mut alpha: IntEvaluation,
     mut beta: IntEvaluation,
-  ) -> (IntEvaluation, Option<MovePair>) {
+  ) -> (IntEvaluation, Option<Move>) {
     let state_hash = state.get_transposition_table_hash();
-    let mut tt_move_pair = MovePair {
-      regular: Move::INVALID,
-      duck:    Move::INVALID,
-    };
+    let mut tt_move = Move::INVALID;
     // Check the transposition table.
     if let Some(entry) = self.probe_tt(state_hash) {
-      tt_move_pair = entry.best_move.unwrap_or(tt_move_pair);
+      tt_move = entry.best_move;
       //println!("TT hit: {} {} {} {:?} {:?}", entry.zobrist, entry.depth, entry.score, entry.best_move, entry.node_type);
       if entry.depth >= depth {
         match entry.node_type {
-          NodeType::Exact => return (entry.score, entry.best_move),
+          NodeType::Exact => return (entry.score, Some(entry.best_move)),
           NodeType::LowerBound => alpha = alpha.max(entry.score),
           NodeType::UpperBound => beta = beta.min(entry.score),
         }
         if alpha >= beta {
-          return (entry.score, entry.best_move);
+          return (entry.score, Some(entry.best_move));
         }
       }
       /*
@@ -345,7 +365,8 @@ impl Engine {
     }
 
     let get_eval = || {
-      let random_bonus = (self.rng.next_random() & 0xf) as i32;
+      //let random_bonus = (self.rng.next_random() & 0xf) as i32;
+      let random_bonus = 0;
       random_bonus
         + if NNUE {
           nnue.evaluate_value(state)
@@ -365,41 +386,24 @@ impl Engine {
       _ => {}
     }
 
-    // We now generate (regular, duck) move pairs, and sort all of them.
-    // For regular search we apply some light pruning on duck moves.
-    // For quiescence search we prune much more aggressively on both.
-    //let mut naive_move_pairs = 0;
-    let mut move_pairs = vec![];
-    {
-      let mut single_moves = Vec::new();
-      state.move_gen::<QUIESCENCE>(&mut single_moves);
-      for m in single_moves {
-        let mut child = state.clone();
-        child.apply_move::<false>(m, None).unwrap();
-        // If the child is terminal then generate just a single dummy duck move.
-        if child.get_outcome().is_some() {
-          move_pairs.push(MovePair {
-            regular: m,
-            duck:    Move::INVALID,
-          });
-          continue;
-        }
-        let child_occupied = child.get_occupied();
-        // Forcibly skip over our duck move.
-        assert!(child.is_duck_move);
-        child.is_duck_move = false;
-        child.turn = child.turn.other_player();
-        // Do move-gen for the opponent, to find candidate moves for us to block.
-        let mut block_mask: u64 = child.generate_duck_block_mask::<QUIESCENCE>();
-        // If they only have one or zero blockable moves then make up another place to put the duck,
-        // or we might (with absolutely tiny probability) end up stalemating them, or in quiescence
-        // search we might force the duck somewhere silly.
+    // We now generate all moves.
+    let mut moves_to_search = vec![];
+    match state.is_duck_move {
+      false => state.move_gen::<QUIESCENCE>(&mut moves_to_search),
+      true => {
+        // For duck moves we generate only those that block an opponent move, plus one more.
+        // This isn't totally sound, but it helps reduce the branching factor enormously.
+        let occupied = state.get_occupied();
+        let mut state_copy = state.clone();
+        state_copy.is_duck_move = false;
+        state_copy.turn = state_copy.turn.other_player();
+        let mut block_mask: u64 = state_copy.generate_duck_block_mask::<QUIESCENCE>();
         if block_mask.count_ones() <= 1 {
           //println!("Only one blockable move after {}  QUIESCENCE = {}", m, QUIESCENCE);
           if !QUIESCENCE {
             panic!("This should be extremely rare, so I want to know if it happens for now.");
           }
-          let other_free_spots = !child_occupied & !block_mask;
+          let other_free_spots = !occupied & !block_mask;
           assert!(other_free_spots != 0);
           // Find the bottom set bit in other_free_spots.
           let first_free_spot = other_free_spots & other_free_spots.wrapping_neg();
@@ -408,72 +412,62 @@ impl Engine {
           //// FIXME: Do something less wasteful here!
           //block_mask = u64::MAX;
         }
-        block_mask &= !child_occupied;
-        //block_mask = !child.get_occupied();
-        //naive_move_pairs += child_occupied.count_zeros() - 1;
-        let current_duck_pos = get_square(child.ducks.0);
+        block_mask &= !occupied;
+        let current_duck_pos = get_square(state.ducks.0);
         while let Some(pos) = iter_bits(&mut block_mask) {
-          let m_duck = Move {
+          moves_to_search.push(Move {
             // Our encoding of the initial duck placement move requires this match.
-            from: match child.ducks.0 == 0 {
+            from: match state.ducks.0 == 0 {
               true => pos,
               false => current_duck_pos,
             },
             to:   pos,
-          };
-          move_pairs.push(MovePair {
-            regular: m,
-            duck:    m_duck,
           });
         }
       }
-      //println!("{} move pairs (naive {})", move_pairs.len(), naive_move_pairs);
     }
 
     // If we're in a quiescence search and have quiesced, then return.
-    if QUIESCENCE && move_pairs.is_empty() {
+    if QUIESCENCE && moves_to_search.is_empty() {
       return (get_eval(), None);
     }
-    assert!(!move_pairs.is_empty());
+    assert!(!moves_to_search.is_empty());
 
-    // Reorder based on our move order table.
-    //let state_hash: u64 = state.get_transposition_table_hash();
-
+    // We now sort the moves.
+    let mut nnue_policy_from_scores = [0i16; 64];
+    let mut nnue_policy_to_scores = [0i16; 64];
+    if NNUE && depth >= 2 {
+      nnue.evaluate_policy(state, &mut nnue_policy_from_scores, &mut nnue_policy_to_scores);
+    }
     let killer_move = self.probe_killer_move(state);
-
     //if mot_move.is_some() || killer_move.is_some() {
-    move_pairs.sort_by(|&a, &b| {
+    moves_to_search.sort_by(|&a, &b| {
       //let mut a_score = (100.0 * nnue.outputs[a.to as usize]) as i32;
       //let mut b_score = (100.0 * nnue.outputs[b.to as usize]) as i32;
-      let mut a_score = 0;
-      let mut b_score = 0;
+      let mut a_score =
+        nnue_policy_from_scores[a.from as usize] as i32 +
+        nnue_policy_to_scores[a.to as usize] as i32;
+      let mut b_score =
+        nnue_policy_from_scores[b.from as usize] as i32 +
+        nnue_policy_to_scores[b.to as usize] as i32;
       macro_rules! adjust_scores {
-        ($good_move:expr, $score_regular:expr, $score_duck:expr) => {
-          if $good_move.regular == a.regular {
-            a_score += $score_regular;
+        ($good_move:expr, $score:expr) => {
+          if $good_move == a {
+            a_score += $score;
           }
-          if $good_move.regular == b.regular {
-            b_score += $score_regular;
-          }
-          if $good_move.duck == a.duck {
-            a_score += $score_duck;
-          }
-          if $good_move.duck == b.duck {
-            b_score += $score_duck;
+          if $good_move == b {
+            b_score += $score;
           }
         };
       }
-      adjust_scores!(killer_move, 100, 50);
-      adjust_scores!(tt_move_pair, 150, 120);
+      adjust_scores!(killer_move, 10000);
+      adjust_scores!(tt_move, 15000);
       b_score.cmp(&a_score)
     });
-    //moves.sort_by(|_, _| {
-    //  self.next_random().cmp(&self.next_random())
-    //});
 
     //log(&format!("pvs({}, {}, {}) moves={}", depth, alpha, beta, moves.len()));
     let mut best_score = EVAL_VERY_NEGATIVE;
-    let mut best_pair = None;
+    let mut best_move = None;
 
     // If we're in a quiescence search then we're allowed to pass.
     if QUIESCENCE {
@@ -485,59 +479,52 @@ impl Engine {
 
     let mut node_type = NodeType::UpperBound;
     let mut first = true;
-    for move_pair in move_pairs {
+    for search_move in moves_to_search {
       self.nodes_searched += 1;
       let mut new_state = state.clone();
-      let adjustments = if NNUE {
-        let adjustment0 = new_state.apply_move::<true>(move_pair.regular, Some(nnue)).unwrap();
-        if new_state.get_outcome().is_some() {
-          // FIXME: I don't need to do PVS here!
-          continue;
-          panic!("This should be impossible.");
-        }
-        let adjustment1 = new_state.apply_move::<true>(move_pair.duck, Some(nnue)).unwrap();
-        (adjustment0, adjustment1)
+      let adjustment = if NNUE {
+        new_state.apply_move::<NNUE>(search_move, Some(nnue)).unwrap()
       } else {
-        let adjustment0 = new_state.apply_move::<false>(move_pair.regular, None).unwrap();
-        if new_state.get_outcome().is_some() {
-          // FIXME: I don't need to do PVS here!
-          continue;
-          panic!("This should be impossible.");
-        }
-        let adjustment1 = new_state.apply_move::<false>(move_pair.duck, None).unwrap();
-        (adjustment0, adjustment1)
+        new_state.apply_move::<false>(search_move, None).unwrap()
       };
       //nnue.undo(undo_cookie);
       //let debugging_hash = nnue.get_debugging_hash();
       //println!("Undo debugging hash: {:016x}", debugging_hash);
 
       let mut score;
-      let mut next_pair;
+      let mut next_move;
 
       // Two cases:
       // If new_state is a duck move state, we *don't* invert the score, as we take the next move.
-      assert!(!new_state.is_duck_move);
-      if first {
-        (score, next_pair) =
-          self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -beta, -alpha);
-        score *= -1;
+
+      if new_state.is_duck_move {
+        if first {
+          (score, next_move) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, alpha, beta);
+        } else {
+          (score, next_move) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, alpha, alpha + 1);
+          if alpha < score && score < beta {
+            (score, next_move) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, score, beta);
+          }
+        }
       } else {
-        (score, next_pair) =
-          self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -alpha - 1, -alpha);
-        score *= -1;
-        if alpha < score && score < beta {
-          (score, next_pair) =
-            self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -beta, -score);
+        if first {
+          (score, next_move) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -beta, -alpha);
           score *= -1;
+        } else {
+          (score, next_move) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -alpha - 1, -alpha);
+          score *= -1;
+          if alpha < score && score < beta {
+            (score, next_move) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -beta, -score);
+            score *= -1;
+          }
         }
       }
 
       if NNUE {
         // Must pass in the old state, as we're undoing the move.
-        // FIXME: This is WRONG! I need to pass in the intermediate state!
-        // I really need to fix this up before I try to use the NNUE eval.
-        nnue.apply_adjustment::<true>(&state, &adjustments.1);
-        nnue.apply_adjustment::<true>(&state, &adjustments.0);
+        //// FIXME: This is WRONG! I need to pass in the intermediate state!
+        //// I really need to fix this up before I try to use the NNUE eval.
+        nnue.apply_adjustment::<true>(&state, &adjustment);
       }
       //assert_eq!(debugging_hash, nnue.get_debugging_hash());
       //if state.is_duck_move {
@@ -547,7 +534,7 @@ impl Engine {
 
       if score > best_score {
         best_score = score;
-        best_pair = Some(move_pair);
+        best_move = Some(search_move);
       }
       if score > alpha && !QUIESCENCE {
         node_type = NodeType::Exact;
@@ -557,7 +544,7 @@ impl Engine {
       }
       alpha = alpha.max(score);
       if alpha >= beta {
-        self.insert_killer_move(state, move_pair);
+        self.insert_killer_move(state, best_move.unwrap());
         node_type = NodeType::LowerBound;
         break;
       }
@@ -566,7 +553,10 @@ impl Engine {
 
     let score = make_mate_score_slightly_less_extreme(alpha);
     //self.tt_insert(state.zobrist, depth, score, best_pair.0, NodeType::Exact);
-    self.insert_tt(state_hash, depth, score, best_pair, node_type);
-    (score, best_pair)
+    if !QUIESCENCE && let Some(m) = best_move {
+      // FIXME: I disabled the TT.
+      self.insert_tt(state_hash, depth, score, m, node_type);
+    }
+    (score, best_move)
   }
 }

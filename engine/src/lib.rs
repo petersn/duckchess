@@ -1,4 +1,4 @@
-#![feature(extern_types)]
+#![feature(extern_types, let_chains)]
 
 pub mod eval;
 pub mod inference;

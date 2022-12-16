@@ -12,11 +12,11 @@ fn main() {
   ////state.queens[Player::White as usize].0 = 0x0000000000550000;
   //state.pawns[Player::White as usize].0 = 0x0000000000000000;
   //state.queens[Player::White as usize].0 = 0x0055000000000000;
-  //let (score, move_pair) = e.run(6, false);
-  let (score, move_pair) = e.mate_search(9);
+  let pv = e.run(6, true);
+  //let (score, move_pair) = e.mate_search(9);
   let elapsed = start_time.elapsed().as_secs_f32();
-  println!("Score: {}", score);
-  println!("Moves: {:?}", move_pair);
+  println!("Score: {}", pv.eval);
+  println!("Moves: {:?}", pv.moves);
   println!("Elapsed: {:.3}s", elapsed);
   println!("Nodes: {}", e.nodes_searched);
   println!("Nodes/s: {}", e.nodes_searched as f32 / elapsed);
