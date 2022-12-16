@@ -816,6 +816,14 @@ impl State {
         });
         if piece_kind == PieceKind::King {
           king_involved = true;
+        } else if piece_kind == PieceKind::Rook {
+          match m.to {
+            0 => self.castling_rights[Player::White as usize].queen_side = false,
+            7 => self.castling_rights[Player::White as usize].king_side = false,
+            56 => self.castling_rights[Player::Black as usize].queen_side = false,
+            63 => self.castling_rights[Player::Black as usize].king_side = false,
+            _ => {}
+          }
         }
       }
       them.0 &= !to_mask;
@@ -903,6 +911,12 @@ impl State {
             };
             // Check if we just castled.
             if (m.from as i8 - m.to as i8).abs() == 2 {
+              if m.from < m.to && !self.castling_rights[self.turn as usize].king_side {
+                return Err("castling without kingside rights");
+              }
+              if m.to < m.from && !self.castling_rights[self.turn as usize].queen_side {
+                return Err("castling without queenside rights");
+              }
               let (rook_from, rook_to) = match (m.from, m.to) {
                 (4, 6) => (7, 5),
                 (4, 2) => (0, 3),
