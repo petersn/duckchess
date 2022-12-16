@@ -40,7 +40,7 @@ pub fn make_mate_score_much_less_extreme(eval: IntEvaluation) -> IntEvaluation {
   }
 }
 
-const QUIESCENCE_DEPTH: u16 = 10;
+const QUIESCENCE_DEPTH: u16 = 8;
 const KILLER_MOVE_COUNT: usize = 64;
 
 //#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -145,7 +145,7 @@ impl Engine {
   }
 
   pub fn run(&mut self, depth: u16, use_nnue: bool) -> PrincipalVariation {
-    self.nodes_searched = 0;
+    //self.nodes_searched = 0;
     let start_state = self.state.clone();
     let mut nnue = Nnue::new(&start_state, crate::nnue::BUNDLED_NETWORK);
     // Apply iterative deepening.
@@ -193,7 +193,7 @@ impl Engine {
   }
 
   pub fn mate_search(&mut self, depth: u16) -> (IntEvaluation, Option<(Move, Move)>) {
-    self.nodes_searched = 0;
+    //self.nodes_searched = 0;
     let start_state = self.state.clone();
     //self.mate_search_inner(depth, &start_state, EVAL_VERY_NEGATIVE, EVAL_VERY_POSITIVE)
     self.mate_search_inner(depth, &start_state, -1000, 1000)
@@ -317,13 +317,13 @@ impl Engine {
 
   fn probe_killer_move(&self, state: &State) -> Move {
     // Here we divide by two because the game rules count regular move and duck move as separate plies.
-    let index = (state.plies / 2) % KILLER_MOVE_COUNT as u32;
+    let index = state.plies % KILLER_MOVE_COUNT as u32;
     self.killer_moves[index as usize]
   }
 
   fn insert_killer_move(&mut self, state: &State, m: Move) {
     // Here we divide by two because the game rules count regular move and duck move as separate plies.
-    let index = (state.plies / 2) % KILLER_MOVE_COUNT as u32;
+    let index = state.plies % KILLER_MOVE_COUNT as u32;
     self.killer_moves[index as usize] = m;
   }
 
@@ -463,15 +463,17 @@ impl Engine {
     // If we're in a quiescence search and have quiesced, then return.
     if QUIESCENCE && moves_to_search.is_empty() {
       // FIXME: I need to think about what to do here, because this can request an eval on a non-duck move.
-      return (EVAL_VERY_NEGATIVE, None);
+      return (alpha, None);
       //return (get_eval("no-moves"), None);
     }
     assert!(!moves_to_search.is_empty());
 
+    // IDEA: Try out the tt move first, and only bother sorting the rest if I don't get a cutoff.
+
     // We now sort the moves.
     let mut nnue_policy_from_scores = [0i16; 64];
     let mut nnue_policy_to_scores = [0i16; 64];
-    if NNUE && depth >= 2 {
+    if NNUE {//&& depth >= 0 { //&& tt_move == Move::INVALID {
       nnue.evaluate_policy(
         state,
         &mut nnue_policy_from_scores,
@@ -508,7 +510,12 @@ impl Engine {
 
     let mut node_type = NodeType::UpperBound;
     let mut first = true;
-    for search_move in moves_to_search {
+    let mut next_depth = depth - 1;
+    for (i, &search_move) in moves_to_search.iter().enumerate() {
+      if (i == 3 || i == 10) && next_depth >= 2 {
+        next_depth -= 2;
+      }
+
       self.nodes_searched += 1;
       let mut new_state = state.clone();
       let adjustment = if NNUE {
@@ -529,27 +536,27 @@ impl Engine {
       if new_state.is_duck_move {
         if first {
           (score, next_move) =
-            self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, alpha, beta);
+            self.pvs::<QUIESCENCE, NNUE>(next_depth, &new_state, nnue, alpha, beta);
         } else {
           (score, next_move) =
-            self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, alpha, alpha + 1);
+            self.pvs::<QUIESCENCE, NNUE>(next_depth, &new_state, nnue, alpha, alpha + 1);
           if alpha < score && score < beta {
             (score, next_move) =
-              self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, score, beta);
+              self.pvs::<QUIESCENCE, NNUE>(next_depth, &new_state, nnue, score, beta);
           }
         }
       } else {
         if first {
           (score, next_move) =
-            self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -beta, -alpha);
+            self.pvs::<QUIESCENCE, NNUE>(next_depth, &new_state, nnue, -beta, -alpha);
           score *= -1;
         } else {
           (score, next_move) =
-            self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -alpha - 1, -alpha);
+            self.pvs::<QUIESCENCE, NNUE>(next_depth, &new_state, nnue, -alpha - 1, -alpha);
           score *= -1;
           if alpha < score && score < beta {
             (score, next_move) =
-              self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -beta, -score);
+              self.pvs::<QUIESCENCE, NNUE>(next_depth, &new_state, nnue, -beta, -score);
             score *= -1;
           }
         }
