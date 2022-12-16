@@ -1,4 +1,4 @@
-use engine::rules::Player;
+use engine::rules::{Player, Move};
 
 fn main() {
   let mut e = engine::search::Engine::new(1234, 64 * 1024 * 1024);
@@ -12,7 +12,11 @@ fn main() {
   ////state.queens[Player::White as usize].0 = 0x0000000000550000;
   //state.pawns[Player::White as usize].0 = 0x0000000000000000;
   //state.queens[Player::White as usize].0 = 0x0055000000000000;
-  let pv = e.run(6, true);
+
+  // We now evaluate in a battery of test positions.
+
+  e.apply_move(Move { from: 1, to: 16 });
+  let pv = e.run(5, true);
   //let (score, move_pair) = e.mate_search(9);
   let elapsed = start_time.elapsed().as_secs_f32();
   println!("Score: {}", pv.eval);

@@ -145,35 +145,34 @@ impl Engine {
   }
 
   pub fn run(&mut self, depth: u16, use_nnue: bool) -> PrincipalVariation {
-    // We interpret the depth in a complicated way.
-    // We only evaluate the NNUE right after making a regular move (before making the duck move).
-    // (See Engine::is_gradable_position in python.rs.)
-    // So we compute the depth that ends up with depth = 0 in such a state.
-    // If we're currently in a regular move state then this is an odd depth,
-    // and it's an even depth from a duck move state.
-    let effective_depth = match self.state.is_duck_move {
-      true => depth * 2,
-      false => depth * 2 + 1,
-    };
-
     self.nodes_searched = 0;
     let start_state = self.state.clone();
     let mut nnue = Nnue::new(&start_state, crate::nnue::BUNDLED_NETWORK);
     // Apply iterative deepening.
     let mut pv = PrincipalVariation::new();
     //for d in 1..=depth {
-    for d in 1..=effective_depth {
+    for d in 1..=depth {
+      // We interpret the depth in a complicated way.
+      // We only evaluate the NNUE right after making a regular move (before making the duck move).
+      // (See Engine::is_gradable_position in python.rs.)
+      // So we compute the depth that ends up with depth = 0 in such a state.
+      // If we're currently in a regular move state then this is an odd depth,
+      // and it's an even depth from a duck move state.
+      let effective_depth = match self.state.is_duck_move {
+        true => d * 2,
+        false => d * 2 - 1,
+      };
       let nnue_hash = nnue.get_debugging_hash();
       let (eval, m) = match use_nnue {
         true => self.pvs::<false, true>(
-          d,
+          effective_depth,
           &start_state,
           &mut nnue,
           EVAL_VERY_NEGATIVE,
           EVAL_VERY_POSITIVE,
         ),
         false => self.pvs::<false, false>(
-          d,
+          effective_depth,
           &start_state,
           &mut nnue,
           EVAL_VERY_NEGATIVE,
@@ -336,6 +335,13 @@ impl Engine {
     mut alpha: IntEvaluation,
     mut beta: IntEvaluation,
   ) -> (IntEvaluation, Option<Move>) {
+    // FIXME: Comment this out.
+    if (depth % 2 == 0) != state.is_duck_move {
+      println!("pvs: depth={} is_duck_move={} quiescence={}", depth, state.is_duck_move, QUIESCENCE);
+      panic!("pvs: depth and is_duck_move mismatch");
+    }
+    debug_assert!((depth % 2 == 0) == state.is_duck_move);
+
     let state_hash = state.get_transposition_table_hash();
     let mut tt_move = Move::INVALID;
     // Check the transposition table.
@@ -375,11 +381,19 @@ impl Engine {
       */
     }
 
-    let get_eval = || {
+    let get_eval = |reason: &str| {
       //let random_bonus = (self.rng.next_random() & 0xf) as i32;
       let random_bonus = 0;
       random_bonus
         + if NNUE {
+          if !(state.is_duck_move || state.get_outcome().is_some()) {
+            println!("Duck move: {}", state.is_duck_move);
+            println!("Outcome: {:?}", state.get_outcome());
+            println!("Depth: {}", depth);
+            println!("Quiescence: {}", QUIESCENCE);
+            panic!("NNUE eval requested for unevaluable position: {}", reason);
+          }
+          assert!(state.is_duck_move || state.get_outcome().is_some());
           nnue.evaluate_value(state)
         } else {
           basic_eval(state)
@@ -388,13 +402,21 @@ impl Engine {
 
     let game_over = state.get_outcome().is_some();
     match (game_over, depth, QUIESCENCE) {
-      (true, _, _) => return (get_eval(), None),
-      (_, 0, true) => return (get_eval(), None),
+      (true, _, _) => return (get_eval("game-over"), None),
+      (_, 0, true) => return (get_eval("zero-deoth"), None),
       (_, 0, false) => {
         let (score, move_pair) = self.pvs::<true, NNUE>(QUIESCENCE_DEPTH, state, nnue, alpha, beta);
         return (make_mate_score_much_less_extreme(score), move_pair);
       }
       _ => {}
+    }
+
+    // If we're in a quiescence search then we're allowed to pass.
+    if QUIESCENCE && state.is_duck_move {
+      alpha = alpha.max(get_eval("pass-eval"));
+      if alpha >= beta {
+        return (alpha, None);
+      }
     }
 
     // We now generate all moves.
@@ -440,7 +462,9 @@ impl Engine {
 
     // If we're in a quiescence search and have quiesced, then return.
     if QUIESCENCE && moves_to_search.is_empty() {
-      return (get_eval(), None);
+      // FIXME: I need to think about what to do here, because this can request an eval on a non-duck move.
+      return (EVAL_VERY_NEGATIVE, None);
+      //return (get_eval("no-moves"), None);
     }
     assert!(!moves_to_search.is_empty());
 
@@ -473,22 +497,14 @@ impl Engine {
           }
         };
       }
-      adjust_scores!(killer_move, 10000);
-      adjust_scores!(tt_move, 15000);
+      adjust_scores!(killer_move, 10_000_000);
+      adjust_scores!(tt_move, 15_000_000);
       b_score.cmp(&a_score)
     });
 
     //log(&format!("pvs({}, {}, {}) moves={}", depth, alpha, beta, moves.len()));
     let mut best_score = EVAL_VERY_NEGATIVE;
     let mut best_move = None;
-
-    // If we're in a quiescence search then we're allowed to pass.
-    if QUIESCENCE {
-      alpha = alpha.max(get_eval());
-      if alpha >= beta {
-        return (alpha, None);
-      }
-    }
 
     let mut node_type = NodeType::UpperBound;
     let mut first = true;

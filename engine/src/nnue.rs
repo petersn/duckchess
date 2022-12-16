@@ -645,23 +645,28 @@ impl<'a> Nnue<'a> {
     //}
     //println!("]");
 
-    let from_data_simd: VecI8 = {
-      let v0: VecI16 = veci16_shr_bias_to_main(self.linear_state[2]);
-      let v1: VecI16 = veci16_shr_bias_to_main(self.linear_state[3]);
-      vec_narrow_pair(v0, v1)
-    };
+    if !state.is_duck_move {
+      // FIXME: I have to compute the right indices to select from linear state.
+      let from_data_simd: VecI8 = {
+        let v0: VecI16 = veci16_shr_bias_to_main(self.linear_state[2 + 2 * (network_index / 8)]);
+        let v1: VecI16 = veci16_shr_bias_to_main(self.linear_state[3 + 2 * (network_index / 8)]);
+        vec_narrow_pair(v0, v1)
+      };
+      for i in 0..64 {
+        square_from[i] = veci16_horizontal_sat_sum(vec_matmul_sat_fma(
+          veci16_zeros(),
+          from_data_simd,
+          policy_net.from_weights[i],
+        ))
+        .saturating_add(policy_net.from_bias[i]);
+      }
+    }
     let to_data_simd: VecI8 = {
-      let v0: VecI16 = veci16_shr_bias_to_main(self.linear_state[4]);
-      let v1: VecI16 = veci16_shr_bias_to_main(self.linear_state[5]);
+      let v0: VecI16 = veci16_shr_bias_to_main(self.linear_state[10 + 2 * (network_index / 8)]);
+      let v1: VecI16 = veci16_shr_bias_to_main(self.linear_state[11 + 2 * (network_index / 8)]);
       vec_narrow_pair(v0, v1)
     };
     for i in 0..64 {
-      square_from[i] = veci16_horizontal_sat_sum(vec_matmul_sat_fma(
-        veci16_zeros(),
-        from_data_simd,
-        policy_net.from_weights[i],
-      ))
-      .saturating_add(policy_net.from_bias[i]);
       square_to[i] = veci16_horizontal_sat_sum(vec_matmul_sat_fma(
         veci16_zeros(),
         to_data_simd,
