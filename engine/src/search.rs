@@ -58,14 +58,14 @@ enum NodeType {
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct PrincipalVariation {
-  pub eval: IntEvaluation,
+  pub eval:  IntEvaluation,
   pub moves: Vec<Move>,
 }
 
 impl PrincipalVariation {
   fn new() -> Self {
     Self {
-      eval: EVAL_DRAW,
+      eval:  EVAL_DRAW,
       moves: vec![],
     }
   }
@@ -145,13 +145,24 @@ impl Engine {
   }
 
   pub fn run(&mut self, depth: u16, use_nnue: bool) -> PrincipalVariation {
+    // We interpret the depth in a complicated way.
+    // We only evaluate the NNUE right after making a regular move (before making the duck move).
+    // (See Engine::is_gradable_position in python.rs.)
+    // So we compute the depth that ends up with depth = 0 in such a state.
+    // If we're currently in a regular move state then this is an odd depth,
+    // and it's an even depth from a duck move state.
+    let effective_depth = match self.state.is_duck_move {
+      true => depth * 2,
+      false => depth * 2 + 1,
+    };
+
     self.nodes_searched = 0;
     let start_state = self.state.clone();
     let mut nnue = Nnue::new(&start_state, crate::nnue::BUNDLED_NETWORK);
     // Apply iterative deepening.
     let mut pv = PrincipalVariation::new();
     //for d in 1..=depth {
-    for d in 1..=depth {
+    for d in 1..=effective_depth {
       let nnue_hash = nnue.get_debugging_hash();
       let (eval, m) = match use_nnue {
         true => self.pvs::<false, true>(
@@ -437,19 +448,21 @@ impl Engine {
     let mut nnue_policy_from_scores = [0i16; 64];
     let mut nnue_policy_to_scores = [0i16; 64];
     if NNUE && depth >= 2 {
-      nnue.evaluate_policy(state, &mut nnue_policy_from_scores, &mut nnue_policy_to_scores);
+      nnue.evaluate_policy(
+        state,
+        &mut nnue_policy_from_scores,
+        &mut nnue_policy_to_scores,
+      );
     }
     let killer_move = self.probe_killer_move(state);
     //if mot_move.is_some() || killer_move.is_some() {
     moves_to_search.sort_by(|&a, &b| {
       //let mut a_score = (100.0 * nnue.outputs[a.to as usize]) as i32;
       //let mut b_score = (100.0 * nnue.outputs[b.to as usize]) as i32;
-      let mut a_score =
-        nnue_policy_from_scores[a.from as usize] as i32 +
-        nnue_policy_to_scores[a.to as usize] as i32;
-      let mut b_score =
-        nnue_policy_from_scores[b.from as usize] as i32 +
-        nnue_policy_to_scores[b.to as usize] as i32;
+      let mut a_score = nnue_policy_from_scores[a.from as usize] as i32
+        + nnue_policy_to_scores[a.to as usize] as i32;
+      let mut b_score = nnue_policy_from_scores[b.from as usize] as i32
+        + nnue_policy_to_scores[b.to as usize] as i32;
       macro_rules! adjust_scores {
         ($good_move:expr, $score:expr) => {
           if $good_move == a {
@@ -499,22 +512,28 @@ impl Engine {
 
       if new_state.is_duck_move {
         if first {
-          (score, next_move) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, alpha, beta);
+          (score, next_move) =
+            self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, alpha, beta);
         } else {
-          (score, next_move) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, alpha, alpha + 1);
+          (score, next_move) =
+            self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, alpha, alpha + 1);
           if alpha < score && score < beta {
-            (score, next_move) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, score, beta);
+            (score, next_move) =
+              self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, score, beta);
           }
         }
       } else {
         if first {
-          (score, next_move) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -beta, -alpha);
+          (score, next_move) =
+            self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -beta, -alpha);
           score *= -1;
         } else {
-          (score, next_move) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -alpha - 1, -alpha);
+          (score, next_move) =
+            self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -alpha - 1, -alpha);
           score *= -1;
           if alpha < score && score < beta {
-            (score, next_move) = self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -beta, -score);
+            (score, next_move) =
+              self.pvs::<QUIESCENCE, NNUE>(depth - 1, &new_state, nnue, -beta, -score);
             score *= -1;
           }
         }

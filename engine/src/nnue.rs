@@ -659,7 +659,7 @@ impl<'a> Nnue<'a> {
       square_from[i] = veci16_horizontal_sat_sum(vec_matmul_sat_fma(
         veci16_zeros(),
         from_data_simd,
-        policy_net.from_weights[i],        
+        policy_net.from_weights[i],
       ))
       .saturating_add(policy_net.from_bias[i]);
       square_to[i] = veci16_horizontal_sat_sum(vec_matmul_sat_fma(

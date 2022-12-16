@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   let mut state = State::starting_state();
   let mut all_values = Vec::new();
   let mut all_policies = Vec::new();
-  let mut all_values_for_white = Vec::new();  
+  let mut all_values_for_white = Vec::new();
 
   for f in args.files {
     println!("Loading file: {}", f);
@@ -73,7 +73,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   let mut npz = NpzWriter::new(File::create("rust-nnue-predictions.npz")?);
   npz.add_array("values", &Array1::from(all_values))?;
-  npz.add_array("policies", &Array1::from(all_policies).into_shape((all_values_for_white.len(), 2, 64))?)?;
+  npz.add_array(
+    "policies",
+    &Array1::from(all_policies).into_shape((all_values_for_white.len(), 2, 64))?,
+  )?;
   npz.add_array("value_for_white", &Array1::from(all_values_for_white))?;
   npz.finish()?;
 
