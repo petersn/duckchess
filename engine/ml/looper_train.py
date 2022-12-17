@@ -24,7 +24,7 @@ if __name__ == "__main__":
     parser.add_argument("--new-path", metavar="PATH", required=True, help="Path for output network.")
     parser.add_argument("--new-optim-state-path", metavar="PATH", help="Path for output AdamW state.")
     parser.add_argument("--steps", metavar="COUNT", type=int, default=1000, help="Training steps.")
-    parser.add_argument("--minibatch-size", metavar="COUNT", type=int, default=256, help="Minibatch size.")
+    parser.add_argument("--minibatch-size", metavar="COUNT", type=int, default=1024, help="Minibatch size.")
     parser.add_argument("--learning-rate", metavar="LR", type=float, default=5e-5, help="Learning rate.")
     parser.add_argument("--data-file", metavar="PATH", type=str, help="Saved .npz file of features/targets.")
     parser.add_argument("--save-every", metavar="STEPS", default=0, type=int, help="Save a model every n steps.")
@@ -46,8 +46,8 @@ if __name__ == "__main__":
     train_policy_indices = torch.tensor(dataset.policy_indices)
     train_policy_probs = torch.tensor(dataset.policy_probs)
     #train_policy = torch.tensor(train_policy.reshape((-1, 64 * 64)))
-    train_wdl_index = torch.tensor(dataset.wdl_index)
-    train_mcts_root_value = torch.tensor(dataset.mcts_root_value.astype(np.int32))
+    train_wdl_index = torch.tensor(dataset.wdl_index.astype(np.int64))
+    train_mcts_root_value = torch.tensor(dataset.mcts_root_value)
 
     print("Got data:", train_features.shape, train_policy_indices.shape, train_policy_probs.shape, train_wdl_index.shape, train_mcts_root_value.shape)
 
