@@ -214,9 +214,9 @@ technically statistically biases the games slightly towards being shorter.)
         print("Steps:", steps)
         # We start at a learning rate of 4e-4 and decay exponentially to 3e-5 by 20 models.
         # Edit: I just adjusted it down to 5e-6.
-        # Edit: I just adjusted the starting lr down to 1e-4.
+        # Edit: I just adjusted the starting lr down to 1e-4, and the final down to 2e-6.
         lerp_coef = max(0, min(1, (current_model_number - 1) / 19))
-        learning_rate = math.exp( math.log(1e-4) * (1 - lerp_coef) + math.log(5e-6) * lerp_coef )
+        learning_rate = math.exp( math.log(1e-4) * (1 - lerp_coef) + math.log(2e-6) * lerp_coef )
         print("\x1b[91mLearning rate:", learning_rate, "\x1b[0m")
 
         optional_old_optim_state = []
