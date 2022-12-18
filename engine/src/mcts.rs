@@ -75,11 +75,16 @@ impl std::str::FromStr for SearchParams {
 }
 
 #[derive(Clone)]
+pub struct EdgeEntry {
+  node: NodeIndex,
+  causes_threefold: bool,
+}
+
+#[derive(Clone)]
 pub struct MctsNode {
   pub depth:             u32,
   pub state:             State,
-  pub repetition_state:  RepetitionState,
-  pub is_repetition:     bool,
+  //pub hash:              u64,
   pub moves:             Vec<Move>,
   pub outputs:           ModelOutputs,
   pub dirichlet_applied: bool,
@@ -90,23 +95,17 @@ pub struct MctsNode {
   pub tail_visits:       u32,
   pub in_flight:         u32,
   pub policy_explored:   f32,
-  pub outgoing_edges:    HashMap<Move, NodeIndex>,
+  pub outgoing_edges:    HashMap<Move, EdgeEntry>,
   pub gc_state:          u32,
   pub propagated:        bool,
 }
 
 impl MctsNode {
-  fn new(parent_repetition_state: &RepetitionState, state: State, depth: u32) -> Self {
-    let mut repetition_state = parent_repetition_state.clone();
-    let h = state.get_transposition_table_hash();
-    // Ugly hack: We also score a "repetition" if we hit the ply cap.
-    let is_repetition = repetition_state.add(h) || state.plies >= 800;
-
-    let needs_eval = state.get_outcome().is_none() && !is_repetition;
+  fn new(state: State, depth: u32) -> Self {
+    //let hash = state.get_transposition_table_hash();
+    let needs_eval = state.get_outcome().is_none();
     let mut moves = vec![];
-    if !is_repetition {
-      state.move_gen::<false>(&mut moves);
-    }
+    state.move_gen::<false>(&mut moves);
     let mut outputs = ModelOutputs::quantize_from(
       FullPrecisionModelOutputs {
         policy: Box::new([1.0; POLICY_LEN]),
@@ -114,15 +113,11 @@ impl MctsNode {
       },
       &moves,
     );
-    if is_repetition {
-      outputs.value = Evaluation::EVEN_EVAL;
-    }
     //outputs.renormalize(&moves);
     Self {
       depth,
       state,
-      repetition_state,
-      is_repetition,
+      //hash,
       moves,
       outputs,
       dirichlet_applied: false,
@@ -179,8 +174,8 @@ impl MctsNode {
           - search_params.first_play_urgency * sqrt_policy_explored)
           .max(0.0),
       ),
-      Some(child_index) => {
-        let child = &nodes[*child_index];
+      Some(edge) => {
+        let child = &nodes[edge.node];
         (
           (effective_visits as f32).sqrt() / (1.0 + (child.visits + child.in_flight) as f32),
           child.get_subtree_value().expected_score_for_player(self.state.turn),
@@ -226,12 +221,15 @@ impl MctsNode {
     best_move
   }
 
-  fn new_child(&mut self, m: Move, child_index: NodeIndex) {
+  fn new_child(&mut self, m: Move, causes_threefold: bool, child_index: NodeIndex) {
     // FIXME: Maybe this should be a debug assert?
     assert!(!self.outgoing_edges.contains_key(&m));
     // We now guarantee that this move is actually legal here.
     assert!(self.moves.contains(&m));
-    self.outgoing_edges.insert(m, child_index);
+    self.outgoing_edges.insert(m, EdgeEntry {
+      node: child_index,
+      causes_threefold,
+    });
     // FIXME: I need to track the policy_explored more carefully, as evals might not be filled in yet!
     self.policy_explored = (self.policy_explored + self.posterior(m)).min(1.0);
   }
@@ -317,11 +315,11 @@ impl MctsNode {
   }
 }
 
-fn get_transposition_table_key(state: &State, depth: u32) -> (u64, u32) {
-  // We include the depth in the key to keep the tree a DAG.
-  // This misses some transposition opportunities, but is very cheap.
-  (state.get_transposition_table_hash(), depth)
-}
+//fn get_transposition_table_key(state: &State, depth: u32) -> (u64, u32) {
+//  // We include the depth in the key to keep the tree a DAG.
+//  // This misses some transposition opportunities, but is very cheap.
+//  (state.get_transposition_table_hash(), depth)
+//}
 
 //slotmap::new_key_type! {
 //  pub struct PendingIndex;
@@ -342,7 +340,7 @@ pub struct Mcts<'a, Infer: InferenceEngine<(usize, PendingPath)>> {
   pub root:                NodeIndex,
   pub nodes:               SlotMap<NodeIndex, MctsNode>,
   pub transposition_table: HashMap<(u64, u32), NodeIndex>,
-  empty_repetition_state:  RepetitionState,
+  pub root_repetition_state:  RepetitionState,
   //pending_paths:       SlotMap<PendingIndex, PendingPath>,
 }
 
@@ -365,7 +363,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       nodes: SlotMap::with_key(),
       transposition_table: HashMap::new(),
       //pending_paths: SlotMap::with_key(),
-      empty_repetition_state: RepetitionState::new(),
+      root_repetition_state: RepetitionState::new(),
     };
     this.root = this.add_child_and_adjust_scores(vec![], None, State::starting_state(), 0);
     this
@@ -397,14 +395,14 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       let best_move = match node
         .outgoing_edges
         .iter()
-        .max_by_key(|(_, node_index)| self.nodes[**node_index].visits)
+        .max_by_key(|(_, edge)| self.nodes[edge.node].visits)
         .map(|(m, _)| *m)
       {
         Some(m) => m,
         None => break,
       };
       pv.push(best_move);
-      node_index = node.outgoing_edges[&best_move];
+      node_index = node.outgoing_edges[&best_move].node;
     }
     pv
   }
@@ -418,7 +416,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         true => node
           .outgoing_edges
           .iter()
-          .max_by_key(|(_, node_index)| self.nodes[**node_index].visits)
+          .max_by_key(|(_, edge)| self.nodes[edge.node].visits)
           .map(|(m, _)| *m),
         // Otherwise select according to PUCT.
         false => node.select_action(&self.search_params, &self.nodes),
@@ -431,7 +429,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
           // Try to find this edge.
           let child = match node.outgoing_edges.get(&m) {
             None => return (nodes, Some(m)),
-            Some(child) => *child,
+            Some(edge) => edge.node,
           };
           nodes.push(child);
           node = &self.nodes[child];
@@ -458,13 +456,24 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     state: State,
     depth: u32,
   ) -> NodeIndex {
-    let parent_repetition_state = match path.last() {
-      None => &self.empty_repetition_state,
-      Some(parent_index) => &self.nodes[*parent_index].repetition_state,
-    };
+    let new_hash = state.get_transposition_table_hash();
+    // // We check if this path results in a threefold repetition.
+    // let mut repetition_state = self.root_repetition_state.clone();
+    // for node_index in &path {
+    //   let repetition_along_path = repetition_state.add(self.nodes[*node_index].hash);
+    //   assert!(!repetition_along_path);
+    // }
+    // // Finally, check if adding the new state results in a threefold repetition.
+    // let threefold_repetition = repetition_state.would_adding_cause_threefold(new_hash);
+    let threefold_repetition = false;
+
+    //let parent_repetition_state = match path.last() {
+    //  None => &self.empty_repetition_state,
+    //  Some(parent_index) => &self.nodes[*parent_index].repetition_state,
+    //};
     //println!("Adding child at depth {} (path={:?}).", depth, path);
     // Check our transposition table to see if this new state has already been reached.
-    let transposition_table_key = get_transposition_table_key(&state, depth);
+    let transposition_table_key = (new_hash, depth);
     // We get a node, possibly new.
     let last_node_index = match self.transposition_table.entry(transposition_table_key) {
       Entry::Occupied(mut entry) => {
@@ -485,14 +494,14 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
               writeln!(f, "{:?}", transposition_node.state).unwrap();
               writeln!(f, "Hash key: {:?}", transposition_table_key).unwrap();
             }
-            let node = MctsNode::new(parent_repetition_state, state, depth);
+            let node = MctsNode::new(state, depth);
             let new_node_index = self.nodes.insert(node);
             entry.insert(new_node_index)
           }
         }
       }
       Entry::Vacant(entry) => {
-        let node = MctsNode::new(parent_repetition_state, state, depth);
+        let node = MctsNode::new(state, depth);
         let new_node_index = self.nodes.insert(node);
         *entry.insert(new_node_index)
       }
@@ -502,7 +511,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       (None, None) => {}
       (Some(parent_node_index), Some(m)) => {
         let parent_node = &mut self.nodes[*parent_node_index];
-        parent_node.new_child(m, last_node_index);
+        parent_node.new_child(m, threefold_repetition, last_node_index);
       }
       _ => unreachable!(),
     }
@@ -650,8 +659,8 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     // Find the most and second most visited children at the root.
     let mut best_child_visits = 0;
     let mut second_best_child_visits = 0;
-    for (_, child_index) in &self.nodes[self.root].outgoing_edges {
-      let child_visits = self.nodes[*child_index].visits;
+    for (_, edge) in &self.nodes[self.root].outgoing_edges {
+      let child_visits = self.nodes[edge.node].visits;
       if child_visits > best_child_visits {
         second_best_child_visits = best_child_visits;
         best_child_visits = child_visits;
@@ -704,14 +713,14 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     self.nodes[node_index]
       .outgoing_edges
       .values()
-      .map(|child_index| self.nodes[*child_index].visits as i32)
+      .map(|edge| self.nodes[edge.node].visits as i32)
       .sum()
   }
 
   fn get_immediately_winning_move(&self) -> Option<Move> {
     let current_player = self.nodes[self.root].state.turn;
-    for (m, child_index) in &self.nodes[self.root].outgoing_edges {
-      let eval = self.nodes[*child_index].outputs.value;
+    for (m, edge) in &self.nodes[self.root].outgoing_edges {
+      let eval = self.nodes[edge.node].outputs.value;
       if eval.is_exact && eval.expected_score_for_player(current_player) >= 1.0 {
         return Some(*m);
       }
@@ -727,8 +736,8 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
 
     let sum_child_visits = self.get_sum_child_visits(self.root) as f32;
     let mut distribution = Vec::new();
-    for (m, child_index) in &self.nodes[self.root].outgoing_edges {
-      let child_visits = self.nodes[*child_index].visits;
+    for (m, edge) in &self.nodes[self.root].outgoing_edges {
+      let child_visits = self.nodes[edge.node].visits;
       distribution.push((*m, child_visits as f32 / sum_child_visits));
     }
     distribution
@@ -747,7 +756,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     let temperature_sum_child_visits: i64 = self.nodes[self.root]
       .outgoing_edges
       .values()
-      .map(|child_index| (self.nodes[*child_index].visits as i64).pow(beta))
+      .map(|edge| (self.nodes[edge.node].visits as i64).pow(beta))
       .sum();
 
     if temperature_sum_child_visits == 0 {
@@ -760,8 +769,8 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     }
     let mut visit_count =
       self.rng.generate_range_sketchy(temperature_sum_child_visits as u64) as i64;
-    for (m, child_index) in &self.nodes[self.root].outgoing_edges {
-      visit_count -= (self.nodes[*child_index].visits as i64).pow(beta);
+    for (m, edge) in &self.nodes[self.root].outgoing_edges {
+      visit_count -= (self.nodes[edge.node].visits as i64).pow(beta);
       if visit_count < 0 {
         return Some(*m);
       }
@@ -781,7 +790,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     let root_node = &self.nodes[self.root];
     self.root = match root_node.outgoing_edges.get(&m) {
       // If we already have a node for this move, then just make it the new root.
-      Some(child_index) => *child_index,
+      Some(edge) => edge.node,
       // Otherwise, we create a new node.
       None => {
         let mut new_state = root_node.state.clone();
@@ -806,8 +815,8 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     while let Some(node_index) = stack.pop() {
       let node = &mut self.nodes[node_index];
       if node.gc_state != mark_state {
-        for child_index in node.outgoing_edges.values() {
-          stack.push(*child_index);
+        for edge in node.outgoing_edges.values() {
+          stack.push(edge.node);
         }
       }
       node.gc_state = mark_state;
@@ -861,8 +870,8 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         },
       );
       if !already_printed {
-        for (m, child_index) in &node.outgoing_edges {
-          stack.push((Some(*m), *child_index, depth + 1));
+        for (m, edge) in &node.outgoing_edges {
+          stack.push((Some(*m), edge.node, depth + 1));
         }
       }
     }
@@ -890,10 +899,10 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       //  node.moves.len(),
       //);
       if !already_printed {
-        for (m, child_index) in &node.outgoing_edges {
-          //println!("  {:?} -> {:?} [label=\"{:?}\"]", node_index, child_index, m);
-          println!("  {:?} -> {:?}", node_index, child_index);
-          stack.push((Some(*m), *child_index, depth + 1));
+        for (m, edge) in &node.outgoing_edges {
+          //println!("  {:?} -> {:?} [label=\"{:?}\"]", node_index, edge.node, m);
+          println!("  {:?} -> {:?}", node_index, edge.node);
+          stack.push((Some(*m), edge.node, depth + 1));
         }
       }
     }

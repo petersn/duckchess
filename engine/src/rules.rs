@@ -1027,12 +1027,19 @@ impl RepetitionState {
   pub fn add(&mut self, zobrist: u64) -> bool {
     let count = self.mapping.entry(zobrist).or_insert(0);
     *count += 1;
-    *count >= 3
+    //*count >= 3
+    false
   }
 
   pub fn remove(&mut self, zobrist: u64) {
     let count = self.mapping.entry(zobrist).or_insert(0);
     assert!(*count > 0);
     *count -= 1;
+  }
+
+  pub fn would_adding_cause_threefold(&self, zobrist: u64) -> bool {
+    let count = self.mapping.get(&zobrist).unwrap_or(&0);
+    //*count >= 2
+    false
   }
 }
