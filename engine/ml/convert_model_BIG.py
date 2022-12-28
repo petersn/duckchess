@@ -31,10 +31,10 @@ if __name__ == "__main__":
 
     weights_list = list(model.weights)
     # FIXME: This little hacky fixup is absurdly brittle!
-    # Move the two conv2d_62 layers forward by one.
+    # Move the two conv2d_22 layers forward by one.
     if args.big:
-        i = [w.name.startswith("conv2d_62/") for w in weights_list].index(True)
-        print("First conv2d_62 index:", i)
+        i = [w.name.startswith("conv2d_22/") for w in weights_list].index(True)
+        print("First conv2d_22 index:", i)
         weights_list[i : i + 2], weights_list[i + 2 : i + 4] = weights_list[i + 2 : i + 4], weights_list[i : i + 2]
 
     state_dict = torch.load(args.input)

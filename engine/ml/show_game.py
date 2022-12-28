@@ -1,6 +1,7 @@
 import sys
 import random
 import json
+import collections
 
 import engine
 
@@ -87,6 +88,8 @@ if __name__ == "__main__":
 
     last_state = None
 
+    repetition_counts = collections.Counter()
+
     e = engine.Engine(0)
     for i, move in enumerate(game["moves"]):
         #print(game["moves"][:i + 1])
@@ -106,6 +109,12 @@ if __name__ == "__main__":
         r = e.apply_move(json.dumps(move))
         if r is not None:
             print("BAD:", r)
+        d = json.loads(e.get_state())
+        d.pop("moveHistory")
+        d.pop("plies")
+        key = str(d)
+        repetition_counts[key] += 1
+        print(repetition_counts[key])
         state = json.loads(e.get_state())
         #print("AFTER MOVE:")
         #print(state)

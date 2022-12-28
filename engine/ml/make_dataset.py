@@ -85,7 +85,7 @@ def process_game_path(path: str):
     wdl_index_array = np.zeros((total_moves, 1), dtype=np.int8)
     mcts_root_value_array = np.zeros((total_moves, 1), dtype=np.float32)
     entry = 0
-    for game in games:
+    for game_index, game in enumerate(games):
         game = json.loads(game)
         version = game["version"]
         value_for_white = {"1-0": +1, "0-1": -1, None: 0}[game["outcome"]]
@@ -100,6 +100,12 @@ def process_game_path(path: str):
 
             # FIXME: Why is this necessary? Why are folks playing in terminal positions?
             if e.get_outcome() is not None:
+                print("Special state:", e.get_outcome())
+                print(i, len(game["moves"]))
+                print("What???")
+                print("PATH:", path, "GAME INDEX:", game_index)
+                with open("/tmp/one-game.json", "w") as f:
+                    json.dump(game, f)
                 continue
             if move["from"] == 64:
                 move["from"] = move["to"]
