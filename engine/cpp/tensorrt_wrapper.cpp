@@ -37,6 +37,20 @@ std::string slurp_file(std::string path) {
   return buffer.str();
 }
 
+using DataType = nvinfer1::DataType;
+
+const char* dtype_to_name(DataType dtype) {
+  switch (dtype) {
+    case DataType::kFLOAT: return "float";
+    case DataType::kHALF: return "half";
+    case DataType::kINT8: return "int8";
+    case DataType::kINT32: return "int32";
+    case DataType::kBOOL: return "bool";
+    case DataType::kUINT8: return "uint8";
+    default: return "unknown";
+  }
+}
+
 constexpr int STREAM_COUNT = 1;
 
 struct TensorRTWrapper {
@@ -55,6 +69,7 @@ struct TensorRTWrapper {
   TensorRTWrapper(int cuda_device, int max_batch_size)
     : max_batch_size(max_batch_size)
   {
+    printf("new TensorRTWrapper(%d, %d)\n", cuda_device, max_batch_size);
     cuda_check(cudaSetDevice(cuda_device));
     for (int i = 0; i < STREAM_COUNT; i++)
       cuda_check(cudaStreamCreate(&streams[i]));
@@ -114,12 +129,16 @@ struct TensorRTWrapper {
     }) {
       //std::cout << name << ": " << engine->getBindingIndex(name) << std::endl;
       auto dims = engine->getTensorShape(name);
-      std::cout << dims.d[0] << " >= " << max_batch_size << std::endl;
+      //std::cout << dims.d[0] << " >= " << max_batch_size << std::endl;
+      // We now get the dtype of this tensor, and the size of the dtype.
+      auto dtype = engine->getTensorDataType(name);
+      //auto dtype_name = engine->getDataTypeName(dtype);
       assert(dims.d[0] >= max_batch_size);
-      //std::cout << name << ": dims=" << d.nbDims << std::endl;
-      //for (int i = 0; i < d.nbDims; i++) {
-      //  std::cout << name << ": dim=" << d.d[i] << std::endl;
-      //}
+      std::cout << name << "(idx=" << engine->getBindingIndex(name) << "): dtype=" << dtype_to_name(dtype) << " shape: ";
+      for (int i = 0; i < dims.nbDims; i++) {
+        std::cout << dims.d[i] << " ";
+      }
+      std::cout << std::endl;
     }
     for (int i = 0; i < STREAM_COUNT; i++) {
       contexts[i] = engine->createExecutionContext();
@@ -163,6 +182,7 @@ extern "C" void TensorRTWrapper_get_pointers(
   float** out_wdl,
   float** out_policy
 ) {
+  assert(stream_id >= 0 && stream_id < STREAM_COUNT);
   *inp_features = wrapper->inp_features[stream_id];
   *out_wdl = wrapper->out_wdl[stream_id];
   *out_policy = wrapper->out_policy[stream_id];
