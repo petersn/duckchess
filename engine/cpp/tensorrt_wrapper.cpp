@@ -61,13 +61,13 @@ struct TensorRTWrapper {
     runtime = createInferRuntime(logger);
     // Create buffers for input and output.
     for (int i = 0; i < STREAM_COUNT; i++) {
-      cuda_check(cudaMallocManaged(&inp_features[i], max_batch_size * 29 * 8 * 8 * sizeof(float)));
+      cuda_check(cudaMallocManaged(&inp_features[i], max_batch_size * 37 * 8 * 8 * sizeof(float)));
       cuda_check(cudaMallocManaged(&out_wdl[i], max_batch_size * 3 * sizeof(float)));
       cuda_check(cudaMallocManaged(&out_policy[i], max_batch_size * 4096 * sizeof(float)));
       cuda_check(cudaMallocManaged(&out_mcts_value_prediction[i], max_batch_size * sizeof(float)));
       printf("Allocated at %p %p %p %p\n", inp_features[i], out_wdl[i], out_policy[i], out_mcts_value_prediction[i]);
       // Zero out the buffers.
-      cuda_check(cudaMemsetAsync(inp_features[i], 0, max_batch_size * 29 * 8 * 8 * sizeof(float), streams[i]));
+      cuda_check(cudaMemsetAsync(inp_features[i], 0, max_batch_size * 37 * 8 * 8 * sizeof(float), streams[i]));
       cuda_check(cudaMemsetAsync(out_wdl[i], 0, max_batch_size * 3 * sizeof(float), streams[i]));
       cuda_check(cudaMemsetAsync(out_policy[i], 0, max_batch_size * 4096 * sizeof(float), streams[i]));
       cuda_check(cudaMemsetAsync(out_mcts_value_prediction[i], 0, max_batch_size * sizeof(float), streams[i]));
