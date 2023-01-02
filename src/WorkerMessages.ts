@@ -1,14 +1,19 @@
 
-export type MessageToEngineWorker = {
+type BasicMessages = {
   type: 'init';
 } | {
   type: 'applyMove';
   move: any;
   isHidden: boolean;
 } | {
+  type: 'historyJump';
+  index: number;
+} | {
   type: 'setRunEngine';
   runEngine: boolean;
 };
+
+export type MessageToEngineWorker = BasicMessages;
 
 export type MessageFromEngineWorker = {
   type: 'initted';
@@ -27,16 +32,7 @@ export type MessageFromEngineWorker = {
   }[];
 };
 
-export type MessageToSearchWorker = {
-  type: 'init';
-} | {
-  type: 'applyMove';
-  move: any;
-  isHidden: boolean;
-} | {
-  type: 'setRunEngine';
-  runEngine: boolean;
-} | {
+export type MessageToSearchWorker = BasicMessages | {
   type: 'runAlphaBetaBenchmark';
 };
 

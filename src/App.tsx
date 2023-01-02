@@ -100,6 +100,12 @@ export class Workers {
     }
   }
 
+  historyJump(index: number) {
+    for (const worker of [this.engineWorker, this.searchWorker]) {
+      worker.postMessage({ type: 'historyJump', index });
+    }
+  }
+
   setRunEngine(runEngine: boolean) {
     for (const worker of [this.engineWorker, this.searchWorker]) {
       worker.postMessage({ type: 'setRunEngine', runEngine });
