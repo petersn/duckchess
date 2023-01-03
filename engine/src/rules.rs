@@ -16,8 +16,9 @@ const ALL_BUT_H_FILE: u64 = 0x7f7f7f7f7f7f7f7f;
 const MIDDLE_SIX_RANKS: u64 = 0x00ffffffffffff00;
 const LAST_RANKS: u64 = 0xff000000000000ff;
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub enum Player {
   Black = 0,
   White = 1,
@@ -43,14 +44,15 @@ pub enum PieceKind {
   Duck   = 6,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct CastlingRights {
   pub king_side:  bool,
   pub queen_side: bool,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, ts_rs::TS)]
 pub struct BitBoard(pub u64);
 
 impl BitBoard {
@@ -87,8 +89,9 @@ impl<'de> Deserialize<'de> for BitBoard {
   }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct State {
   pub pawns:           [BitBoard; 2],
   pub knights:         [BitBoard; 2],
@@ -119,7 +122,9 @@ pub enum PromotablePiece {
 pub type Square = u8;
 type SquareDelta = u8;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct Move {
   pub from: Square,
   pub to:   Square,

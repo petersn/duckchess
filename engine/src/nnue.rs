@@ -209,6 +209,11 @@ cfg_if::cfg_if! {
     fn veci16_sub(a: VecI16, b: VecI16) -> VecI16 { unsafe { vsubq_s16(a, b) } }
 
     #[inline(always)]
+    fn veci16_shr_bias_to_main(a: VecI16) -> VecI16 {
+      unsafe { vreinterpretq_s16_u16(vshrq_n_u16(vreinterpretq_u16_s16(a), 1)) }
+    }
+
+    #[inline(always)]
     fn vec_narrow_pair(a: VecI16, b: VecI16) -> VecI8 {
       unsafe { vqmovn_high_s16(vqmovn_s16(a), b) }
     }

@@ -1,3 +1,4 @@
+/*
 use std::{cell::RefCell, collections::HashMap, io::BufRead};
 
 use clap::Parser;
@@ -202,4 +203,9 @@ fn main() {
       _ => eprintln!("Unknown command: {}", line),
     }
   }
+}
+*/
+
+fn main() {
+  println!("Hello, world!");
 }

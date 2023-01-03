@@ -1,3 +1,4 @@
+/*
 use clap::Parser;
 use engine::inference::InferenceEngine;
 use engine::inference_desktop::TensorFlowEngine;
@@ -94,4 +95,9 @@ fn main() {
   // for _ in 0..10 {
   //   mcts.step().await;
   // }
+}
+*/
+
+fn main() {
+  println!("Hello, world!");
 }

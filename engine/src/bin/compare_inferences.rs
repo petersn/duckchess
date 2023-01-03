@@ -1,3 +1,4 @@
+/*
 use clap::Parser;
 use engine::{
   inference::InferenceEngine, inference_desktop::TensorFlowEngine,
@@ -48,3 +49,9 @@ fn main() {
     });
   });
 }
+*/
+
+fn main() {
+  println!("Hello, world!");
+}
+

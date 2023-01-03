@@ -22,6 +22,16 @@ extern "C" {
 }
 
 #[wasm_bindgen]
+pub struct GameNode {
+  
+}
+
+#[wasm_bindgen]
+pub struct GameTree {
+
+}
+
+#[wasm_bindgen]
 pub struct Engine {
   inference_engine: &'static inference_web::TensorFlowJsEngine<(usize, PendingPath)>,
   //engine:           search::Engine,

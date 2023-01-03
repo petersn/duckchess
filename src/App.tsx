@@ -458,7 +458,7 @@ function AnalysisPage(props: { isMobile: boolean, workers: Workers | null }) {
           }} /> Run engine
 
           {props.workers !== null && <div>
-            Evaluation: {props.workers.evaluation}<br/>
+            Evaluation: {props.workers.evaluation.toFixed(3)}<br/>
             Nodes: {props.workers.nodes}<br/>
             PV: {props.workers.pv.map((m: any) => m.from + ' ' + m.to).join(' ')}
           </div>}

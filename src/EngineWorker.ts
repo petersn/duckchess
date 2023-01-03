@@ -44,17 +44,17 @@ function workLoop() {
     //console.log('Nonzero', nonZeroCount, 'of', inputArray.length);
     //console.log('batchSize', batchSize);
     const inp = tf.tensor4d(inputArray, [batchSize, channel_count(), 8, 8]);
-    const [policy, value] = model.predict(inp) as [tf.Tensor, tf.Tensor];
+    const [policy, wdl] = model.predict(inp) as [tf.Tensor, tf.Tensor];
     const policyData = policy.dataSync() as Float32Array;
-    const valueData = value.dataSync() as Float32Array;
+    const wdlData = wdl.dataSync() as Float32Array;
     // memcpy into policy_array and value_array
     //policyArray.set(policyData);
     //valueArray.set(valueData);
-    engine.give_answers(policyData, valueData);
+    engine.give_answers(policyData, wdlData);
     // Delete the inputs.
     inp.dispose();
     policy.dispose();
-    value.dispose();
+    wdl.dispose();
     const [pv, whiteWinProb, nodes] = engine.get_principal_variation();
     postMessage({ type: 'evaluation', whiteWinProb, pv, nodes });
     // FIXME: Why do I need as any here?
@@ -69,6 +69,7 @@ async function initWorker() {
   console.log('Has threads:', hasThreads);
   const sharedArrayBuffer = new SharedArrayBuffer(4 * 1024 * 1024);
   const wasm = await init();
+  console.log('Channels:', channel_count());
 
   for (let i = 0; i < 0; i++) {
     const start1 = performance.now();
@@ -101,8 +102,9 @@ async function initWorker() {
   const seed = Math.floor(Math.random() * 1e9);
   engine = new_engine(BigInt(seed));
 
-  model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/model-small/model.json')
+  //model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/model-small/model.json')
   //model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/model-medium/model.json')
+  model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/run-016-model-058/model.json')
   postMessage({ type: 'initted' });
   // Make an 8x8 array of all nulls.
   //const fakeState = Array(8).fill(null).map(() => Array(8).fill(null));

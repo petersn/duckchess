@@ -1,3 +1,4 @@
+/*
 use clap::Parser;
 use engine::{inference::InferenceEngine, inference_desktop::TensorFlowEngine};
 
@@ -35,4 +36,9 @@ fn main() {
       featurization_time, inference_time
     );
   }
+}
+*/
+
+fn main() {
+  println!("Hello, world!");
 }

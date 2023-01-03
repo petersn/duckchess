@@ -1,3 +1,4 @@
+/*
 use tensorflow::{Graph, SavedModelBundle, SessionOptions, SessionRunArgs, Tensor};
 
 fn main() {
@@ -59,4 +60,9 @@ fn main() {
   //let sm = args.fetch::<f32>(out).unwrap();
   //let out_res: f32 = args.fetch(out).unwrap()[0];
   //println!("Results: {:?}", sm);
+}
+*/
+
+fn main() {
+  println!("Hello, world!");
 }
