@@ -2,7 +2,7 @@ import React from 'react';
 import * as tf from '@tensorflow/tfjs';
 import '@tensorflow/tfjs-backend-webgl';
 import { Workers } from './App';
-import { AlphaBetaBenchmarkResults } from './WorkerMessages';
+import { AlphaBetaBenchmarkResults } from './DuckChessEngine';
 
 // This is the number of input feature layers to the model.
 const featureCount = 29;

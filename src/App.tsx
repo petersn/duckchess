@@ -1,7 +1,7 @@
 import { engine } from '@tensorflow/tfjs';
 import React from 'react';
 import './App.css';
-import { AlphaBetaBenchmarkResults, MessageFromEngineWorker, MessageFromSearchWorker } from './WorkerMessages';
+import { AlphaBetaBenchmarkResults, MessageFromEngineWorker, MessageFromSearchWorker } from './DuckChessEngine';
 import { ChessBoard, ChessPiece, PieceKind, BOARD_MAX_SIZE } from './ChessBoard';
 import { BrowserRouter as Router, Route, Link, Routes, Navigate } from 'react-router-dom';
 import { BenchmarkApp } from './BenchmarkApp';
