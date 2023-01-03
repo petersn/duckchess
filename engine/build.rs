@@ -157,8 +157,8 @@ fn main() {
   //println!("cargo:rustc-link-lib=static=stdc++");
 
   // Only link in this next object if we're targeting x86_64.
-  #[cfg(target_arch = "x86_64")]
-  {
+  // Our ultimate target is in the CARGO_BUILD_TARGET environment variable.
+  if env::var("CARGO_CFG_TARGET_ARCH").unwrap().contains("x86_64") {
     cc::Build::new()
       .cpp(true)
       .file("cpp/tensorrt_wrapper.cpp")
