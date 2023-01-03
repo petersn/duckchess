@@ -12,18 +12,18 @@ use crate::{
 
 pub const MAX_BATCH_SIZE: usize = 16;
 
-struct Results<Cookie> {
+struct PendingResults<Cookie> {
   cookies:  Vec<Cookie>,
   players:  Vec<Player>,
   policies: Vec<[f32; POLICY_LEN]>,
-  values:   Vec<f32>,
+  wdl:      Vec<[f32; 3]>,
 }
 
 struct Inner<Cookie> {
   input_blocks:    VecDeque<InputBlock<Cookie>>,
   pending_cookies: Option<Vec<Cookie>>,
   pending_players: Option<Vec<Player>>,
-  pending_results: Option<Results<Cookie>>,
+  pending_results: Option<PendingResults<Cookie>>,
 }
 
 pub struct TensorFlowJsEngine<Cookie> {
@@ -74,25 +74,30 @@ impl<Cookie> TensorFlowJsEngine<Cookie> {
   }
 
   //pub fn give_answers(&self, policy_array: &[f32], value_array: &[f32]) {
-  pub fn give_answers(&self, policy_array: &[f32], value_array: &[f32]) {
+  pub fn give_answers(&self, policy_array: &[f32], wdl_array: &[f32]) {
     let mut inner = self.inner.borrow_mut();
     let pending_cookies = inner.pending_cookies.take().unwrap();
     let pending_players = inner.pending_players.take().unwrap();
     let batch_length = pending_cookies.len();
     assert!(inner.pending_results.is_none());
-    let mut results = Results {
+    let mut results = PendingResults {
       cookies:  pending_cookies,
       players:  pending_players,
       policies: vec![[0.0; POLICY_LEN]; batch_length], //Box::new([[0.0; POLICY_LEN]; batch_length]),
-      values:   vec![0.0; batch_length],
+      wdl:      vec![[0.0; 3]; batch_length],
     };
     // Get a &mut [f32] that points into results.policies.
     let policies = results.policies.as_mut_slice();
     let policies: &mut [f32] = unsafe {
       std::slice::from_raw_parts_mut(policies.as_mut_ptr() as *mut f32, batch_length * POLICY_LEN)
     };
+    // Get a &mut [f32] that points into results.wdl.
+    let wdl = results.wdl.as_mut_slice();
+    let wdl: &mut [f32] = unsafe {
+      std::slice::from_raw_parts_mut(wdl.as_mut_ptr() as *mut f32, batch_length * 3)
+    };
     policies.copy_from_slice(&policy_array[..]);
-    results.values.copy_from_slice(&value_array[..]);
+    wdl.copy_from_slice(&wdl_array[..]);
     //policy_array.copy_to(policies);
     //value_array.copy_to(results.values.as_mut_slice());
     inner.pending_results = Some(results);
@@ -128,7 +133,7 @@ impl<Cookie> inference::InferenceEngine<Cookie> for TensorFlowJsEngine<Cookie> {
       &results.cookies,
       &results.players,
       &policy_refs[..],
-      &results.values,
+      &results.wdl,
     ));
     batch_length
   }

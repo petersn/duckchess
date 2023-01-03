@@ -156,20 +156,24 @@ fn main() {
   fs::write(&dest_path, code).unwrap();
   //println!("cargo:rustc-link-lib=static=stdc++");
 
-  cc::Build::new()
-    .cpp(true)
-    .file("cpp/tensorrt_wrapper.cpp")
-    .flag("-I/usr/local/cuda/include")
-    .flag("-L/usr/local/cuda/lib64")
-    .flag("-lcuda")
-    .flag("-lcudart")
-    .flag("-lnvinfer")
-    .compile("tensorrt_wrapper");
-  println!("cargo:rerun-if-changed=cpp/tensorrt_wrapper.cpp");
+  // Only link in this next object if we're targeting x86_64.
+  #[cfg(target_arch = "x86_64")]
+  {
+    cc::Build::new()
+      .cpp(true)
+      .file("cpp/tensorrt_wrapper.cpp")
+      .flag("-I/usr/local/cuda/include")
+      .flag("-L/usr/local/cuda/lib64")
+      .flag("-lcuda")
+      .flag("-lcudart")
+      .flag("-lnvinfer")
+      .compile("tensorrt_wrapper");
+    println!("cargo:rerun-if-changed=cpp/tensorrt_wrapper.cpp");
+    println!("cargo:rustc-link-search=/usr/local/cuda/lib64");
+    println!("cargo:rustc-link-lib=cuda");
+    println!("cargo:rustc-link-lib=cudart");
+    println!("cargo:rustc-link-lib=nvinfer");  
+  }
 
-  println!("cargo:rustc-link-search=/usr/local/cuda/lib64");
-  println!("cargo:rustc-link-lib=cuda");
-  println!("cargo:rustc-link-lib=cudart");
-  println!("cargo:rustc-link-lib=nvinfer");
   println!("cargo:rerun-if-changed=build.rs");
 }
