@@ -8,7 +8,7 @@ import collections
 import traceback
 import subprocess
 
-GAME_TARGET = 450
+GAME_TARGET = 300
 
 if len(sys.argv) != 2 or sys.argv[1] in ["-h", "--help"]:
     print("Usage: python check_elos.py run-prefix/")
@@ -149,7 +149,7 @@ def check():
         print("   \x1b[95m>", a, "vs", b, "=", games[a, b], "games\x1b[0m")
         if games[a, b] < GAME_TARGET:
             print("Not enough games for", a, "vs", b)
-            new_games = max(250, GAME_TARGET - games[a, b])
+            new_games = max(450, GAME_TARGET - games[a, b])
             generate_games(prefix + "/eval-games/", a, b, new_games)
             try:
                 regenerate_report(steps, games)
