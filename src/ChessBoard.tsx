@@ -70,6 +70,11 @@ interface ChessBoardState {
   selectedSquare: [number, number] | null;
   draggingPiece: PieceKind;
   skipSquare: [number, number];
+
+  userDrawnArrows: [number, number, number, number][];
+  userHighlightedSquares: [number, number][];
+  arrowStart: [number, number] | null;
+  arrowHover: [number, number] | null;
 }
 
 export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState> {
@@ -87,6 +92,10 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
       selectedSquare: null,
       draggingPiece: null,
       skipSquare: [-1, -1],
+      userDrawnArrows: [],
+      userHighlightedSquares: [],
+      arrowStart: null,
+      arrowHover: null,
     };
   }
 
@@ -98,12 +107,14 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
     //this.rafHandle = window.requestAnimationFrame(this.rafLoop);
     document.addEventListener('mousemove', this.onMouseMove);
     document.addEventListener('click', this.onGlobalClick);
+    document.addEventListener('mouseup', this.onGlobalMouseUp);
   }
 
   componentWillUnmount() {
     window.cancelAnimationFrame(this.rafHandle);
     document.removeEventListener('mousemove', this.onMouseMove);
     document.removeEventListener('click', this.onGlobalClick);
+    document.removeEventListener('mouseup', this.onGlobalMouseUp);
   }
 
   onMouseMove = (event: MouseEvent) => {
@@ -122,6 +133,13 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
     if (this.dragState !== null) {
       this.dragState = null;
       this.setState({ draggingPiece: null, skipSquare: [-1, -1] });
+    }
+  }
+
+  onGlobalMouseUp = (event: MouseEvent) => {
+    // If it's a right mouse up, cancel the arrow.
+    if (event.button === 2) {
+      this.setState({ arrowStart: null, arrowHover: null });
     }
   }
 
@@ -162,6 +180,48 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
     }
   }
 
+  beginArrow(x: number, y: number) {
+    this.setState({ arrowStart: [x, y] });
+  }
+
+  updateArrow(x: number, y: number) {
+    this.setState({ arrowHover: [x, y] });
+  }
+
+  endArrow(x: number, y: number) {
+    if (this.state.arrowStart) {
+      const newArrows = this.state.userDrawnArrows.slice();
+      // If the arrow starts and ends in the same square, it's a highlight.
+      if (this.state.arrowStart[0] === x && this.state.arrowStart[1] === y) {
+        this.highlightSquare(x, y);
+        this.setState({ arrowStart: null });
+        return;
+      }
+      // Check if we already have this exact arrow.
+      const [sx, sy] = this.state.arrowStart;
+      const index = newArrows.findIndex(a => a[0] === sx && a[1] === sy && a[2] === x && a[3] === y);
+      if (index !== -1) {
+        console.log('removing arrow');
+        newArrows.splice(index, 1);
+      } else {
+        newArrows.push([...this.state.arrowStart, x, y]);
+      }
+      this.setState({ userDrawnArrows: newArrows, arrowStart: null });
+    }
+  }
+
+  highlightSquare(x: number, y: number) {
+    const newHighlightedSquares = this.state.userHighlightedSquares.slice();
+    // Toggle the square.
+    const index = newHighlightedSquares.findIndex(([hx, hy]) => hx === x && hy === y);
+    if (index !== -1) {
+      newHighlightedSquares.splice(index, 1);
+    } else {
+      newHighlightedSquares.push([x, y]);
+    }
+    this.setState({ userHighlightedSquares: newHighlightedSquares });
+  }
+
   render() {
     // This constant is the size of one square in the SVG.
     const SQ = 50;
@@ -175,6 +235,9 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
         let foregroundColor = (x + y) % 2 === 0 ? '#b97' : '#eca';
         //if (state.highlight[7 - y] & (1 << x))
         //  backgroundColor = (x + y) % 2 === 0 ? '#dd9' : '#aa6';
+        if (this.state.userHighlightedSquares.some(([hx, hy]) => hx === x && hy === y)) {
+          backgroundColor = '#f77';
+        }
         if (isSelected) {
           backgroundColor = '#7f7';
         }
@@ -214,8 +277,12 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
             width={SQ}
             height={SQ}
             fill={backgroundColor}
-            onClick={() => this.onClick(x, y, this.props.board[y][x] === null)}
+            onClick={(e) => this.onClick(x, y, this.props.board[y][x] === null)}
             onMouseDown={(e) => {
+              if (e.button !== 0) {
+                this.beginArrow(x, y);
+                return;
+              }
               // If the square is unoccupied, then we soft click it, preventing selection.
               const soft = this.props.board[y][x] === null;
               // Click this square, unless it's already selected.
@@ -238,11 +305,21 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
               this.applyCoords();
             }}
             onMouseUp={(e) => {
+              if (e.button !== 0) {
+                this.endArrow(x, y);
+                return;
+              }
               console.log('mouse up', x, y);
               // Check for a drop.
               if (this.dragState) {
                 this.onClick(x, y, true);
               }
+            }}
+            onMouseEnter={(e) => {
+              this.updateArrow(x, y);
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
             }}
           />,
           fileLabel,
@@ -288,6 +365,32 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
       }
     }
 
+    function addArrow(key: string, fromX: number, toX: number, fromY: number, toY: number, color: string) {
+      let dx = toX - fromX;
+      let dy = toY - fromY;
+      const length = 1e-6 + Math.sqrt(dx * dx + dy * dy);
+      dx /= length;
+      dy /= length;
+      const endX = toX * 50 + 25 - 10 * dx;
+      const endY = toY * 50 + 25 - 10 * dy;
+      const w = 4;
+      const headW = 7;
+      const headL = 18;
+      let d = `M ${fromX * 50 + 25 - w * dy} ${fromY * 50 + 25 + w * dx} L ${endX - w * dy} ${endY + w * dx}`;
+      d += ` L ${endX + (w + headW) * dy} ${endY - (w + headW) * dx} L ${endX + headL * dx} ${endY + headL * dy}`;
+      d += ` L ${endX - (w + headW) * dy} ${endY + (w + headW) * dx} L ${endX + w * dy} ${endY - w * dx}`;
+      d += ` L ${fromX * 50 + 25 + w * dy} ${fromY * 50 + 25 - w * dx} Z`;
+      const arrow = <path
+        style={{ userSelect: 'none', pointerEvents: 'none' }}
+        key={`arrow-${key}-${fromX}-${fromY}-${toX}-${toY}`}
+        d={d}
+        //stroke="rgba(0, 0, 255, 0.35)"
+        strokeWidth="5"
+        fill={color}
+      />;
+      svgElements.push(arrow);
+    }
+
     // Add arrows for highlit moves.
     for (const move of this.props.topMoves) {
       //if (!move)
@@ -296,13 +399,6 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
       const fromY = 7 - Math.floor(move.from / 8);
       const toX = move.to % 8;
       const toY = 7 - Math.floor(move.to / 8);
-      let dx = toX - fromX;
-      let dy = toY - fromY;
-      const length = 1e-6 + Math.sqrt(dx * dx + dy * dy);
-      dx /= length;
-      dy /= length;
-      const endX = toX * 50 + 25 - 10 * dx;
-      const endY = toY * 50 + 25 - 10 * dy;
       if (move.from === 64 || move.from === move.to) {
         const arrow = <circle
           style={{ userSelect: 'none', pointerEvents: 'none' }}
@@ -314,25 +410,26 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
           fill="rgba(0, 0, 255, 0.35)"
         />;
         svgElements.push(arrow);
-        continue;
+        return;
       }
-      const w = 4;
-      const headW = 7;
-      const headL = 18;
-      let d = `M ${fromX * 50 + 25 - w * dy} ${fromY * 50 + 25 + w * dx} L ${endX - w * dy} ${endY + w * dx}`;
-      d += ` L ${endX + (w + headW) * dy} ${endY - (w + headW) * dx} L ${endX + headL * dx} ${endY + headL * dy}`;
-      d += ` L ${endX - (w + headW) * dy} ${endY + (w + headW) * dx} L ${endX + w * dy} ${endY - w * dx}`;
-      d += ` L ${fromX * 50 + 25 + w * dy} ${fromY * 50 + 25 - w * dx} Z`;
-      const arrow = <path
-        style={{ userSelect: 'none', pointerEvents: 'none' }}
-        key={`arrow-${move.from}-${move.to}`}
-        d={d}
-        //stroke="rgba(0, 0, 255, 0.35)"
-        strokeWidth="5"
-        fill="rgba(0, 0, 255, 0.35)"
-      />;
-      svgElements.push(arrow);
+      addArrow('move', fromX, toX, fromY, toY, 'rgba(0, 0, 255, 0.35)');
     }
+
+    // Show all of the existing arrows.
+    for (const arrow of this.state.userDrawnArrows) {
+      const [fromX, fromY, toX, toY] = arrow;
+      addArrow('', fromX, toX, fromY, toY, 'rgba(255, 0, 0, 0.35)');
+    }
+
+    // Show the current arrow that's being drawn.
+    if (this.state.arrowStart && this.state.arrowHover) {
+      const fromX = this.state.arrowStart[0];
+      const fromY = this.state.arrowStart[1];
+      const toX = this.state.arrowHover[0];
+      const toY = this.state.arrowHover[1];
+      addArrow('hover', fromX, toX, fromY, toY, 'rgba(255, 0, 0, 0.35)');
+    }
+
 
     /*
     const pieces: React.ReactNode[] = [];
@@ -387,6 +484,9 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
           maxWidth: BOARD_MAX_SIZE,
           maxHeight: BOARD_MAX_SIZE,
           ...this.props.style,
+        }}
+        onMouseLeave={() => {
+          this.setState({ arrowHover: null });
         }}
       >
         <filter id="glow">
