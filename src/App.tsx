@@ -234,9 +234,6 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
   const [nodeContextMenu, setNodeContextMenu] = React.useState<number | null>(null);
 
   const [ser, a, cursor]: [any, Info, any] = props.gameTree.get_serialized_state();
-  console.log('Got:', ser);
-  console.log('Got:', a);
-  console.log('Got:', cursor);
 
   interface MoveRowEntry {
     name: string;
@@ -431,8 +428,20 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
         }
       }
     };
+    const globalClick = (event: MouseEvent) => {
+      if (event.target instanceof HTMLElement) {
+        if (event.target.closest('.contextMenuButton') === null) {
+          setNodeContextMenu(null);
+        }
+      }
+    };
+
     document.addEventListener('keydown', shortcutsHandler);
-    return () => document.removeEventListener('keydown', shortcutsHandler);
+    document.addEventListener('click', globalClick);
+    return () => {
+      document.removeEventListener('keydown', shortcutsHandler);
+      document.removeEventListener('click', globalClick);
+    };
   }, [props.workers]);
 
   // let board: React.ReactNode[][] = [];

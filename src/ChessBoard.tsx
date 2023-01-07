@@ -68,19 +68,69 @@ export interface ChessBoardProps {
 
 interface ChessBoardState {
   selectedSquare: [number, number] | null;
+  draggingPiece: PieceKind;
+  skipSquare: [number, number];
 }
 
 export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState> {
+  rafHandle: number = -1;
+  lastCoords: [number, number] = [0, 0];
+  dragState: {
+    offsetX: number;
+    offsetY: number;
+  } | null = null;
+  draggableDivRef = React.createRef<HTMLDivElement>();
+
   constructor(props: ChessBoardProps) {
     super(props);
     this.state = {
       selectedSquare: null,
+      draggingPiece: null,
+      skipSquare: [-1, -1],
     };
   }
 
-  onClick(x: number, y: number) {
+  rafLoop = (time: number) => {
+    this.rafHandle = window.requestAnimationFrame(this.rafLoop);
+  }
+
+  componentDidMount() {
+    //this.rafHandle = window.requestAnimationFrame(this.rafLoop);
+    document.addEventListener('mousemove', this.onMouseMove);
+    document.addEventListener('click', this.onGlobalClick);
+  }
+
+  componentWillUnmount() {
+    window.cancelAnimationFrame(this.rafHandle);
+    document.removeEventListener('mousemove', this.onMouseMove);
+    document.removeEventListener('click', this.onGlobalClick);
+  }
+
+  onMouseMove = (event: MouseEvent) => {
+    this.lastCoords = [event.clientX, event.clientY];
+    this.applyCoords();
+  }
+
+  applyCoords() {
+    if (this.dragState !== null && this.draggableDivRef.current !== null) {
+      this.draggableDivRef.current.style.left = this.lastCoords[0] + 'px';
+      this.draggableDivRef.current.style.top = this.lastCoords[1] + 'px';
+    }
+  }
+
+  onGlobalClick = (event: MouseEvent) => {
+    if (this.dragState !== null) {
+      this.dragState = null;
+      this.setState({ draggingPiece: null, skipSquare: [-1, -1] });
+    }
+  }
+
+  // Soft clicks don't ever select a square, but they can still complete a move.
+  onClick(x: number, y: number, soft?: boolean) {
     const clickSquare = x + (7 - y) * 8;
     if (this.state.selectedSquare === null) {
+      if (soft)
+        return;
       const isHidden = this.props.hiddenLegalMoves.some(m => m.from === clickSquare && m.to === clickSquare);
       // Check if this is the initial duck placement.
       const m = [...this.props.legalMoves, ...this.props.hiddenLegalMoves].find(m => m.from === clickSquare && m.to === clickSquare);
@@ -164,7 +214,36 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
             width={SQ}
             height={SQ}
             fill={backgroundColor}
-            onClick={() => this.onClick(x, y)}
+            onClick={() => this.onClick(x, y, this.props.board[y][x] === null)}
+            onMouseDown={(e) => {
+              // If the square is unoccupied, then we soft click it, preventing selection.
+              const soft = this.props.board[y][x] === null;
+              // Click this square, unless it's already selected.
+              if (!this.state.selectedSquare || this.state.selectedSquare[0] !== x || this.state.selectedSquare[1] !== y)
+                this.onClick(x, y, soft);
+              // Check if there's a piece here.
+              if (this.props.board[y][x] === null)
+                return;
+              console.log('mouse down', x, y);
+              // Begin dragging.
+              const rect = e.currentTarget.getBoundingClientRect();
+              this.dragState = {
+                offsetX: (rect.left - e.clientX),
+                offsetY: (rect.top - e.clientY),
+              };
+              this.setState({
+                draggingPiece: this.props.board[y][x],
+                skipSquare: [x, y],
+              });
+              this.applyCoords();
+            }}
+            onMouseUp={(e) => {
+              console.log('mouse up', x, y);
+              // Check for a drop.
+              if (this.dragState) {
+                this.onClick(x, y, true);
+              }
+            }}
           />,
           fileLabel,
           rankLabel,
@@ -175,6 +254,9 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
     // Add the pieces.
     for (let y = 0; y < 8; y++) {
       for (let x = 0; x < 8; x++) {
+        // If this piece is being dragged then don't draw it in the SVG.
+        if (this.state.skipSquare[0] === x && this.state.skipSquare[1] === y)
+          continue;
         const piece = this.props.board[y][x];
         if (piece === null)
           continue;
@@ -296,7 +378,7 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
       />);
     }
 
-    return (
+    return <>
       <svg
         viewBox="0 0 400 400"
         style={{
@@ -312,7 +394,23 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
         </filter>
         {svgElements}
       </svg>
-    );
+
+      <div
+        ref={this.draggableDivRef}
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          transform: `translate(-50%, -50%)`,
+          pointerEvents: 'none',
+        }}
+      >
+        {this.state.draggingPiece !== null && <ChessPiece
+          hightlightDuck={false}
+          piece={this.state.draggingPiece}
+        />}
+      </div>
+    </>;
 
     /*
     return (
