@@ -233,7 +233,7 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
   const [forceUpdate, setForceUpdate] = React.useState<number>(0);
   const [nodeContextMenu, setNodeContextMenu] = React.useState<number | null>(null);
 
-  const [ser, a, cursor]: [any, Info, any] = props.gameTree.get_serialized_state();
+  const [ser, a, cursor, boardHash]: [any, Info, any, number] = props.gameTree.get_serialized_state();
 
   interface MoveRowEntry {
     name: string;
@@ -606,6 +606,7 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
         isMobile={props.isMobile}
         highlightDuck={ser.state.isDuckMove}
         board={parseRustBoardState(ser.state)}
+        boardHash={boardHash}
         legalMoves={ser.legal_moves}
         hiddenLegalMoves={ser.legal_duck_skipping_moves}
         topMoves={topMoves}

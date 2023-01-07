@@ -59,6 +59,7 @@ export interface ChessBoardProps {
   isMobile: boolean;
   highlightDuck: boolean;
   board: PieceKind[][];
+  boardHash: number;
   legalMoves: Move[];
   hiddenLegalMoves: Move[];
   topMoves: Move[];
@@ -140,6 +141,20 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
     // If it's a right mouse up, cancel the arrow.
     if (event.button === 2) {
       this.setState({ arrowStart: null, arrowHover: null });
+    }
+  }
+
+  clearAllAnnotations() {
+    this.setState({
+      userDrawnArrows: [],
+      userHighlightedSquares: [],
+    });
+  }
+
+  // If the board prop changes, clear all annotations.
+  componentDidUpdate(prevProps: ChessBoardProps) {
+    if (prevProps.boardHash !== this.props.boardHash) {
+      this.clearAllAnnotations();
     }
   }
 
