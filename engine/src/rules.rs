@@ -1015,6 +1015,71 @@ impl State {
     }
     Ok(())
   }
+
+  // FIXME: I don't handle ambiguity here.
+  pub fn get_move_name(&self, m: Move) -> String {
+    let mut name = String::new();
+    // FIXME: I should have a Square -> &'static str function.
+    let uci = m.to_uci();
+    let dest_square = uci[2..].to_string();
+    // Duck moves are encoded just by destination.
+    if self.is_duck_move {
+      name.push('🦆');
+      name.push_str(&dest_square);
+      return name;
+    }
+    let mut pawn_moved = false;
+    let mut promotion = false;
+    // Find the piece that's moving.
+    for (is_pawn, is_king, piece_name, piece) in [
+      (true, false, "", &self.pawns[self.turn as usize]),
+      (false, false, "N", &self.knights[self.turn as usize]),
+      (false, false, "B", &self.bishops[self.turn as usize]),
+      (false, false, "R", &self.rooks[self.turn as usize]),
+      (false, false, "Q", &self.queens[self.turn as usize]),
+      (false, true, "K", &self.kings[self.turn as usize]),
+    ] {
+      if piece.0 & (1 << m.from) != 0 {
+        if is_pawn {
+          pawn_moved = true;
+        }
+        if is_king {
+          // Castling.
+          if m.to == m.from + 2 {
+            name.push_str("O-O");
+            return name;
+          } else if m.to == m.from - 2 {
+            name.push_str("O-O-O");
+            return name;
+          }
+        }
+        name.push_str(piece_name);
+        break;
+      }
+    }
+    // If there's a capture, add an 'x'.
+    let other_player = self.turn.other_player() as usize;
+    let other_player_pieces = self.pawns[other_player].0
+      | self.knights[other_player].0
+      | self.bishops[other_player].0
+      | self.rooks[other_player].0
+      | self.queens[other_player].0
+      | self.kings[other_player].0;
+    if other_player_pieces & (1 << m.to) != 0 {
+      if pawn_moved {
+        // Push the file of departure.
+        name.push_str(&uci[..1]);
+      }
+      name.push('x');
+    }
+    name.push_str(&dest_square);
+    if pawn_moved {
+      if m.to / 8 == 0 || m.to / 8 == 7 {
+        name.push_str("=Q");
+      }
+    }
+    name
+  }
 }
 
 #[derive(Clone)]

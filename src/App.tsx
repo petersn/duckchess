@@ -1,10 +1,19 @@
 import { engine } from '@tensorflow/tfjs';
 import React from 'react';
 import './App.css';
+import init, { new_game_tree, GameTree } from 'engine';
 import { AlphaBetaBenchmarkResults, MessageFromEngineWorker, MessageFromSearchWorker } from './DuckChessEngine';
-import { ChessBoard, ChessPiece, PieceKind, BOARD_MAX_SIZE } from './ChessBoard';
+import { ChessBoard, ChessPiece, PieceKind, BOARD_MAX_SIZE, Move } from './ChessBoard';
 import { BrowserRouter as Router, Route, Link, Routes, Navigate } from 'react-router-dom';
 import { BenchmarkApp } from './BenchmarkApp';
+
+/*
+{row.moves.map((entry, j) =>
+          <span key={j} style={{ paddingLeft: 10, paddingRight: 10, color: '#ddd', padding: 1 }}>
+            {entry!.name}
+          </span>
+        )}
+*/
 
 // FIXME: This is a mildly hacky way to get the router location...
 function getRouterPath(): string {
@@ -14,9 +23,48 @@ function getRouterPath(): string {
   return routerPath;
 }
 
+function parseRustBoardState(state: any): PieceKind[][] {
+  let board: PieceKind[][] = [];
+  for (let y = 0; y < 8; y++)
+    board.push([null, null, null, null, null, null, null, null]);
+  for (let y = 0; y < 8; y++) {
+    for (let player = 0; player < 2; player++) {
+      for (const name of ['pawns', 'knights', 'bishops', 'rooks', 'queens', 'kings', 'ducks']) {
+        let byte;
+        // Special handling for the duck
+        if (name === 'ducks') {
+          if (player === 1)
+            continue;
+          byte = state.ducks[7 - y];
+        } else if (name === 'enpassants') {
+          if (player === 1)
+            continue;
+          byte = state.enPassant[7 - y];
+        } else {
+          byte = state[name][player][7 - y];
+        }
+        for (let x = 0; x < 8; x++) {
+          const hasPiece = byte & 1;
+          byte = byte >> 1;
+          if (!hasPiece)
+            continue;
+          let piece = name.replace('knight', 'night').slice(0, 1).toUpperCase();
+          if (player === 1)
+            piece = 'w' + piece;
+          else
+            piece = 'b' + piece;
+          piece = piece.replace('bD', 'duck');
+          board[y][x] = piece as PieceKind;
+        }
+      }
+    }
+  }
+  return board;
+}
+
 export class Workers {
-  engineWorker: Worker;
-  searchWorker: Worker;
+  //engineWorker: Worker;
+  //searchWorker: Worker;
   initCallback: (ew: Workers) => void;
   boardState: any;
   legalMoves: any[];
@@ -29,16 +77,16 @@ export class Workers {
   benchmarkCallback: (results: AlphaBetaBenchmarkResults) => void;
 
   constructor(initCallback: () => void, forceUpdateCallback: () => void) {
-    this.engineWorker = new Worker(new URL('./EngineWorker.ts', import.meta.url));
-    this.engineWorker.onmessage = this.onEngineMessage;
-    this.searchWorker = new Worker(new URL('./SearchWorker.ts', import.meta.url));
-    this.searchWorker.onmessage = this.onSearchMessage;
+    //this.engineWorker = new Worker(new URL('./EngineWorker.ts', import.meta.url));
+    //this.engineWorker.onmessage = this.onEngineMessage;
+    //this.searchWorker = new Worker(new URL('./SearchWorker.ts', import.meta.url));
+    //this.searchWorker.onmessage = this.onSearchMessage;
     this.initCallback = initCallback;
     this.forceUpdateCallback = forceUpdateCallback;
     this.benchmarkCallback = () => {};
-    for (const worker of [this.engineWorker, this.searchWorker]) {
-      worker.postMessage({ type: 'init' });
-    }
+    //for (const worker of [this.engineWorker, this.searchWorker]) {
+    //  worker.postMessage({ type: 'init' });
+    //}
     this.boardState = null;
     this.legalMoves = [];
     this.nextMoves = [];
@@ -95,25 +143,25 @@ export class Workers {
   }
 
   applyMove(move: any, isHidden: boolean) {
-    for (const worker of [this.engineWorker, this.searchWorker]) {
-      worker.postMessage({ type: 'applyMove', move, isHidden });
-    }
+    //for (const worker of [this.engineWorker, this.searchWorker]) {
+    //  worker.postMessage({ type: 'applyMove', move, isHidden });
+    //}
   }
 
   historyJump(index: number) {
-    for (const worker of [this.engineWorker, this.searchWorker]) {
-      worker.postMessage({ type: 'historyJump', index });
-    }
+    //for (const worker of [this.engineWorker, this.searchWorker]) {
+    //  worker.postMessage({ type: 'historyJump', index });
+    //}
   }
 
   setRunEngine(runEngine: boolean) {
-    for (const worker of [this.engineWorker, this.searchWorker]) {
-      worker.postMessage({ type: 'setRunEngine', runEngine });
-    }
+    //for (const worker of [this.engineWorker, this.searchWorker]) {
+    //  worker.postMessage({ type: 'setRunEngine', runEngine });
+    //}
   }
 
   runAlphaBetaBenchmark(callback: (results: AlphaBetaBenchmarkResults) => void) {
-    this.searchWorker.postMessage({ type: 'runAlphaBetaBenchmark' });
+    //this.searchWorker.postMessage({ type: 'runAlphaBetaBenchmark' });
     this.benchmarkCallback = callback;
   }
 }
@@ -171,12 +219,176 @@ function TopBar(props: { screenWidth: number, isMobile: boolean }) {
   );
 }
 
-function AnalysisPage(props: { isMobile: boolean, workers: Workers | null }) {
+interface Info {
+  id: any;
+  edges: [Move, string, Info][];
+}
+
+function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: Workers | null }) {
   const [selectedSquare, setSelectedSquare] = React.useState<[number, number] | null>(null);
   const [pair, setPair] = React.useState<any>(null);
   const [duckFen, setDuckFen] = React.useState<string>('');
   const [pgn, setPgn] = React.useState<string>('');
   const [runEngine, setRunEngine] = React.useState<boolean>(false);
+  const [forceUpdate, setForceUpdate] = React.useState<number>(0);
+  const [nodeContextMenu, setNodeContextMenu] = React.useState<number | null>(null);
+
+  const [ser, a, cursor]: [any, Info, any] = props.gameTree.get_serialized_state();
+  console.log('Got:', ser);
+  console.log('Got:', a);
+  console.log('Got:', cursor);
+
+  interface MoveRowEntry {
+    name: string;
+    id: any;
+  }
+
+  interface MoveRow {
+    moves: (MoveRowEntry | null)[];
+    smallRowContent: React.ReactNode | null;
+  }
+
+  const moveRows: MoveRow[] = [];
+  let info = a;
+  let moveNum = 0;
+
+  function generateSmallRow(
+    info: Info,
+    moveNum: number,
+    prefix: string,
+    startingSmallRow: boolean
+  ) {
+    const output = [];
+    for (let i = 1; i < info.edges.length + (1 - +startingSmallRow); i++) {
+      const effectiveI = i % info.edges.length;
+      const [move, moveName, child] = info.edges[effectiveI];
+      output.push(<React.Fragment key={i}>
+        {effectiveI == 0 || '('} {moveSpan({
+          name: prefix + moveName,
+          id: child.id,
+        }, false)} {generateSmallRow(child, moveNum + 1, '', false)} {effectiveI == 0 || ')'}
+      </React.Fragment>);
+    }
+    return output;
+  }
+
+  while (info.edges.length > 0) {
+    if (moveNum % 4 === 0 ) {
+      moveRows.push({ moves: [null, null, null, null], smallRowContent: null });
+    }
+    // If there are side branches then insert a little indicator for them.
+    let prefix = '';
+    if (info.edges.length > 1) {
+      // We add a prefix if the move is for black.
+      if (moveNum % 4 >= 2)
+        prefix = '...';
+      const smallRow: MoveRow = {
+        moves: [],
+        smallRowContent: generateSmallRow(info, moveNum, prefix, true)
+      }
+      moveRows.push(smallRow);
+      moveRows.push({ moves: [null, null, null, null], smallRowContent: null });
+    }
+    const [move, moveName, child] = info.edges[0];
+    const moveRow = moveRows[moveRows.length - 1];
+    moveRow.moves[moveNum % 4] = {
+      name: prefix + moveName,
+      id: child.id,
+    };
+    info = child;
+    moveNum++;
+  }
+
+  function moveSpan(move: MoveRowEntry | null, isFull: boolean) {
+    const moveSpanStyle: React.CSSProperties = isFull ? {
+      display: 'flex',
+      color: '#ddd',
+      cursor: 'pointer',
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    } : {
+      color: '#ddd',
+      cursor: 'pointer',
+    }
+    if (move === null) {
+      return <span style={moveSpanStyle}></span>;
+    }
+    let contextMenu: React.ReactNode = null;
+    if (nodeContextMenu === move.id.idx) {
+      contextMenu = <div style={{
+        position: 'absolute',
+        backgroundColor: '#336',
+        border: '1px solid black',
+        padding: 4,
+        zIndex: 1,
+        transform: 'translate(-100%, 0)',
+      }}>
+        <div className='contextMenuButton' onClick={() => {
+          props.gameTree.delete_by_id(move.id);
+          setNodeContextMenu(null);
+          setForceUpdate(Math.random());
+        }}>Delete</div>
+        {isFull || <div className='contextMenuButton' onClick={() => {
+          props.gameTree.promote_by_id(move.id);
+          setNodeContextMenu(null);
+          setForceUpdate(Math.random());
+        }}>Promote</div>}
+      </div>;
+    }
+  
+    return <span
+      style={{
+        ...moveSpanStyle,
+        color: move.id.idx === nodeContextMenu ? 'yellow' :
+        (move.id.idx === cursor.idx ? 'red' : '#ddd'),
+      }}
+      onClick={() => {
+        props.gameTree.click_to_id(move.id);
+        setNodeContextMenu(null);
+        setForceUpdate(Math.random());
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setNodeContextMenu(move.id.idx);
+      }}
+    >{move.name}{contextMenu}</span>;
+  }
+
+  const moveHalfBoxStyle: React.CSSProperties = {
+    display: 'flex',
+    flex: 1,
+    padding: 4,
+    margin: 1,
+    height: 20,
+    alignItems: 'center',
+  };
+
+  const renderedMoveRows = moveRows.map((row, i) => {
+    if (row.smallRowContent !== null) {
+      return <div key={i} style={{
+        fontSize: '80%',
+        opacity: 0.8,
+        backgroundColor: '#777',
+        margin: 1,
+      }}>
+        {row.smallRowContent}
+      </div>;
+    }
+    if (row.moves.every(m => m === null)) {
+      return null;
+    }
+    return <div key={i} style={{ display: 'flex', flexDirection: 'row' }}>
+      <div style={{ ...moveHalfBoxStyle, backgroundColor: '#667' }}>
+        {moveSpan(row.moves[0], true)}
+        {moveSpan(row.moves[1], true)}
+      </div>
+      <div style={{ ...moveHalfBoxStyle, backgroundColor: '#445' }}>
+        {moveSpan(row.moves[2], true)}
+        {moveSpan(row.moves[3], true)}
+      </div>
+    </div>;
+  });
 
   // Stop the engine when this subpage isn't active.
   React.useEffect(() => {
@@ -200,12 +412,19 @@ function AnalysisPage(props: { isMobile: boolean, workers: Workers | null }) {
       } else if (event.key === 'Escape') {
         // Clear the selected square.
         setSelectedSquare(null);
+        setNodeContextMenu(null);
       } else if (event.key === 'ArrowLeft') {
+        props.gameTree.history_back();
+        setForceUpdate(Math.random());
+        setNodeContextMenu(null);
         // Go back one move.
         if (props.workers !== null) {
           props.workers.applyMove({ type: 'undo' }, false);
         }
       } else if (event.key === 'ArrowRight') {
+        props.gameTree.history_forward();
+        setForceUpdate(Math.random());
+        setNodeContextMenu(null);
         // Go forward one move.
         if (props.workers !== null) {
           props.workers.applyMove({ type: 'redo' }, false);
@@ -224,52 +443,6 @@ function AnalysisPage(props: { isMobile: boolean, workers: Workers | null }) {
   //   board = engineWorker.getState() || board;
   //   legalMoves = engineWorker.getMoves() || legalMoves;
   // }
-
-  let board: React.ReactNode[][] = [];
-  for (let y = 0; y < 8; y++)
-    board.push([null, null, null, null, null, null, null, null]);
-  let legalMoves: any[] = [];
-  let hiddenLegalMoves: any[] = [];
-  if (props.workers !== null) {
-    const state = props.workers.getState();
-    legalMoves = props.workers.getMoves();
-    hiddenLegalMoves = props.workers.nextMoves;
-    console.log('HIDDEN LEGAL MOVES', hiddenLegalMoves);
-    if (state !== null) {
-      for (let y = 0; y < 8; y++) {
-        for (let player = 0; player < 2; player++) {
-          for (const name of ['pawns', 'knights', 'bishops', 'rooks', 'queens', 'kings', 'ducks']) {
-            let byte;
-            // Special handling for the duck
-            if (name === 'ducks') {
-              if (player === 1)
-                continue;
-              byte = state.ducks[7 - y];
-            } else if (name === 'enpassants') {
-              if (player === 1)
-                continue;
-              byte = state.enPassant[7 - y];
-            } else {
-              byte = state[name][player][7 - y];
-            }
-            for (let x = 0; x < 8; x++) {
-              const hasPiece = byte & 1;
-              byte = byte >> 1;
-              if (!hasPiece)
-                continue;
-              let piece = name.replace('knight', 'night').slice(0, 1).toUpperCase();
-              if (player === 1)
-                piece = 'w' + piece;
-              else
-                piece = 'b' + piece;
-              piece = piece.replace('bD', 'duck');
-              board[y][x] = piece;
-            }
-          }
-        }
-      }
-    }
-  }
 
   //React.useEffect(() => {
   //  props.workers.forceUpdateCallback = () => {
@@ -422,15 +595,19 @@ function AnalysisPage(props: { isMobile: boolean, workers: Workers | null }) {
       </div>}
       <ChessBoard
         isMobile={props.isMobile}
-        board={board as any}
-        legalMoves={legalMoves}
-        hiddenLegalMoves={hiddenLegalMoves}
+        highlightDuck={ser.state.isDuckMove}
+        board={parseRustBoardState(ser.state)}
+        legalMoves={ser.legal_moves}
+        hiddenLegalMoves={ser.legal_duck_skipping_moves}
         topMoves={topMoves}
         onMove={(move, isHidden) => {
-          if (props.workers !== null) {
+          //if (props.workers !== null) {
             console.log('[snp1] move', move, isHidden);
-            props.workers.applyMove(move, isHidden);
-          }
+            props.gameTree.make_move(move, isHidden);
+            setForceUpdate(Math.random());
+            // Force a rerender.
+            //props.workers.applyMove(move, isHidden);
+          //}
         }}
         style={{ margin: 10 }}
       />
@@ -456,6 +633,10 @@ function AnalysisPage(props: { isMobile: boolean, workers: Workers | null }) {
               props.workers.setRunEngine(e.target.checked);
             }
           }} /> Run engine
+
+          <div>
+            {renderedMoveRows}
+          </div>
 
           {props.workers !== null && <div>
             Evaluation: {props.workers.evaluation.toFixed(3)}<br/>
@@ -508,9 +689,14 @@ function InfoPage(props: { isMobile: boolean }) {
 }
 
 function App() {
+  const [gameTree, setGameTree] = React.useState<GameTree | null>(null);
   const [workers, setWorkers] = React.useState<Workers | null>(null);
   const setForceUpdateCounter = React.useState(0)[1];
   const [width, setWidth] = React.useState<number>(window.innerWidth);
+
+  React.useEffect(() => {
+    init().then(() => setGameTree(new_game_tree()));
+  }, []);
 
   React.useEffect(() => {
     console.log('Initializing worker...');
@@ -551,10 +737,13 @@ function App() {
     );
   }
 
+  if (gameTree === null)
+    return <div>Loading...</div>;
+
   return (
     <Router basename={process.env.PUBLIC_URL}>
       <Routes>
-        <Route path="/analysis" element={navigation(<AnalysisPage isMobile={isMobile} workers={workers} />)} />
+        <Route path="/analysis" element={navigation(<AnalysisPage isMobile={isMobile} gameTree={gameTree} workers={workers} />)} />
         <Route path="/benchmark" element={navigation(<BenchmarkPage isMobile={isMobile} workers={workers} />)} />
         <Route path="/info" element={navigation(<InfoPage isMobile={isMobile} />)} />
         <Route path="/" element={navigation(<Navigate to={"/analysis"} replace />)} />

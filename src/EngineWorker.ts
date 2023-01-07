@@ -1,4 +1,4 @@
-import init, { new_engine, max_batch_size, channel_count, parse_pgn4, Engine, perft, perft_nnue, perft_eval, test_threads, test_simd, test_shared_mem } from 'engine';
+import init, { new_engine, max_batch_size, channel_count, parse_pgn4, Engine, perft, perft_nnue, perft_eval, test_threads, test_simd, test_shared_mem, new_game_tree } from 'engine';
 import * as tf from '@tensorflow/tfjs';
 import { MessageFromEngineWorker, MessageToEngineWorker } from './DuckChessEngine';
 import { threads } from 'wasm-feature-detect';
@@ -70,6 +70,10 @@ async function initWorker() {
   const sharedArrayBuffer = new SharedArrayBuffer(4 * 1024 * 1024);
   const wasm = await init();
   console.log('Channels:', channel_count());
+
+  const gt = new_game_tree();
+  const ss = gt.get_serialized_state();
+  console.log('Serialized state', ss);
 
   for (let i = 0; i < 0; i++) {
     const start1 = performance.now();

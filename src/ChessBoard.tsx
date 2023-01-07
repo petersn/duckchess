@@ -25,7 +25,11 @@ function getChessPieceImagePath(piece: PieceKind): string {
   return `${process.env.PUBLIC_URL}/icons/${pieceFile}`;
 }
 
-export function ChessPiece(props: { piece: PieceKind; style?: React.CSSProperties }) {
+export function ChessPiece(props: {
+  hightlightDuck: boolean;
+  piece: PieceKind;
+  style?: React.CSSProperties;
+}) {
   if (props.piece === null)
     return null;
   const pieceFileMapping = {
@@ -53,6 +57,7 @@ export function ChessPiece(props: { piece: PieceKind; style?: React.CSSPropertie
 
 export interface ChessBoardProps {
   isMobile: boolean;
+  highlightDuck: boolean;
   board: PieceKind[][];
   legalMoves: Move[];
   hiddenLegalMoves: Move[];
@@ -174,6 +179,19 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
         if (piece === null)
           continue;
         const path = getChessPieceImagePath(piece);
+        if (piece === 'duck' && this.props.highlightDuck) {
+          svgElements.push(
+            <circle
+              style={{ userSelect: 'none', pointerEvents: 'none' }}
+              key={x + y * 8 + 64 + 64}
+              cx={x * SQ + 0.5 * SQ}
+              cy={y * SQ + 0.5 * SQ}
+              r={0.5 * SQ}
+              fill="yellow"
+              filter="url(#glow)"
+            />
+          );
+        }
         svgElements.push(
           <image
             style={{ userSelect: 'none', pointerEvents: 'none' }}
@@ -289,6 +307,9 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
           ...this.props.style,
         }}
       >
+        <filter id="glow">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="4" />
+        </filter>
         {svgElements}
       </svg>
     );

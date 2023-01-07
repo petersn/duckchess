@@ -2,6 +2,8 @@ use std::arch::wasm32::*;
 
 use js_sys::{Array, Atomics, Int32Array, SharedArrayBuffer, Uint8Array};
 use wasm_bindgen::prelude::*;
+use serde::{Serialize, Deserialize};
+use slotmap::SlotMap;
 
 use crate::inference::{FEATURES_SIZE, POLICY_LEN};
 use crate::inference_web::MAX_BATCH_SIZE;
@@ -10,6 +12,7 @@ use crate::{
   inference, inference_web, mcts,
   rules::{Move, Player},
   search,
+  rules,
 };
 
 const MAX_STEPS_BEFORE_INFERENCE: usize = 40 * MAX_BATCH_SIZE;
@@ -21,14 +24,262 @@ extern "C" {
   pub fn log(s: &str);
 }
 
-#[wasm_bindgen]
+
+slotmap::new_key_type! {
+  pub struct GameNodeId;
+}
+
+#[derive(Clone, Copy, Serialize)]
+pub struct TreeEdge {
+  m: Move,
+  child: GameNodeId,
+}
+
+#[derive(Serialize)]
+pub struct NodeEval {
+  white_perspective_wdl: [f32; 3],
+  top_moves: Vec<(Move, f32)>,
+  steps: usize,
+}
+
+#[derive(Serialize)]
 pub struct GameNode {
-  
+  state: rules::State,
+  parent: Option<GameNodeId>,
+  legal_moves: Vec<Move>,
+  legal_duck_skipping_moves: Vec<Move>,
+  outgoing_edges: Vec<TreeEdge>,
+  evaluation: NodeEval,
+}
+
+impl GameNode {
+  fn new(state: rules::State, parent: Option<GameNodeId>) -> Self {
+    let mut legal_moves = Vec::new();
+    let mut legal_duck_skipping_moves = Vec::new();
+    state.move_gen::<false>(&mut legal_moves);
+    if state.is_duck_move && state.get_outcome().is_none() {
+      let mut next_state = state.clone();
+      next_state.turn = next_state.turn.other_player();
+      next_state.is_duck_move = false;
+      // Remove the duck, because we could put it somewhere to not interfere.
+      next_state.ducks.0 = 0;
+      next_state.move_gen::<false>(&mut legal_duck_skipping_moves);
+    }
+    Self {
+      state,
+      parent,
+      legal_moves,
+      legal_duck_skipping_moves,
+      outgoing_edges: Vec::new(),
+      evaluation: NodeEval {
+        white_perspective_wdl: [0.0; 3],
+        top_moves: vec![],
+        steps: 0,
+      },
+    }
+  }
 }
 
 #[wasm_bindgen]
 pub struct GameTree {
+  nodes: SlotMap<GameNodeId, GameNode>,
+  cursor: GameNodeId,
+  root: GameNodeId,
+}
 
+#[wasm_bindgen]
+impl GameTree {
+  pub fn new() -> Self {
+    let mut gt = Self {
+      nodes: SlotMap::with_key(),
+      cursor: GameNodeId::default(),
+      root: GameNodeId::default(),
+    };
+    gt.cursor = gt.new_node(rules::State::starting_state(), None);
+    gt.root = gt.cursor;
+    gt
+  }
+
+  fn new_node(&mut self, state: rules::State, parent: Option<GameNodeId>) -> GameNodeId {
+    self.nodes.insert_with_key(|id| GameNode::new(state, parent))
+  }
+
+  fn inner_make_move(&mut self, m: Move) -> bool {
+    let node = &mut self.nodes[self.cursor];
+    if !node.legal_moves.contains(&m) {
+      log(&format!("Illegal move: {:?}", m));
+      return false;
+    }
+    // Check if we have an edge for this move already.
+    for edge in &node.outgoing_edges {
+      if edge.m == m {
+        self.cursor = edge.child;
+        return true;
+      }
+    }
+    let mut next_state = node.state.clone();
+    next_state.apply_move::<false>(m, None);
+    let child = self.new_node(next_state, Some(self.cursor));
+    self.nodes[self.cursor].outgoing_edges.push(TreeEdge { m, child });
+    self.cursor = child;
+    true
+  }
+
+  pub fn make_move(&mut self, m: JsValue, is_duck_skipping: bool) -> bool {
+    let m: Move = serde_wasm_bindgen::from_value(m).unwrap_or_else(|e| {
+      log(&format!("Failed to deserialize move: {}", e));
+      panic!("Failed to deserialize move: {}", e);
+    });
+    let node = &mut self.nodes[self.cursor];
+    if is_duck_skipping {
+      let duck_move = match node.state.compute_duck_skip_move(m) {
+        Some(m) => m,
+        None => {
+          log(&format!("Illegal duck skipping move: {:?}", m));
+          return false;
+        }
+      };
+      self.inner_make_move(duck_move);
+    }
+    self.inner_make_move(m)
+  }
+
+  pub fn click_to_id(&mut self, click: JsValue) -> bool {
+    let click: GameNodeId = serde_wasm_bindgen::from_value(click).unwrap_or_else(|e| {
+      log(&format!("Failed to deserialize node id: {}", e));
+      panic!("Failed to deserialize node id: {}", e);
+    });
+    self.inner_click_to_id(click)
+  }
+
+  pub fn delete_by_id(&mut self, id: JsValue) -> bool {
+    let id: GameNodeId = serde_wasm_bindgen::from_value(id).unwrap_or_else(|e| {
+      log(&format!("Failed to deserialize node id: {}", e));
+      panic!("Failed to deserialize node id: {}", e);
+    });
+    if id == self.root {
+      log("Cannot delete root node");
+      return false;
+    }
+    let parent = self.nodes[id].parent.unwrap();
+    // Remove the pointer from the parent.
+    let parent_node = &mut self.nodes[parent];
+    parent_node.outgoing_edges.retain(|edge| edge.child != id);
+    fn recursive_free_nodes(nodes: &mut SlotMap<GameNodeId, GameNode>, id: GameNodeId) {
+      // FIXME: unwrap -> expect, for debugging purposes
+      let node = nodes.remove(id).unwrap();
+      for edge in node.outgoing_edges {
+        recursive_free_nodes(nodes, edge.child);
+      }
+    }
+    recursive_free_nodes(&mut self.nodes, id);
+    // If our cursor now points to a deleted node, move it to the parent.
+    if !self.nodes.contains_key(self.cursor) {
+      self.cursor = parent;
+    }    
+    true
+  }
+
+  pub fn promote_by_id(&mut self, id: JsValue) -> bool {
+    let id: GameNodeId = serde_wasm_bindgen::from_value(id).unwrap_or_else(|e| {
+      log(&format!("Failed to deserialize node id: {}", e));
+      panic!("Failed to deserialize node id: {}", e);
+    });
+    // While we have a parent, make sure we're first in the parent's list of
+    // outgoing edges, then move up.
+    let mut current = id;
+    while let Some(parent) = self.nodes[current].parent {
+      let parent_node = &mut self.nodes[parent];
+      let our_index = parent_node.outgoing_edges.iter().position(|edge| edge.child == current).unwrap();
+      parent_node.outgoing_edges.swap(0, our_index);
+      current = parent;
+    }
+    true
+  }
+
+  fn inner_click_to_id(&mut self, click: GameNodeId) -> bool {
+    // Check if the node is in the tree.
+    let have_node = self.nodes.contains_key(click);
+    if have_node {
+      self.cursor = click;
+    } else {
+      log(&format!("Node {:?} not found", click));
+    }
+    have_node
+  }
+
+  /// Traverses to the parent.
+  pub fn history_back(&mut self) -> bool {
+    if let Some(parent) = self.nodes[self.cursor].parent {
+      self.cursor = parent;
+      true
+    } else {
+      false
+    }
+  }
+
+  /// Traverses to the first child, if present.
+  pub fn history_forward(&mut self) -> bool {
+    if let Some(&edge) = self.nodes[self.cursor].outgoing_edges.first() {
+      self.cursor = edge.child;
+      true
+    } else {
+      false
+    }
+  }
+
+  fn delete_subtree(&mut self, node_id: GameNodeId) -> Option<()> {
+    // Remove the node from the slotmap.
+    let node = self.nodes.remove(node_id)?;
+    // If we have a parent node, remove the edge to this node.
+    if let Some(parent) = node.parent {
+      let parent_node = &mut self.nodes[parent];
+      parent_node.outgoing_edges.retain(|edge| edge.child != node_id);
+    }
+    // Delete all children.
+    for edge in node.outgoing_edges {
+      self.delete_subtree(edge.child);
+    }
+    Some(())
+  }
+
+  pub fn get_serialized_state(&self) -> JsValue {
+    // Serialize the current node.
+    let node = &self.nodes[self.cursor];
+
+    #[derive(Serialize)]
+    pub struct Info {
+      pub id: GameNodeId,
+      pub edges: Vec<(Move, String, Info)>,
+    }
+
+    // Serialize the entire tree of moves and IDs.
+    fn make_tree(nodes: &SlotMap<GameNodeId, GameNode>, node_id: GameNodeId) -> Info {
+      let node = &nodes[node_id];
+      let mut edges = Vec::new();
+      for edge in &node.outgoing_edges {
+        edges.push((
+          edge.m,
+          node.state.get_move_name(edge.m),
+          make_tree(nodes, edge.child),
+        ));
+      }
+      Info {
+        id: node_id,
+        edges,
+      }
+    }
+    let info = make_tree(&self.nodes, self.root);
+    serde_wasm_bindgen::to_value(&(node, info, self.cursor)).unwrap_or_else(|e| {
+      log(&format!("Failed to serialize state: {}", e));
+      panic!("Failed to serialize state: {}", e);
+    })
+  }
+}
+
+#[wasm_bindgen]
+pub fn new_game_tree() -> GameTree {
+  GameTree::new()
 }
 
 #[wasm_bindgen]

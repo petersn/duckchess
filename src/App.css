@@ -17,3 +17,11 @@ a:link {
 a:visited {
     color: #a6d;
 }
+
+/* On hover over .contextMenuButton, highlight the text */
+.contextMenuButton:hover {
+    color: #fff;
+}
+.contextMenuButton {
+    color: #ddd;
+}
