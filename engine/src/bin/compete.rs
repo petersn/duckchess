@@ -9,7 +9,7 @@ use engine::mcts::{Mcts, PendingPath, SearchParams};
 use tokio::sync::Mutex;
 
 const GAME_LEN_LIMIT: usize = 800;
-const BATCH_SIZE: usize = 64;
+const BATCH_SIZE: usize = 128;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
