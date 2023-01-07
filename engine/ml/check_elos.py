@@ -8,7 +8,7 @@ import collections
 import traceback
 import subprocess
 
-GAME_TARGET = 300
+GAME_TARGET = 450
 
 if len(sys.argv) != 2 or sys.argv[1] in ["-h", "--help"]:
     print("Usage: python check_elos.py run-prefix/")
