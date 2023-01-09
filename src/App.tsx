@@ -2,18 +2,10 @@ import { engine } from '@tensorflow/tfjs';
 import React from 'react';
 import './App.css';
 import init, { new_game_tree, GameTree } from 'engine';
-import { AlphaBetaBenchmarkResults, MessageFromEngineWorker, MessageFromSearchWorker } from './DuckChessEngine';
+import { AlphaBetaBenchmarkResults, createDuckChessEngine, DuckChessEngine, MessageFromEngineWorker, MessageFromSearchWorker, parseRustBoardState } from './DuckChessEngine';
 import { ChessBoard, ChessPiece, PieceKind, BOARD_MAX_SIZE, Move } from './ChessBoard';
 import { BrowserRouter as Router, Route, Link, Routes, Navigate } from 'react-router-dom';
 import { BenchmarkApp } from './BenchmarkApp';
-
-/*
-{row.moves.map((entry, j) =>
-          <span key={j} style={{ paddingLeft: 10, paddingRight: 10, color: '#ddd', padding: 1 }}>
-            {entry!.name}
-          </span>
-        )}
-*/
 
 // FIXME: This is a mildly hacky way to get the router location...
 function getRouterPath(): string {
@@ -21,149 +13,6 @@ function getRouterPath(): string {
   if (routerPath.includes('/'))
     routerPath = routerPath.substring(routerPath.lastIndexOf('/') + 1);
   return routerPath;
-}
-
-function parseRustBoardState(state: any): PieceKind[][] {
-  let board: PieceKind[][] = [];
-  for (let y = 0; y < 8; y++)
-    board.push([null, null, null, null, null, null, null, null]);
-  for (let y = 0; y < 8; y++) {
-    for (let player = 0; player < 2; player++) {
-      for (const name of ['pawns', 'knights', 'bishops', 'rooks', 'queens', 'kings', 'ducks']) {
-        let byte;
-        // Special handling for the duck
-        if (name === 'ducks') {
-          if (player === 1)
-            continue;
-          byte = state.ducks[7 - y];
-        } else if (name === 'enpassants') {
-          if (player === 1)
-            continue;
-          byte = state.enPassant[7 - y];
-        } else {
-          byte = state[name][player][7 - y];
-        }
-        for (let x = 0; x < 8; x++) {
-          const hasPiece = byte & 1;
-          byte = byte >> 1;
-          if (!hasPiece)
-            continue;
-          let piece = name.replace('knight', 'night').slice(0, 1).toUpperCase();
-          if (player === 1)
-            piece = 'w' + piece;
-          else
-            piece = 'b' + piece;
-          piece = piece.replace('bD', 'duck');
-          board[y][x] = piece as PieceKind;
-        }
-      }
-    }
-  }
-  return board;
-}
-
-export class Workers {
-  engineWorker: Worker;
-  searchWorker: Worker;
-  initCallback: (ew: Workers) => void;
-  boardState: any;
-  legalMoves: any[];
-  nextMoves: any[];
-  pv: any[] = [];
-  evaluation: number = 0;
-  nodes: number = 0;
-  initFlags: boolean[] = [false, false];
-  forceUpdateCallback: () => void;
-  benchmarkCallback: (results: AlphaBetaBenchmarkResults) => void;
-
-  constructor(initCallback: () => void, forceUpdateCallback: () => void) {
-    this.engineWorker = new Worker(new URL('./EngineWorker.ts', import.meta.url));
-    this.engineWorker.onmessage = this.onEngineMessage;
-    this.searchWorker = new Worker(new URL('./SearchWorker.ts', import.meta.url));
-    this.searchWorker.onmessage = this.onSearchMessage;
-    this.initCallback = initCallback;
-    this.forceUpdateCallback = forceUpdateCallback;
-    this.benchmarkCallback = () => {};
-    for (const worker of [this.engineWorker, this.searchWorker]) {
-      worker.postMessage({ type: 'init' });
-    }
-    this.boardState = null;
-    this.legalMoves = [];
-    this.nextMoves = [];
-  }
-
-  setInitFlag(workerIndex: number) {
-    this.initFlags[workerIndex] = true;
-    if (this.initFlags[0] && this.initFlags[1])
-      this.initCallback(this);
-  }
-
-  onEngineMessage = (e: MessageEvent<MessageFromEngineWorker>) => {
-    console.log('Main thread got:', e.data);
-    switch (e.data.type) {
-      case 'initted':
-        this.setInitFlag(0);
-        break;
-      case 'board':
-        this.boardState = e.data.board;
-        this.legalMoves = e.data.moves;
-        this.nextMoves = e.data.nextMoves;
-        break;
-      case 'evaluation':
-        const whiteWinProb = e.data.whiteWinProb;
-        const Q = 2 * whiteWinProb - 1;
-        this.evaluation = 1.11714640912 * Math.tan(1.5620688421 * Q);
-        this.pv = e.data.pv;
-        this.nodes = e.data.nodes;
-        break;
-    }
-    this.forceUpdateCallback();
-  }
-
-  onSearchMessage = (e: MessageEvent<MessageFromSearchWorker>) => {
-    console.log('Main thread got:', e.data);
-    switch (e.data.type) {
-      case 'initted':
-        this.setInitFlag(1);
-        break;
-      case 'alphaBetaBenchmarkResults':
-        this.benchmarkCallback(e.data.results);
-        this.benchmarkCallback = () => {};
-        break;
-    }
-    this.forceUpdateCallback();
-  }
-
-  getState() {
-    return this.boardState;
-  }
-
-  getMoves(): any[] {
-    return this.legalMoves;
-  }
-
-  applyMove(move: any, isHidden: boolean) {
-    for (const worker of [this.engineWorker, this.searchWorker]) {
-      worker.postMessage({ type: 'applyMove', move, isHidden });
-    }
-  }
-
-  historyJump(index: number) {
-    for (const worker of [this.engineWorker, this.searchWorker]) {
-      worker.postMessage({ type: 'historyJump', index });
-    }
-  }
-
-  setRunEngine(runEngine: boolean) {
-    for (const worker of [this.engineWorker, this.searchWorker]) {
-      worker.postMessage({ type: 'setRunEngine', runEngine });
-    }
-  }
-
-  runAlphaBetaBenchmark(callback: (results: AlphaBetaBenchmarkResults) => void) {
-    //this.searchWorker.postMessage({ type: 'runAlphaBetaBenchmark' });
-    this.benchmarkCallback = callback;
-  }
 }
 
 function TopBar(props: { screenWidth: number, isMobile: boolean }) {
@@ -224,16 +73,21 @@ interface Info {
   edges: [Move, string, Info][];
 }
 
-function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: Workers | null }) {
-  const [selectedSquare, setSelectedSquare] = React.useState<[number, number] | null>(null);
-  const [pair, setPair] = React.useState<any>(null);
-  const [duckFen, setDuckFen] = React.useState<string>('');
-  const [pgn, setPgn] = React.useState<string>('');
+function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
+  const { engine } = props;
+  //const [selectedSquare, setSelectedSquare] = React.useState<[number, number] | null>(null);
+  //const [pair, setPair] = React.useState<any>(null);
+  //const [duckFen, setDuckFen] = React.useState<string>('');
+  //const [pgn, setPgn] = React.useState<string>('');
   const [runEngine, setRunEngine] = React.useState<boolean>(false);
-  const [forceUpdate, setForceUpdate] = React.useState<number>(0);
   const [nodeContextMenu, setNodeContextMenu] = React.useState<number | null>(null);
 
-  const [ser, a, cursor, boardHash]: [any, Info, any, number] = props.gameTree.get_serialized_state();
+  const setForceUpdateCounter = React.useState(0)[1];
+  const forceUpdate = () => {
+    setForceUpdateCounter(Math.random());
+  };
+
+  const [ser, a, cursor, boardHash]: [any, Info, any, number] = engine.gameTree.get_serialized_state();
 
   interface MoveRowEntry {
     name: string;
@@ -322,14 +176,14 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
         transform: 'translate(-100%, 0)',
       }}>
         <div className='contextMenuButton' onClick={() => {
-          props.gameTree.delete_by_id(move.id);
+          engine.gameTree.delete_by_id(move.id);
           setNodeContextMenu(null);
-          setForceUpdate(Math.random());
+          forceUpdate();
         }}>Delete</div>
         {isFull || <div className='contextMenuButton' onClick={() => {
-          props.gameTree.promote_by_id(move.id);
+          engine.gameTree.promote_by_id(move.id);
           setNodeContextMenu(null);
-          setForceUpdate(Math.random());
+          forceUpdate();
         }}>Promote</div>}
       </div>;
     }
@@ -341,9 +195,9 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
         (move.id.idx === cursor.idx ? 'red' : '#ddd'),
       }}
       onClick={() => {
-        props.gameTree.click_to_id(move.id);
+        engine.gameTree.click_to_id(move.id);
         setNodeContextMenu(null);
-        setForceUpdate(Math.random());
+        forceUpdate();
       }}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -389,43 +243,31 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
 
   // Stop the engine when this subpage isn't active.
   React.useEffect(() => {
-    if (props.workers) {
-      props.workers.setRunEngine(runEngine);
+    if (engine) {
+      engine.setRunEngine(runEngine);
     }
     return () => {
-      if (props.workers) {
-        props.workers.setRunEngine(false);
+      if (engine) {
+        engine.setRunEngine(false);
       }
     };
-  }, [props.workers]);
+  }, [engine]);
 
   React.useEffect(() => {
     const shortcutsHandler = (event: KeyboardEvent) => {
       if (event.key === ' ') {
         // Make the top move.
-        if (props.workers !== null && props.workers.pv.length !== 0) {
-          props.workers.applyMove(props.workers.pv[0], false);
-        }
+        //if (engine !== null && engine.pv.length !== 0) {
+        //  engine.makeMove(engine.pv[0], false);
+        //}
       } else if (event.key === 'Escape') {
-        // Clear the selected square.
-        setSelectedSquare(null);
         setNodeContextMenu(null);
       } else if (event.key === 'ArrowLeft') {
-        props.gameTree.history_back();
-        setForceUpdate(Math.random());
+        engine.historyBack();
         setNodeContextMenu(null);
-        // Go back one move.
-        if (props.workers !== null) {
-          props.workers.applyMove({ type: 'undo' }, false);
-        }
       } else if (event.key === 'ArrowRight') {
-        props.gameTree.history_forward();
-        setForceUpdate(Math.random());
+        engine.historyForward();
         setNodeContextMenu(null);
-        // Go forward one move.
-        if (props.workers !== null) {
-          props.workers.applyMove({ type: 'redo' }, false);
-        }
       }
     };
     const globalClick = (event: MouseEvent) => {
@@ -442,7 +284,7 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
       document.removeEventListener('keydown', shortcutsHandler);
       document.removeEventListener('click', globalClick);
     };
-  }, [props.workers]);
+  }, [engine]);
 
   // let board: React.ReactNode[][] = [];
   // for (let y = 0; y < 8; y++)
@@ -454,14 +296,14 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
   // }
 
   //React.useEffect(() => {
-  //  props.workers.forceUpdateCallback = () => {
+  //  engine.forceUpdateCallback = () => {
   //    setForceUpdateCounter(Math.random());
   //  };
   //}, []);
 
-  //const { props.workers } = props;
-  //const state = props.workers.getState();
-  //const moves: any[] = props.workers.getMoves();
+  //const { engine } = props;
+  //const state = engine.getState();
+  //const moves: any[] = engine.getMoves();
   //React.useEffect(() => {
   //  //for (let i = 0; i < 100; i++) {
   //  //  const start = performance.now();
@@ -471,7 +313,7 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
   //  //  console.log('tfjs prediction took', end - start, 'ms');
   //  //}
   //  //console.log(tfjsResult[0], tfjsResult[1]);
-  //  let pair = props.workers.run(4);
+  //  let pair = engine.run(4);
   //  setPair(pair);
   //  setTimeout(() => {
   //    if (pair && pair[1][0]) {
@@ -491,7 +333,7 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
       // Check if this is the initial duck placement.
       const m = moves.find(m => m.from === 64 && m.to === x + (7 - y) * 8);
       if (m) {
-        props.workers.applyMove(m);
+        engine.applyMove(m);
         setSelectedSquare(null);
         setForceUpdateCounter(forceUpdateCounter + 1);
       } else {
@@ -506,7 +348,7 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
       // Find the first move that matches the selected square and the clicked square.
       const m = moves.find((m: any) => m.from === encodedFrom && m.to === encodedTo);
       if (m) {
-        props.workers.applyMove(m);
+        engine.applyMove(m);
         setForceUpdateCounter(forceUpdateCounter + 1);
       }
       setSelectedSquare(null);
@@ -555,19 +397,19 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
 
   /*
   //let showMoves: any[] = (pair && pair[1][0]) ? pair[1] : [];
-  console.log('----PV:', props.workers.pv);
-  let showMoves: any[] = props.workers.pv;
+  console.log('----PV:', engine.pv);
+  let showMoves: any[] = engine.pv;
   if ((state.isDuckMove || true) && showMoves) {
     showMoves = showMoves.slice(0, 1);
   }
   */
 
-  let topMoves = [];
-  if (props.workers !== null && props.workers.boardState !== null) {
-    // If it's a duck move, only show the next 1 move.
-    const moveCount = props.workers.boardState.isDuckMove ? 1 : 2;
-    topMoves = props.workers.pv.slice(0, moveCount);
-  }
+  //let topMoves = [];
+  // if (engine !== null && engine.boardState !== null) {
+  //   // If it's a duck move, only show the next 1 move.
+  //   const moveCount = engine.boardState.isDuckMove ? 1 : 2;
+  //   topMoves = engine.pv.slice(0, moveCount);
+  // }
 
   const marginTop = props.isMobile ? 3 : 10;
 
@@ -605,20 +447,20 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
       </div>*/}
       <ChessBoard
         isMobile={props.isMobile}
-        isInitialDuckPlacementMove={moveNum === 1}
+        isInitialDuckPlacementMove={ser.state.plies === 1}
         highlightDuck={ser.state.isDuckMove}
         board={parseRustBoardState(ser.state)}
         boardHash={boardHash}
         legalMoves={ser.legal_moves}
         hiddenLegalMoves={ser.legal_duck_skipping_moves}
-        topMoves={topMoves}
+        topMoves={[]} //topMoves}
         onMove={(move, isHidden) => {
-          //if (props.workers !== null) {
+          //if (engine !== null) {
             console.log('[snp1] move', move, isHidden);
-            props.gameTree.make_move(move, isHidden);
-            setForceUpdate(Math.random());
+            engine.gameTree.make_move(move, isHidden);
+            forceUpdate();
             // Force a rerender.
-            //props.workers.applyMove(move, isHidden);
+            //engine.applyMove(move, isHidden);
           //}
         }}
         style={{ margin: 10 }}
@@ -641,8 +483,8 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
           {/*<div style={{ fontWeight: 'bold', fontSize: '120%', marginBottom: 10 }}>Engine</div>*/}
           <input type="checkbox" checked={runEngine} onChange={e => {
             setRunEngine(e.target.checked);
-            if (props.workers !== null) {
-              props.workers.setRunEngine(e.target.checked);
+            if (engine !== null) {
+              engine.setRunEngine(e.target.checked);
             }
           }} /> Run engine
 
@@ -650,11 +492,11 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
             {renderedMoveRows}
           </div>
 
-          {props.workers !== null && <div>
-            Evaluation: {props.workers.evaluation.toFixed(3)}<br/>
-            Nodes: {props.workers.nodes}<br/>
-            PV: {props.workers.pv.map((m: any) => m.from + ' ' + m.to).join(' ')}
-          </div>}
+          {/*engine !== null && <div>
+            Evaluation: {engine.evaluation.toFixed(3)}<br/>
+            Nodes: {engine.nodes}<br/>
+            PV: {engine.pv.map((m: any) => m.from + ' ' + m.to).join(' ')}
+        </div>*/}
 
         </div>
       </div>
@@ -689,10 +531,10 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
   </>;
 }
 
-function BenchmarkPage(props: { isMobile: boolean, workers: Workers | null }) {
-  if (props.workers === null)
+function BenchmarkPage(props: { isMobile: boolean, engine: DuckChessEngine | null }) {
+  if (props.engine === null)
     return <div>Loading...</div>;
-  return <BenchmarkApp isMobile={props.isMobile} workers={props.workers} />;
+  return <BenchmarkApp isMobile={props.isMobile} engine={props.engine} />;
 }
 
 function InfoPage(props: { isMobile: boolean }) {
@@ -702,17 +544,21 @@ function InfoPage(props: { isMobile: boolean }) {
 }
 
 function App() {
-  const [gameTree, setGameTree] = React.useState<GameTree | null>(null);
-  const [workers, setWorkers] = React.useState<Workers | null>(null);
-  const setForceUpdateCounter = React.useState(0)[1];
+  const [engine, setEngine] = React.useState<DuckChessEngine | null>(null);
   const [width, setWidth] = React.useState<number>(window.innerWidth);
 
+  const setForceUpdateCounter = React.useState(0)[1];
+  const forceUpdate = () => {
+    setForceUpdateCounter(Math.random());
+  };
+
   React.useEffect(() => {
-    init().then(() => setGameTree(new_game_tree()));
+    createDuckChessEngine(forceUpdate).then(setEngine);
   }, []);
 
   React.useEffect(() => {
     console.log('Initializing worker...');
+    /*
     const workers = new Workers(
       () => {
         console.log('Worker initialized!');
@@ -723,19 +569,18 @@ function App() {
         setTimeout(() => setForceUpdateCounter(Math.random()), 1);
       },
     );
+    */
   }, []);
 
-  function handleWindowSizeChange() {
-    setWidth(window.innerWidth);
-  }
   React.useEffect(() => {
+    function handleWindowSizeChange() {
+      setWidth(window.innerWidth);
+    }
     window.addEventListener('resize', handleWindowSizeChange);
     return () => window.removeEventListener('resize', handleWindowSizeChange);
   }, []);
 
   const isMobile = width < 768;
-
-  console.log('process.env.PUBLIC_URL:', process.env.PUBLIC_URL);
 
   function navigation(element: React.ReactNode): React.ReactNode {
     return (
@@ -744,20 +589,20 @@ function App() {
         flexDirection: 'column',
         alignItems: 'center',
       }}>
-        <TopBar screenWidth={width} isMobile={isMobile} />
+        {/*<TopBar screenWidth={width} isMobile={isMobile} />*/}
         {element}
       </div>
     );
   }
 
-  if (gameTree === null)
+  if (engine === null)
     return <div>Loading...</div>;
 
   return (
     <Router basename={process.env.PUBLIC_URL}>
       <Routes>
-        <Route path="/analysis" element={navigation(<AnalysisPage isMobile={isMobile} gameTree={gameTree} workers={workers} />)} />
-        <Route path="/benchmark" element={navigation(<BenchmarkPage isMobile={isMobile} workers={workers} />)} />
+        <Route path="/analysis" element={navigation(<AnalysisPage isMobile={isMobile} engine={engine} />)} />
+        <Route path="/benchmark" element={navigation(<BenchmarkPage isMobile={isMobile} engine={engine} />)} />
         <Route path="/info" element={navigation(<InfoPage isMobile={isMobile} />)} />
         <Route path="/" element={navigation(<Navigate to={"/analysis"} replace />)} />
       </Routes>

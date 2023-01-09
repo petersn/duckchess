@@ -147,6 +147,7 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
 
   clearAllAnnotations() {
     this.setState({
+      selectedSquare: null,
       userDrawnArrows: [],
       userHighlightedSquares: [],
     });
