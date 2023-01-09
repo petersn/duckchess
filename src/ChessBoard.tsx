@@ -57,6 +57,7 @@ export function ChessPiece(props: {
 
 export interface ChessBoardProps {
   isMobile: boolean;
+  isInitialDuckPlacementMove: boolean;
   highlightDuck: boolean;
   board: PieceKind[][];
   boardHash: number;
@@ -196,7 +197,7 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
   }
 
   beginArrow(x: number, y: number) {
-    this.setState({ arrowStart: [x, y] });
+    this.setState({ arrowStart: [x, y], selectedSquare: null });
   }
 
   updateArrow(x: number, y: number) {
@@ -292,7 +293,13 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
             width={SQ}
             height={SQ}
             fill={backgroundColor}
-            onClick={(e) => this.onClick(x, y, this.props.board[y][x] === null)}
+            onClick={(e) => {
+              let soft = this.props.board[y][x] === null;
+              // If this is the initial duck placement then it's not soft.
+              if (this.props.isInitialDuckPlacementMove)
+                soft = false;
+              this.onClick(x, y, soft);
+            }}
             onMouseDown={(e) => {
               if (e.button !== 0) {
                 this.beginArrow(x, y);
@@ -488,6 +495,20 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
         r={10}
         fill="rgba(0, 255, 0, 0.4)"
       />);
+    }
+
+    if (this.props.isInitialDuckPlacementMove) {
+      for (const move of this.props.legalMoves) {
+        const toX = move.to % 8;
+        const toY = 7 - Math.floor(move.to / 8);
+        svgElements.push(<circle
+          style={{ userSelect: 'none', pointerEvents: 'none' }}
+          key={`duck-circle-${move.to}`}
+          cx={toX * 50 + 25} cy={toY * 50 + 25}
+          r={10}
+          fill="rgba(0, 255, 0, 0.4)"
+        />);
+      }
     }
 
     return <>

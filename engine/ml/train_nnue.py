@@ -281,7 +281,7 @@ def eval_losses(model, batch):
     policy_loss = cross_ent_func(from_output, moves_from) + cross_ent_func(to_output, moves_to)
     return 10 * value_loss, policy_loss
 
-def train(run_name: str, paths: list[str], device="cuda"):
+def train(run_name: str, paths: list[str], device="cpu"):
     wandb.init(project="train-nnue", name=run_name)
     wandb.config.update({
         "paths": paths,
@@ -299,8 +299,8 @@ def train(run_name: str, paths: list[str], device="cuda"):
 
     start_time = time.time()
     for i in range(1_000_000):
-        leak = 0.1 * 0.5 ** (i / 10_000)
-        lr = max(2e-6, 5e-4 * 0.5 ** (i / 40_000))
+        leak = 0.1 * 0.5 ** (i / 2_000)
+        lr = max(2e-6, 5e-4 * 0.5 ** (i / 50_000))
         #lr = 1e-3
         model.adjust_leak(leak)
         for g in optimizer.param_groups:

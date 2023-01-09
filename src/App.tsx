@@ -63,8 +63,8 @@ function parseRustBoardState(state: any): PieceKind[][] {
 }
 
 export class Workers {
-  //engineWorker: Worker;
-  //searchWorker: Worker;
+  engineWorker: Worker;
+  searchWorker: Worker;
   initCallback: (ew: Workers) => void;
   boardState: any;
   legalMoves: any[];
@@ -77,16 +77,16 @@ export class Workers {
   benchmarkCallback: (results: AlphaBetaBenchmarkResults) => void;
 
   constructor(initCallback: () => void, forceUpdateCallback: () => void) {
-    //this.engineWorker = new Worker(new URL('./EngineWorker.ts', import.meta.url));
-    //this.engineWorker.onmessage = this.onEngineMessage;
-    //this.searchWorker = new Worker(new URL('./SearchWorker.ts', import.meta.url));
-    //this.searchWorker.onmessage = this.onSearchMessage;
+    this.engineWorker = new Worker(new URL('./EngineWorker.ts', import.meta.url));
+    this.engineWorker.onmessage = this.onEngineMessage;
+    this.searchWorker = new Worker(new URL('./SearchWorker.ts', import.meta.url));
+    this.searchWorker.onmessage = this.onSearchMessage;
     this.initCallback = initCallback;
     this.forceUpdateCallback = forceUpdateCallback;
     this.benchmarkCallback = () => {};
-    //for (const worker of [this.engineWorker, this.searchWorker]) {
-    //  worker.postMessage({ type: 'init' });
-    //}
+    for (const worker of [this.engineWorker, this.searchWorker]) {
+      worker.postMessage({ type: 'init' });
+    }
     this.boardState = null;
     this.legalMoves = [];
     this.nextMoves = [];
@@ -143,21 +143,21 @@ export class Workers {
   }
 
   applyMove(move: any, isHidden: boolean) {
-    //for (const worker of [this.engineWorker, this.searchWorker]) {
-    //  worker.postMessage({ type: 'applyMove', move, isHidden });
-    //}
+    for (const worker of [this.engineWorker, this.searchWorker]) {
+      worker.postMessage({ type: 'applyMove', move, isHidden });
+    }
   }
 
   historyJump(index: number) {
-    //for (const worker of [this.engineWorker, this.searchWorker]) {
-    //  worker.postMessage({ type: 'historyJump', index });
-    //}
+    for (const worker of [this.engineWorker, this.searchWorker]) {
+      worker.postMessage({ type: 'historyJump', index });
+    }
   }
 
   setRunEngine(runEngine: boolean) {
-    //for (const worker of [this.engineWorker, this.searchWorker]) {
-    //  worker.postMessage({ type: 'setRunEngine', runEngine });
-    //}
+    for (const worker of [this.engineWorker, this.searchWorker]) {
+      worker.postMessage({ type: 'setRunEngine', runEngine });
+    }
   }
 
   runAlphaBetaBenchmark(callback: (results: AlphaBetaBenchmarkResults) => void) {
@@ -580,7 +580,8 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
       alignItems: 'center',
       justifyContent: 'center',
     }}>
-      {props.isMobile || <div style={{
+      <div style={{ flex: 1 }} />
+      {/*props.isMobile || <div style={{
         flex: 1,
         height: BOARD_MAX_SIZE,
         minHeight: BOARD_MAX_SIZE,
@@ -601,9 +602,10 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
           Each turn consists of making a regular move, and then moving the duck to any empty square (the duck may not stay in place).
           There is no check or checkmate, you win by capturing the opponent's king.
         </div>
-      </div>}
+      </div>*/}
       <ChessBoard
         isMobile={props.isMobile}
+        isInitialDuckPlacementMove={moveNum === 1}
         highlightDuck={ser.state.isDuckMove}
         board={parseRustBoardState(ser.state)}
         boardHash={boardHash}
@@ -622,10 +624,10 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
         style={{ margin: 10 }}
       />
       <div style={{
-        flex: props.isMobile ? undefined : 1,
+        //flex: props.isMobile ? undefined : 1,
         height: props.isMobile ? undefined : BOARD_MAX_SIZE,
         minHeight: props.isMobile ? undefined : BOARD_MAX_SIZE,
-        width: props.isMobile ? '100%' : undefined,
+        width: props.isMobile ? '100%' : 300,
       }}>
         <div style={{
           height: '100%',
@@ -636,7 +638,7 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
           boxSizing: 'border-box',
           margin: props.isMobile ? 'auto' : undefined,
         }}>
-          <div style={{ fontWeight: 'bold', fontSize: '120%', marginBottom: 10 }}>Engine</div>
+          {/*<div style={{ fontWeight: 'bold', fontSize: '120%', marginBottom: 10 }}>Engine</div>*/}
           <input type="checkbox" checked={runEngine} onChange={e => {
             setRunEngine(e.target.checked);
             if (props.workers !== null) {
@@ -656,9 +658,10 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
 
         </div>
       </div>
+      <div style={{ flex: 1 }} />
     </div>
 
-    <div style={{ width: '100%', marginTop, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+    {/*<div style={{ width: '100%', marginTop, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <input type="text" value={duckFen} onChange={e => setDuckFen(e.target.value)} style={{
         //width: 400,
         width: '96%',
@@ -675,7 +678,7 @@ function AnalysisPage(props: { isMobile: boolean, gameTree: GameTree, workers: W
         backgroundColor: '#445',
         color: '#eee',
       }} placeholder="Paste PGN here..." />
-    </div>
+    </div>*/}
 
     <div style={{ marginTop, textAlign: 'center', width: '95vw' }}>
       Created by Peter Schmidt-Nielsen
