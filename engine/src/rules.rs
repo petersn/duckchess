@@ -778,6 +778,7 @@ impl State {
         // Swap the turn.
         self.is_duck_move = false;
         self.turn = self.turn.other_player();
+        self.plies += 1;
         // Update incremental state.
         if NNUE {
           nnue.unwrap().apply_adjustment::<false>(&self, &adjustment);

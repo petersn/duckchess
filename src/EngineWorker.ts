@@ -124,7 +124,7 @@ async function initWorker() {
 }
 
 onmessage = function(e: MessageEvent<MessageToEngineWorker>) {
-  console.log('Web worker got:', e.data);
+  //console.log('Web worker got:', e.data);
   switch (e.data.type) {
     case 'init':
       initWorker();

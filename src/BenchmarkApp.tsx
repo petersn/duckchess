@@ -1,8 +1,7 @@
 import React from 'react';
 import * as tf from '@tensorflow/tfjs';
 import '@tensorflow/tfjs-backend-webgl';
-import { Workers } from './App';
-import { AlphaBetaBenchmarkResults } from './DuckChessEngine';
+import { AlphaBetaBenchmarkResults, DuckChessEngine } from './DuckChessEngine';
 
 // This is the number of input feature layers to the model.
 const featureCount = 29;
@@ -142,7 +141,7 @@ async function evalLoop(app: BenchmarkApp) {
 
 interface BenchmarkAppProps {
   isMobile: boolean;
-  workers: Workers;
+  engine: DuckChessEngine;
 }
 
 interface BenchmarkAppState {
@@ -289,7 +288,7 @@ export class BenchmarkApp extends React.PureComponent<BenchmarkAppProps, Benchma
           <button
             onClick={() => {
               this.setState({ runningAlphaBetaBenchmark: true });
-              this.props.workers.runAlphaBetaBenchmark((results) => {
+              this.props.engine.runAlphaBetaBenchmark((results) => {
                 this.setState({ runningAlphaBetaBenchmark: false, benchmarkResults: results });
                 console.log(results);
               });
