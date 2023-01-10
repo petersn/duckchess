@@ -208,6 +208,11 @@ impl GameTree {
     have_node
   }
 
+  pub fn set_engine_state(&mut self, engine: &mut Engine) {
+    // FIXME: This is what I need to implement.
+    
+  }
+
   /// Traverses to the parent.
   pub fn history_back(&mut self) -> bool {
     if let Some(parent) = self.nodes[self.cursor].parent {
@@ -289,6 +294,7 @@ pub struct Engine {
   inference_engine: &'static inference_web::TensorFlowJsEngine<(usize, PendingPath)>,
   //engine:           search::Engine,
   mcts:             mcts::Mcts<'static, inference_web::TensorFlowJsEngine<(usize, PendingPath)>>,
+  prefix_moves:     Vec<Move>,
   //input_array: Box<[f32; MAX_BATCH_SIZE * FEATURES_SIZE]>,
   //policy_array: Box<[f32; MAX_BATCH_SIZE * POLICY_LEN]>,
   //value_array: Box<[f32; MAX_BATCH_SIZE]>,
@@ -432,6 +438,7 @@ pub fn new_engine(seed: u64) -> Engine {
   Engine {
     inference_engine: tfjs_inference_engine,
     mcts:             mcts::Mcts::new(0, seed, tfjs_inference_engine, SearchParams::default()),
+    prefix_moves:     Vec::new(),
     //input_array: Box::new([0.0; MAX_BATCH_SIZE * FEATURES_SIZE]),
     //policy_array: Box::new([0.0; MAX_BATCH_SIZE * POLICY_LEN]),
     //value_array: Box::new([0.0; MAX_BATCH_SIZE]),
