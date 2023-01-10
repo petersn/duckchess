@@ -8,8 +8,8 @@ use tokio::io::AsyncBufReadExt;
 use tokio::sync::Mutex;
 
 const PLAYOUT_CAP_RANDOMIZATION_P: f32 = 0.25;
-const FULL_SEARCH_PLAYOUTS: u32 = 1000;
-const SMALL_SEARCH_PLAYOUTS: u32 = 200;
+const FULL_SEARCH_PLAYOUTS: u32 = 1500;
+const SMALL_SEARCH_PLAYOUTS: u32 = 250;
 //const FULL_SEARCH_PLAYOUTS: u32 = 600;
 //const SMALL_SEARCH_PLAYOUTS: u32 = 100;
 const GAME_LEN_LIMIT: usize = 800;
@@ -168,10 +168,10 @@ async fn main() {
               mcts.get_state().move_gen::<false>(&mut moves);
               moves.choose(&mut rand::thread_rng()).map(|m| *m)
             }
-            // We use temperature = 1.0 for training moves, and temperature = 0.5 for fast moves, to improve play strength.
+            // We use temperature = 0.5 for training moves, and temperature = 0.25 for fast moves, to improve play strength.
             false => match do_full_search {
-              true => mcts.sample_move_by_visit_count(1),
-              false => mcts.sample_move_by_visit_count(2),
+              true => mcts.sample_move_by_visit_count(2),
+              false => mcts.sample_move_by_visit_count(4),
             },
           };
 
