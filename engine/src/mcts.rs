@@ -821,10 +821,12 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       }
       node.gc_state = mark_state;
     }
+    // Drop nodes, and references to freed nodes in the transposition table.
+    self.transposition_table.retain(|_, node_index| {
+      &self.nodes[*node_index].gc_state == mark_state
+    });
     self.nodes.retain(|_, node| node.gc_state == mark_state);
-    // Finally, we clear out the transposition table, because it may
-    // still contain references to freed nodes.
-    self.transposition_table.clear();
+    //self.transposition_table.clear();
     //// FIXME: What do I do about pending paths?
     //assert!(self.pending_paths.is_empty());
   }
