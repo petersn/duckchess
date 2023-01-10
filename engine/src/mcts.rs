@@ -823,7 +823,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     }
     // Drop nodes, and references to freed nodes in the transposition table.
     self.transposition_table.retain(|_, node_index| {
-      &self.nodes[*node_index].gc_state == mark_state
+      self.nodes[*node_index].gc_state == mark_state
     });
     self.nodes.retain(|_, node| node.gc_state == mark_state);
     //self.transposition_table.clear();
