@@ -158,12 +158,14 @@ pub struct ModelOutputs {
   pub quantized_policy: Box<[QuantizedProbability; POLICY_LEN]>,
   // value is a valuation for the current player from -1 to +1.
   pub value:            Evaluation,
+  pub white_wdl:        [f32; 3],
 }
 
 #[derive(Clone)]
 pub struct FullPrecisionModelOutputs {
   pub policy: Box<[f32; POLICY_LEN]>,
   pub value:  Evaluation,
+  pub white_wdl: [f32; 3],
 }
 
 impl ModelOutputs {
@@ -222,6 +224,7 @@ impl ModelOutputs {
     ModelOutputs {
       quantized_policy,
       value: full_prec.value,
+      white_wdl: full_prec.white_wdl,
     }
 
     //if (sum - 1.0).abs() > 1e-2 {
@@ -296,25 +299,27 @@ fn make_perspective_policy(player: Player, policy: &[f32; POLICY_LEN]) -> Box<[f
 }
 
 #[inline]
-fn wdl_to_expected_score(wdl: &[f32; 3]) -> f32 {
+fn wdl_logits_softmax(wdl_logits: &[f32; 3]) -> [f32; 3] {
   // Compute softmax:
-  let max = wdl[0].max(wdl[1]).max(wdl[2]);
-  let w = (wdl[0] - max).exp();
-  let d = (wdl[1] - max).exp();
-  let l = (wdl[2] - max).exp();
+  let max = wdl_logits[0].max(wdl_logits[1]).max(wdl_logits[2]);
+  let w = (wdl_logits[0] - max).exp();
+  let d = (wdl_logits[1] - max).exp();
+  let l = (wdl_logits[2] - max).exp();
   let sum = w + d + l;
   let w = w / sum;
   let d = d / sum;
-  w + 0.5 * d
+  let l = l / sum;
+  [w, d, l]
+  //w + 0.5 * d
 }
 
 #[derive(Debug)]
 pub struct InferenceResults<'a, Cookie> {
-  pub length:   usize,
-  pub cookies:  &'a [Cookie],
-  pub players:  &'a [Player],
-  pub policies: &'a [&'a [f32; POLICY_LEN]],
-  pub wdl:   &'a [[f32; 3]],
+  pub length:     usize,
+  pub cookies:    &'a [Cookie],
+  pub players:    &'a [Player],
+  pub policies:   &'a [&'a [f32; POLICY_LEN]],
+  pub wdl_logits: &'a [[f32; 3]],
 }
 
 impl<'a, Cookie> InferenceResults<'a, Cookie> {
@@ -322,23 +327,30 @@ impl<'a, Cookie> InferenceResults<'a, Cookie> {
     cookies: &'a [Cookie],
     players: &'a [Player],
     policies: &'a [&'a [f32; POLICY_LEN]],
-    wdl: &'a [[f32; 3]],
+    wdl_logits: &'a [[f32; 3]],
   ) -> InferenceResults<'a, Cookie> {
     assert_eq!(cookies.len(), policies.len());
     assert_eq!(cookies.len(), players.len());
-    assert_eq!(cookies.len(), wdl.len());
+    assert_eq!(cookies.len(), wdl_logits.len());
     InferenceResults {
       length: cookies.len(),
       cookies,
       players,
       policies,
-      wdl,
+      wdl_logits,
     }
   }
 
   pub fn get(&self, index: usize) -> FullPrecisionModelOutputs {
-    //println!("Value: {}", self.values[index]);
-    let expected_score = wdl_to_expected_score(&self.wdl[index]);
+    let wdl = wdl_logits_softmax(&self.wdl_logits[index]);
+    let expected_score = wdl[0] + 0.5 * wdl[1];
+    // The above two variables are from the current player's perspective.
+    let white_wdl = match self.players[index] {
+      Player::White => wdl,
+      Player::Black => [wdl[2], wdl[1], wdl[0]],
+    };
+
+    //let expected_score = wdl_to_expected_score(&self.wdl[index]);
     //debug_assert!(-1.0 <= self.values[index] && self.values[index] <= 1.0);
     FullPrecisionModelOutputs {
       policy: make_perspective_policy(self.players[index], self.policies[index]),
@@ -347,6 +359,7 @@ impl<'a, Cookie> InferenceResults<'a, Cookie> {
         perspective_player: self.players[index],
         is_exact: false,
       },
+      white_wdl,
     }
   }
 }

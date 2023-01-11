@@ -90,6 +90,7 @@ pub struct MctsNode {
   pub dirichlet_applied: bool,
   pub needs_eval:        bool,
   pub total_score:       f32,
+  pub total_white_wdl:         [f32; 3],
   pub exact_score_and_move:    Option<(f32, Move)>,
   pub visits:            u32,
   pub tail_visits:       u32,
@@ -106,10 +107,12 @@ impl MctsNode {
     let needs_eval = state.get_outcome().is_none();
     let mut moves = vec![];
     state.move_gen::<false>(&mut moves);
-    let mut outputs = ModelOutputs::quantize_from(
+    // FIXME: in terminal positions I need to make up a correct WDL value.
+    let outputs = ModelOutputs::quantize_from(
       FullPrecisionModelOutputs {
         policy: Box::new([1.0; POLICY_LEN]),
         value:  Evaluation::from_terminal_state(&state).unwrap_or(Evaluation::EVEN_EVAL),
+        white_wdl: [0.0, 1.0, 0.0],
       },
       &moves,
     );
@@ -123,6 +126,7 @@ impl MctsNode {
       dirichlet_applied: false,
       needs_eval,
       total_score: 0.0,
+      total_white_wdl: [0.0; 3],
       exact_score_and_move: None,
       visits: 0,
       tail_visits: 0,
@@ -151,10 +155,13 @@ impl MctsNode {
     }
   }
 
-  fn adjust_score(&mut self, eval: Evaluation) {
+  fn adjust_score(&mut self, eval: Evaluation, white_wdl: &[f32; 3]) {
     let new_score = eval.expected_score_for_player(self.state.turn);
     self.visits += 1;
     self.total_score += new_score; //eval.expected_score_for_player(self.state.turn);
+    self.total_white_wdl[0] += white_wdl[0];
+    self.total_white_wdl[1] += white_wdl[1];
+    self.total_white_wdl[2] += white_wdl[2];
     // FIXME: I need to figure out what to do here.
     // If
   }
@@ -387,6 +394,51 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       root.get_subtree_value().expected_score_for_player(crate::rules::Player::White),
       root.visits,
     )
+  }
+
+  pub fn get_root_children_visit_count(&self) -> u32 {
+    let root = &self.nodes[self.root];
+    let mut total_visits = 0;
+    for (m, edge) in &root.outgoing_edges {
+      let node = &self.nodes[edge.node];
+      total_visits += node.visits;
+    }
+    total_visits
+  }
+
+  /// Gets a (value for white, wdl for white, visit count) triple.
+  /// Currently this averages over children scaled by how likely we are to make those moves.
+  /// This therefore doesn't quite match get_root_score.
+  pub fn get_gui_evaluation(&self) -> (f32, [f32; 3], Vec<(Move, f32)>, u32) {
+    let root = &self.nodes[self.root];
+    let mut total_visits = 0;
+    let mut total_weight: f32 = 0.0;
+    // Sum up squares of visit counts for each child.
+    for (m, edge) in &root.outgoing_edges {
+      let node = &self.nodes[edge.node];
+      let weight = node.visits as f32;
+      total_visits += node.visits;
+      total_weight += weight * weight;
+    }
+    let mut white_wdl = [0.0, 0.0, 0.0];
+    let mut top_moves = Vec::new();
+    // Compute weighted average of white WDLs.
+    for (m, edge) in &root.outgoing_edges {
+      let node = &self.nodes[edge.node];
+      let mut weight = node.visits as f32;
+      weight = weight * weight / total_weight;
+      top_moves.push((*m, node.visits as f32 / total_visits as f32));
+      white_wdl[0] += weight * node.total_white_wdl[0] / node.visits as f32;
+      white_wdl[1] += weight * node.total_white_wdl[1] / node.visits as f32;
+      white_wdl[2] += weight * node.total_white_wdl[2] / node.visits as f32;
+    }
+    //// Assert approximate normalization.
+    //assert!((white_wdl[0] + white_wdl[1] + white_wdl[2] - 1.0).abs() < 1e-3);
+    // Compute expected score for white.
+    let score = white_wdl[0] + white_wdl[1] * 0.5;
+    // Sort the moves by weight.
+    top_moves.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+    return (score, white_wdl, top_moves, total_visits);
   }
 
   // FIXME: These names here are so bad.
@@ -637,6 +689,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     }
     self.nodes[last_node_index].tail_visits += 1;
     let value_score = self.nodes[last_node_index].outputs.value;
+    let white_wdl = self.nodes[last_node_index].outputs.white_wdl;
     // Adjust every node along the path, including the final node itself.
     for node_index in path {
       if !self.nodes.contains_key(node_index) {
@@ -646,7 +699,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         continue;
       }
       let node = &mut self.nodes[node_index];
-      node.adjust_score(value_score);
+      node.adjust_score(value_score, &white_wdl);
       if DECREMENT_IN_FLIGHT {
         assert!(node.in_flight > 0);
         node.in_flight -= 1;

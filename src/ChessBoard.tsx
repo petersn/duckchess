@@ -63,7 +63,7 @@ export interface ChessBoardProps {
   boardHash: number;
   legalMoves: Move[];
   hiddenLegalMoves: Move[];
-  topMoves: Move[];
+  topMoves: [Move, number][];
   onMove: (move: Move, isHidden: boolean) => void;
   style?: React.CSSProperties;
 }
@@ -388,7 +388,15 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
       }
     }
 
-    function addArrow(key: string, fromX: number, toX: number, fromY: number, toY: number, color: string) {
+    function addArrow(
+      key: string,
+      fromX: number,
+      toX: number,
+      fromY: number,
+      toY: number,
+      color: string,
+      weight: number,
+    ) {
       let dx = toX - fromX;
       let dy = toY - fromY;
       const length = 1e-6 + Math.sqrt(dx * dx + dy * dy);
@@ -396,9 +404,9 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
       dy /= length;
       const endX = toX * 50 + 25 - 10 * dx;
       const endY = toY * 50 + 25 - 10 * dy;
-      const w = 4;
-      const headW = 7;
-      const headL = 18;
+      const w = 4 * weight;
+      const headW = 7 * weight;
+      const headL = 18 * weight;
       let d = `M ${fromX * 50 + 25 - w * dy} ${fromY * 50 + 25 + w * dx} L ${endX - w * dy} ${endY + w * dx}`;
       d += ` L ${endX + (w + headW) * dy} ${endY - (w + headW) * dx} L ${endX + headL * dx} ${endY + headL * dy}`;
       d += ` L ${endX - (w + headW) * dy} ${endY + (w + headW) * dx} L ${endX + w * dy} ${endY - w * dx}`;
@@ -415,7 +423,7 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
     }
 
     // Add arrows for highlit moves.
-    for (const move of this.props.topMoves) {
+    for (const [move, weight] of this.props.topMoves) {
       //if (!move)
       //  continue;
       const fromX = move.from % 8;
@@ -427,21 +435,21 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
           style={{ userSelect: 'none', pointerEvents: 'none' }}
           key={`arrow-${move.from}-${move.to}`}
           cx={toX * 50 + 25} cy={toY * 50 + 25}
-          r={10}
+          r={13 * (1 + 0.5 * weight)}
           //stroke="rgba(0, 0, 255, 0.35)"
           strokeWidth="5"
           fill="rgba(0, 0, 255, 0.35)"
         />;
         svgElements.push(arrow);
-        return;
+        continue;
       }
-      addArrow('move', fromX, toX, fromY, toY, 'rgba(0, 0, 255, 0.35)');
+      addArrow('move', fromX, toX, fromY, toY, 'rgba(0, 0, 255, 0.35)', 0.6 + weight);
     }
 
     // Show all of the existing arrows.
     for (const arrow of this.state.userDrawnArrows) {
       const [fromX, fromY, toX, toY] = arrow;
-      addArrow('', fromX, toX, fromY, toY, 'rgba(255, 0, 0, 0.35)');
+      addArrow('', fromX, toX, fromY, toY, 'rgba(255, 0, 0, 0.35)', 1);
     }
 
     // Show the current arrow that's being drawn.
@@ -450,7 +458,7 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
       const fromY = this.state.arrowStart[1];
       const toX = this.state.arrowHover[0];
       const toY = this.state.arrowHover[1];
-      addArrow('hover', fromX, toX, fromY, toY, 'rgba(255, 0, 0, 0.35)');
+      addArrow('hover', fromX, toX, fromY, toY, 'rgba(255, 0, 0, 0.35)', 1);
     }
 
 

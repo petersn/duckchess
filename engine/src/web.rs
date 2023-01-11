@@ -18,6 +18,8 @@ use crate::{
 
 const MAX_STEPS_BEFORE_INFERENCE: usize = 40 * MAX_BATCH_SIZE;
 const WEB_TRANSPOSITION_TABLE_SIZE: usize = 1 << 20;
+// This is a memory constraint.
+const VISIT_LIMIT: u32 = 50_000;
 
 #[wasm_bindgen]
 extern "C" {
@@ -418,11 +420,14 @@ impl Engine {
   }
 
   pub fn step_until_batch(&mut self, features_array: &mut [f32]) -> usize {
+    if self.mcts.get_root_children_visit_count() >= VISIT_LIMIT {
+      return 0;
+    }
     for i in 0..MAX_STEPS_BEFORE_INFERENCE {
-      self.mcts.step();
       if self.inference_engine.has_batch() {
         break;
       }
+      self.mcts.step();
     }
     //log(&format!("In flight after stepping: {}", self.mcts.in_flight_count));
     //log(&format!(
@@ -457,13 +462,14 @@ impl Engine {
   }
 
   pub fn get_engine_output(&self) -> JsValue {
-    let (root_score, steps) = self.mcts.get_root_score();
+    //let (root_score, steps) = self.mcts.get_root_score();
+    let (white_perspective_score, white_perspective_wdl, top_moves, steps) = self.mcts.get_gui_evaluation();
     serde_wasm_bindgen::to_value(&EngineOutput {
       js_friendly_board_hash: split_u64_to_u32_pair(self.mcts.get_state().get_transposition_table_hash()),
       node_eval: NodeEval {
-        white_perspective_score: root_score,
-        white_perspective_wdl: [0.0; 3],
-        top_moves: vec![],
+        white_perspective_score,
+        white_perspective_wdl,
+        top_moves,
         steps,
       },
     }).unwrap_or_else(|e| {
@@ -613,6 +619,11 @@ pub fn move_to_uci(m: JsValue) -> String {
     panic!("Failed to deserialize move: {}", e);
   });
   m.to_uci()
+}
+
+#[wasm_bindgen]
+pub fn get_visit_limit() -> u32 {
+  VISIT_LIMIT
 }
 
 fn run_perft<const NNUE: bool, const EVAL: bool>() -> usize {

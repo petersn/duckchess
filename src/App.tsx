@@ -1,11 +1,15 @@
 import { engine } from '@tensorflow/tfjs';
 import React from 'react';
 import './App.css';
-import init, { new_game_tree, GameTree } from 'engine';
+import init, { new_game_tree, GameTree, get_visit_limit } from 'engine';
 import { AlphaBetaBenchmarkResults, createDuckChessEngine, DuckChessEngine, MessageFromEngineWorker, MessageFromSearchWorker, parseRustBoardState } from './DuckChessEngine';
 import { ChessBoard, ChessPiece, PieceKind, BOARD_MAX_SIZE, Move } from './ChessBoard';
 import { BrowserRouter as Router, Route, Link, Routes, Navigate } from 'react-router-dom';
 import { BenchmarkApp } from './BenchmarkApp';
+
+// FIXME: This is hacky.
+// For cosmetic reasons I cap the visits I show, to hide the few visits over the limit we might do.
+const VISIT_LIMIT = 50_000;
 
 // FIXME: This is a mildly hacky way to get the router location...
 function getRouterPath(): string {
@@ -68,6 +72,43 @@ function TopBar(props: { screenWidth: number, isMobile: boolean }) {
   );
 }
 
+function WinDrawLossIndicator(props: { wdl: number[] }) {
+  return (
+    <div style={{
+      width: 20,
+      height: 399,
+      backgroundColor: '#aaa',
+      overflow: 'hidden',
+      position: 'relative',
+    }}>
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: 20,
+        height: 399 * props.wdl[2],
+        backgroundColor: '#444',
+      }} />
+      <div style={{
+        position: 'absolute',
+        top: 399 * props.wdl[2],
+        left: 0,
+        width: 20,
+        height: 399 * props.wdl[1],
+        backgroundColor: '#aaa',
+      }} />
+      <div style={{
+        position: 'absolute',
+        top: 399 * (props.wdl[2] + props.wdl[1]),
+        left: 0,
+        width: 20,
+        height: 399 * props.wdl[0],
+        backgroundColor: '#eee',
+      }} />
+    </div>
+  );
+}
+
 interface Info {
   id: any;
   evaluation: {
@@ -110,6 +151,21 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
   const moveRows: MoveRow[] = [];
   let info = a;
   let moveNum = 0;
+
+  let thisNodeInfo: (Info | null)[] = [null];
+  // We walk the entire tree trying to find the current move.
+  function walk(info: Info) {
+    if (info.id.idx == cursor.idx) {
+      thisNodeInfo[0] = info;
+      return true;
+    }
+    for (const edge of info.edges) {
+      if (walk(edge[2]))
+        return true;
+    }
+    return false;
+  }
+  walk(info);
 
   function generateSmallRow(
     info: Info,
@@ -428,6 +484,25 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
   // }
 
   const marginTop = props.isMobile ? 3 : 10;
+  let nodes = 0;
+  let white_wdl = [0, 0, 0];
+  let topMoves: [Move, number][] = [];
+  if (thisNodeInfo[0] !== null) {
+    nodes = thisNodeInfo[0].evaluation.steps;
+    white_wdl = thisNodeInfo[0].evaluation.white_perspective_wdl;
+    topMoves = thisNodeInfo[0].evaluation.top_moves.slice(0, 3);
+    // Renormalize the weights across these three moves.
+    let totalWeight = 1e-6;
+    for (const move of topMoves) {
+      totalWeight += move[1];
+    }
+    for (const move of topMoves) {
+      move[1] = move[1] / totalWeight;
+    }
+  }
+  let engineStatus = thisNodeInfo[0] === null ? 'BUG' : <>
+    (Nodes: {Math.min(nodes, VISIT_LIMIT)})
+  </>;
 
   return <>
     <div style={{
@@ -469,7 +544,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         boardHash={boardHash}
         legalMoves={ser.legal_moves}
         hiddenLegalMoves={ser.legal_duck_skipping_moves}
-        topMoves={[]} //topMoves}
+        topMoves={topMoves} //topMoves}
         onMove={(move, isHidden) => {
           //if (engine !== null) {
             console.log('[snp1] move', move, isHidden);
@@ -482,6 +557,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         }}
         style={{ margin: 10 }}
       />
+      <WinDrawLossIndicator wdl={white_wdl} />
       <div style={{
         //flex: props.isMobile ? undefined : 1,
         height: props.isMobile ? undefined : BOARD_MAX_SIZE,
@@ -503,7 +579,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
             if (engine !== null) {
               engine.setRunEngine(e.target.checked);
             }
-          }} /> Run engine
+          }} /> Run engine {engineStatus}
 
           <div>
             {renderedMoveRows}

@@ -113,8 +113,8 @@ async function initWorker() {
   //model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/model-small/model.json')
   //model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/model-medium/model.json')
   //model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/run-016-model-058/model.json')
-  model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/run-016-model-220/model.json')
-  //model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/models/run-016-model-200/model.json')
+  //model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/run-016-model-220/model.json')
+  model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/models/run-016-model-200/model.json')
   postMessage({ type: 'initted' });
   // Make an 8x8 array of all nulls.
   //const fakeState = Array(8).fill(null).map(() => Array(8).fill(null));
