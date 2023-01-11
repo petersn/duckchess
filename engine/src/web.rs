@@ -36,7 +36,8 @@ pub struct TreeEdge {
   child: GameNodeId,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ts_rs::TS)]
+#[ts(export)]
 pub struct NodeEval {
   white_perspective_score: f32,
   white_perspective_wdl: [f32; 3],

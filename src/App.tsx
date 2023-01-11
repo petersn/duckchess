@@ -70,6 +70,12 @@ function TopBar(props: { screenWidth: number, isMobile: boolean }) {
 
 interface Info {
   id: any;
+  evaluation: {
+    white_perspective_score: number;
+    white_perspective_wdl: [number, number, number];
+    top_moves: [Move, number][];
+    steps: number;
+  };
   edges: [Move, string, Info][];
 }
 
@@ -91,10 +97,12 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
 
   interface MoveRowEntry {
     name: string;
+    pawn_score: number | null;
     id: any;
   }
 
   interface MoveRow {
+    pawn_score: number | null;
     moves: (MoveRowEntry | null)[];
     smallRowContent: React.ReactNode | null;
   }
@@ -116,6 +124,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
       output.push(<React.Fragment key={i}>
         {effectiveI == 0 || '('} {moveSpan({
           name: prefix + moveName,
+          pawn_score: child.evaluation.white_perspective_score,
           id: child.id,
         }, false)} {generateSmallRow(child, moveNum + 1, '', false)} {effectiveI == 0 || ')'}
       </React.Fragment>);
@@ -125,7 +134,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
 
   while (info.edges.length > 0) {
     if (moveNum % 4 === 0 ) {
-      moveRows.push({ moves: [null, null, null, null], smallRowContent: null });
+      moveRows.push({ pawn_score: info.evaluation.white_perspective_score, moves: [null, null, null, null], smallRowContent: null });
     }
     // If there are side branches then insert a little indicator for them.
     let prefix = '';
@@ -134,16 +143,18 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
       if (moveNum % 4 >= 2)
         prefix = '...';
       const smallRow: MoveRow = {
+        pawn_score: null,
         moves: [],
         smallRowContent: generateSmallRow(info, moveNum, prefix, true)
       }
       moveRows.push(smallRow);
-      moveRows.push({ moves: [null, null, null, null], smallRowContent: null });
+      moveRows.push({ pawn_score: null, moves: [null, null, null, null], smallRowContent: null });
     }
     const [move, moveName, child] = info.edges[0];
     const moveRow = moveRows[moveRows.length - 1];
     moveRow.moves[moveNum % 4] = {
       name: prefix + moveName,
+      pawn_score: child.evaluation.white_perspective_score,
       id: child.id,
     };
     info = child;
@@ -177,17 +188,21 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
       }}>
         <div className='contextMenuButton' onClick={() => {
           engine.gameTree.delete_by_id(move.id);
+          engine.sendBoardToEngine();
           setNodeContextMenu(null);
           forceUpdate();
         }}>Delete</div>
         {isFull || <div className='contextMenuButton' onClick={() => {
           engine.gameTree.promote_by_id(move.id);
+          engine.sendBoardToEngine();
           setNodeContextMenu(null);
           forceUpdate();
         }}>Promote</div>}
       </div>;
     }
   
+    const score = (4 * Math.tan(3.14 * move.pawn_score! - 1.57)).toFixed(1);
+
     return <span
       style={{
         ...moveSpanStyle,
@@ -196,6 +211,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
       }}
       onClick={() => {
         engine.gameTree.click_to_id(move.id);
+        engine.sendBoardToEngine();
         setNodeContextMenu(null);
         forceUpdate();
       }}
@@ -203,7 +219,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         e.preventDefault();
         setNodeContextMenu(move.id.idx);
       }}
-    >{move.name}{contextMenu}</span>;
+    >{score} {move.name}{contextMenu}</span>;
   }
 
   const moveHalfBoxStyle: React.CSSProperties = {
@@ -458,6 +474,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
           //if (engine !== null) {
             console.log('[snp1] move', move, isHidden);
             engine.gameTree.make_move(move, isHidden);
+            engine.sendBoardToEngine();
             forceUpdate();
             // Force a rerender.
             //engine.applyMove(move, isHidden);
@@ -469,7 +486,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         //flex: props.isMobile ? undefined : 1,
         height: props.isMobile ? undefined : BOARD_MAX_SIZE,
         minHeight: props.isMobile ? undefined : BOARD_MAX_SIZE,
-        width: props.isMobile ? '100%' : 300,
+        width: props.isMobile ? '100%' : 400,
       }}>
         <div style={{
           height: '100%',

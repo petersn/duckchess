@@ -112,12 +112,19 @@ export class DuckChessEngine {
 
   historyBack() {
     this.gameTree.history_back();
+    this.sendBoardToEngine();
     this.forceUpdateCallback();
   }
 
   historyForward() {
     this.gameTree.history_forward();
+    this.sendBoardToEngine();
     this.forceUpdateCallback();
+  }
+
+  sendBoardToEngine() {
+    const { state } = this.gameTree.get_serialized_state()[0];
+    this.engineWorker.postMessage({ type: 'setState', state });
   }
 
   setRunEngine(runEngine: boolean) {
@@ -141,7 +148,7 @@ export class DuckChessEngine {
       //case 'evaluation':
       //  const whiteWinProb = e.data.whiteWinProb;
       //  const Q = 2 * whiteWinProb - 1;
-      //  //this.evaluation = 1.11714640912 * Math.tan(1.5620688421 * Q);
+      //  //this.evaluation = 1.11714640912 * Math.tan(1.5620688421 * Q); // 4 * tan(3.14 * x - 1.57)
       //  //this.pv = e.data.pv;
       //  //this.nodes = e.data.nodes;
       //  break;
