@@ -26,6 +26,8 @@ if __name__ == "__main__":
     parser.add_argument("--steps", metavar="COUNT", type=int, default=1000, help="Training steps.")
     parser.add_argument("--minibatch-size", metavar="COUNT", type=int, default=1024, help="Minibatch size.")
     parser.add_argument("--learning-rate", metavar="LR", type=float, default=5e-5, help="Learning rate.")
+    parser.add_argument("--min-learning-rate", metavar="LR", type=float, default=0, help="Learning rate will be lowered during training, but this value is the floor.")
+    parser.add_argument("--lr-half-life", metavar="LR", type=int, default=0, help="Halve the learning rate every this many steps (don't halve at all if zero).")
     parser.add_argument("--data-file", metavar="PATH", type=str, help="Saved .npz file of features/targets.")
     parser.add_argument("--save-every", metavar="STEPS", default=0, type=int, help="Save a model every n steps.")
     parser.add_argument("--project-name", metavar="NAME", type=str, help="The project string to pass to wandb")
@@ -107,7 +109,7 @@ if __name__ == "__main__":
 
     cross_en = torch.nn.CrossEntropyLoss()
     mse_func = torch.nn.MSELoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0)
     policy_loss_ewma = EWMA()
     wdl_loss_ewma = EWMA()
     mcts_root_value_prediction_loss_ewma = EWMA()
@@ -129,6 +131,13 @@ if __name__ == "__main__":
             torch.save(optimizer.state_dict(), args.new_optim_state_path)
 
     for i in range(args.steps):
+        lr = args.learning_rate
+        if args.lr_half_life > 0:
+            lr *= 0.5 ** (i / args.lr_half_life)
+        lr = max(args.min_learning_rate, lr)
+        for g in optimizer.param_groups:
+            g['lr'] = lr
+
         optimizer.zero_grad()
         features, target_policy, target_wdl_index, target_mcts_root_value = make_batch(args.minibatch_size)
         policy_output, wdl_output, mcts_root_value_prediction = model(features)
@@ -143,6 +152,7 @@ if __name__ == "__main__":
             "wdl_loss": wdl_loss.item(),
             "mcts_root_value_prediction_loss": mcts_root_value_prediction_loss.item(),
             "grad_norm": torch.nn.utils.clip_grad_norm_(model.parameters(), 10.0),
+            "lr": lr,
         })
         optimizer.step()
         policy_loss_ewma.apply(policy_loss.item())
