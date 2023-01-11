@@ -72,37 +72,41 @@ function TopBar(props: { screenWidth: number, isMobile: boolean }) {
   );
 }
 
-function WinDrawLossIndicator(props: { wdl: number[] }) {
+function WinDrawLossIndicator(props: { isMobile: boolean, wdl: number[] }) {
+  const { isMobile } = props;
   return (
     <div style={{
-      width: 20,
-      height: 399,
+      width: isMobile ? 399 : 20,
+      height: isMobile ? 20 : 399,
       backgroundColor: '#aaa',
       overflow: 'hidden',
       position: 'relative',
     }}>
+      {/* Black wins */}
       <div style={{
         position: 'absolute',
         top: 0,
-        left: 0,
-        width: 20,
-        height: 399 * props.wdl[2],
+        left: isMobile ? 399 * (props.wdl[0] + props.wdl[1]) : 0,
+        width: isMobile ? 399 * props.wdl[2] : 20,
+        height: isMobile ? 20 : 399 * props.wdl[2],
         backgroundColor: '#444',
       }} />
+      {/* Draw */}
       <div style={{
         position: 'absolute',
-        top: 399 * props.wdl[2],
-        left: 0,
-        width: 20,
-        height: 399 * props.wdl[1],
+        top: isMobile ? 0 : 399 * props.wdl[2],
+        left: isMobile ? 399 * props.wdl[0] : 0,
+        width: isMobile ? 399 * props.wdl[1] : 20,
+        height: isMobile ? 20 : 399 * props.wdl[1],
         backgroundColor: '#aaa',
       }} />
+      {/* White wins */}
       <div style={{
         position: 'absolute',
-        top: 399 * (props.wdl[2] + props.wdl[1]),
+        top: isMobile ? 0 : 399 * (props.wdl[2] + props.wdl[1]),
         left: 0,
-        width: 20,
-        height: 399 * props.wdl[0],
+        width: isMobile ? 399 * props.wdl[0] : 20,
+        height: isMobile ? 20 : 399 * props.wdl[0],
         backgroundColor: '#eee',
       }} />
     </div>
@@ -139,6 +143,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
   interface MoveRowEntry {
     name: string;
     pawn_score: number | null;
+    steps: number;
     id: any;
   }
 
@@ -181,6 +186,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         {effectiveI == 0 || '('} {moveSpan({
           name: prefix + moveName,
           pawn_score: child.evaluation.white_perspective_score,
+          steps: child.evaluation.steps,
           id: child.id,
         }, false)} {generateSmallRow(child, moveNum + 1, '', false)} {effectiveI == 0 || ')'}
       </React.Fragment>);
@@ -211,6 +217,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
     moveRow.moves[moveNum % 4] = {
       name: prefix + moveName,
       pawn_score: child.evaluation.white_perspective_score,
+      steps: child.evaluation.steps,
       id: child.id,
     };
     info = child;
@@ -257,7 +264,8 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
       </div>;
     }
   
-    const score = (4 * Math.tan(3.14 * move.pawn_score! - 1.57)).toFixed(1);
+    const score = move.steps === 0 ? '' :
+      Math.max(-99.9, Math.min(99.9, (4 * Math.tan(3.14 * move.pawn_score! - 1.57)))).toFixed(1);
 
     return <span
       style={{
@@ -557,7 +565,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         }}
         style={{ margin: 10 }}
       />
-      <WinDrawLossIndicator wdl={white_wdl} />
+      <WinDrawLossIndicator isMobile={props.isMobile} wdl={white_wdl} />
       <div style={{
         //flex: props.isMobile ? undefined : 1,
         height: props.isMobile ? undefined : BOARD_MAX_SIZE,
@@ -567,6 +575,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         <div style={{
           height: '100%',
           maxWidth: 400,
+          maxHeight: BOARD_MAX_SIZE,
           border: '1px solid #222',
           backgroundColor: '#33333f',
           padding: 10,
@@ -581,7 +590,10 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
             }
           }} /> Run engine {engineStatus}
 
-          <div>
+          <div style={{
+            overflowY: 'scroll',
+            height: BOARD_MAX_SIZE - 40,
+          }}>
             {renderedMoveRows}
           </div>
 

@@ -9,7 +9,7 @@ use crate::inference::{
 };
 use crate::rng::Rng;
 //use crate::inference::{ModelOutputs, POLICY_LEN};
-use crate::rules::{Move, State, RepetitionState};
+use crate::rules::{Move, State, RepetitionState, GameOutcome, Player};
 
 //const EXPLORATION_ALPHA: f32 = 1.0;
 //const DUCK_EXPLORATION_ALPHA: f32 = 0.5;
@@ -74,6 +74,32 @@ impl std::str::FromStr for SearchParams {
   }
 }
 
+#[inline(always)]
+fn state_to_default_full_prec_model_outputs(state: &State) -> FullPrecisionModelOutputs {
+  let mut value = Evaluation::EVEN_EVAL;
+  let mut white_wdl = [0.0, 1.0, 0.0];
+  match state.get_outcome() {
+    None => {}
+    Some(GameOutcome::Draw) => {
+      value.is_exact = true;
+    }
+    Some(GameOutcome::Win(player)) => {
+      value.expected_score = 1.0;
+      value.perspective_player = player;
+      value.is_exact = true;
+      white_wdl = match player {
+        Player::White => [1.0, 0.0, 0.0],
+        Player::Black => [0.0, 0.0, 1.0],
+      };
+    }
+  }
+  FullPrecisionModelOutputs {
+    policy: Box::new([1.0; POLICY_LEN]),
+    value,
+    white_wdl,
+  }
+}
+
 #[derive(Clone)]
 pub struct EdgeEntry {
   node: NodeIndex,
@@ -109,11 +135,7 @@ impl MctsNode {
     state.move_gen::<false>(&mut moves);
     // FIXME: in terminal positions I need to make up a correct WDL value.
     let outputs = ModelOutputs::quantize_from(
-      FullPrecisionModelOutputs {
-        policy: Box::new([1.0; POLICY_LEN]),
-        value:  Evaluation::from_terminal_state(&state).unwrap_or(Evaluation::EVEN_EVAL),
-        white_wdl: [0.0, 1.0, 0.0],
-      },
+      state_to_default_full_prec_model_outputs(&state),
       &moves,
     );
     //outputs.renormalize(&moves);

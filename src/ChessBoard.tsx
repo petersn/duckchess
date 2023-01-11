@@ -394,7 +394,7 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
       toX: number,
       fromY: number,
       toY: number,
-      color: string,
+      colorPrefix: string,
       weight: number,
     ) {
       let dx = toX - fromX;
@@ -404,9 +404,12 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
       dy /= length;
       const endX = toX * 50 + 25 - 10 * dx;
       const endY = toY * 50 + 25 - 10 * dy;
-      const w = 4 * weight;
-      const headW = 7 * weight;
-      const headL = 18 * weight;
+
+      const sizing = 1.5 * Math.max(0.5, Math.pow(weight, 0.5));
+      const opacity = 0.5 * (0.25 + 0.75 * weight);
+      const w = 4 * sizing;
+      const headW = 7 * sizing;
+      const headL = 18 * sizing;
       let d = `M ${fromX * 50 + 25 - w * dy} ${fromY * 50 + 25 + w * dx} L ${endX - w * dy} ${endY + w * dx}`;
       d += ` L ${endX + (w + headW) * dy} ${endY - (w + headW) * dx} L ${endX + headL * dx} ${endY + headL * dy}`;
       d += ` L ${endX - (w + headW) * dy} ${endY + (w + headW) * dx} L ${endX + w * dy} ${endY - w * dx}`;
@@ -417,7 +420,7 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
         d={d}
         //stroke="rgba(0, 0, 255, 0.35)"
         strokeWidth="5"
-        fill={color}
+        fill={colorPrefix + opacity + ')'}
       />;
       svgElements.push(arrow);
     }
@@ -443,13 +446,13 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
         svgElements.push(arrow);
         continue;
       }
-      addArrow('move', fromX, toX, fromY, toY, 'rgba(0, 0, 255, 0.35)', 0.6 + weight);
+      addArrow('move', fromX, toX, fromY, toY, 'rgba(0, 0, 255,', weight);
     }
 
     // Show all of the existing arrows.
     for (const arrow of this.state.userDrawnArrows) {
       const [fromX, fromY, toX, toY] = arrow;
-      addArrow('', fromX, toX, fromY, toY, 'rgba(255, 0, 0, 0.35)', 1);
+      addArrow('', fromX, toX, fromY, toY, 'rgba(255, 0, 0,', 0.7);
     }
 
     // Show the current arrow that's being drawn.
@@ -458,7 +461,7 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
       const fromY = this.state.arrowStart[1];
       const toX = this.state.arrowHover[0];
       const toY = this.state.arrowHover[1];
-      addArrow('hover', fromX, toX, fromY, toY, 'rgba(255, 0, 0, 0.35)', 1);
+      addArrow('hover', fromX, toX, fromY, toY, 'rgba(255, 0, 0,', 0.7);
     }
 
 
