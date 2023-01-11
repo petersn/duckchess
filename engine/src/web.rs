@@ -1,4 +1,5 @@
 use std::arch::wasm32::*;
+use std::collections::HashMap;
 
 use js_sys::{Array, Atomics, Int32Array, SharedArrayBuffer, Uint8Array};
 use wasm_bindgen::prelude::*;
@@ -10,7 +11,7 @@ use crate::inference_web::MAX_BATCH_SIZE;
 use crate::mcts::{PendingPath, SearchParams};
 use crate::{
   inference, inference_web, mcts,
-  rules::{Move, Player},
+  rules::{Move, Player, State},
   search,
   rules,
 };
@@ -35,11 +36,19 @@ pub struct TreeEdge {
   child: GameNodeId,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct NodeEval {
+  white_perspective_score: f32,
   white_perspective_wdl: [f32; 3],
   top_moves: Vec<(Move, f32)>,
-  steps: usize,
+  steps: u32,
+}
+
+#[derive(Serialize, Deserialize)]
+#[wasm_bindgen]
+pub struct EngineOutput {
+  js_friendly_board_hash: (u32, u32),
+  node_eval: NodeEval,
 }
 
 #[derive(Serialize)]
@@ -72,6 +81,7 @@ impl GameNode {
       legal_duck_skipping_moves,
       outgoing_edges: Vec::new(),
       evaluation: NodeEval {
+        white_perspective_score: 0.5,
         white_perspective_wdl: [0.0; 3],
         top_moves: vec![],
         steps: 0,
@@ -83,8 +93,17 @@ impl GameNode {
 #[wasm_bindgen]
 pub struct GameTree {
   nodes: SlotMap<GameNodeId, GameNode>,
+  state_to_id: HashMap<u64, GameNodeId>,
   cursor: GameNodeId,
   root: GameNodeId,
+}
+
+fn split_u64_to_u32_pair(x: u64) -> (u32, u32) {
+  ((x >> 32) as u32, x as u32)
+}
+
+fn combine_u32_pair_to_u64(x: (u32, u32)) -> u64 {
+  ((x.0 as u64) << 32) | (x.1 as u64)
 }
 
 #[wasm_bindgen]
@@ -92,6 +111,7 @@ impl GameTree {
   pub fn new() -> Self {
     let mut gt = Self {
       nodes: SlotMap::with_key(),
+      state_to_id: HashMap::new(),
       cursor: GameNodeId::default(),
       root: GameNodeId::default(),
     };
@@ -101,7 +121,10 @@ impl GameTree {
   }
 
   fn new_node(&mut self, state: rules::State, parent: Option<GameNodeId>) -> GameNodeId {
-    self.nodes.insert_with_key(|id| GameNode::new(state, parent))
+    let hash = state.get_transposition_table_hash();
+    let id = self.nodes.insert_with_key(|id| GameNode::new(state, parent));
+    self.state_to_id.insert(hash, id);
+    id
   }
 
   fn inner_make_move(&mut self, m: Move) -> bool {
@@ -176,7 +199,9 @@ impl GameTree {
     // If our cursor now points to a deleted node, move it to the parent.
     if !self.nodes.contains_key(self.cursor) {
       self.cursor = parent;
-    }    
+    }
+    // Garbage collect state_to_id.
+    self.state_to_id.retain(|_, v| self.nodes.contains_key(*v));
     true
   }
 
@@ -208,9 +233,23 @@ impl GameTree {
     have_node
   }
 
-  pub fn set_engine_state(&mut self, engine: &mut Engine) {
-    // FIXME: This is what I need to implement.
-    
+  pub fn apply_engine_output(&mut self, engine_output: JsValue) {
+    let engine_output: EngineOutput = serde_wasm_bindgen::from_value(engine_output).unwrap_or_else(|e| {
+      log(&format!("Failed to deserialize engine output: {}", e));
+      panic!("Failed to deserialize engine output: {}", e);
+    });
+    let board_hash = combine_u32_pair_to_u64(engine_output.js_friendly_board_hash);
+    match self.state_to_id.get(&board_hash) {
+      Some(id) => {
+        let tree_node_eval = &mut self.nodes[*id].evaluation;
+        if engine_output.node_eval.steps > tree_node_eval.steps {
+          *tree_node_eval = engine_output.node_eval;
+        }
+      },
+      None => {
+        log(&format!("No node for board hash {}", board_hash));
+      }
+    }
   }
 
   /// Traverses to the parent.
@@ -233,33 +272,34 @@ impl GameTree {
     }
   }
 
-  fn delete_subtree(&mut self, node_id: GameNodeId) -> Option<()> {
-    // Remove the node from the slotmap.
-    let node = self.nodes.remove(node_id)?;
-    // If we have a parent node, remove the edge to this node.
-    if let Some(parent) = node.parent {
-      let parent_node = &mut self.nodes[parent];
-      parent_node.outgoing_edges.retain(|edge| edge.child != node_id);
-    }
-    // Delete all children.
-    for edge in node.outgoing_edges {
-      self.delete_subtree(edge.child);
-    }
-    Some(())
-  }
+  // fn delete_subtree(&mut self, node_id: GameNodeId) -> Option<()> {
+  //   // Remove the node from the slotmap.
+  //   let node = self.nodes.remove(node_id)?;
+  //   // If we have a parent node, remove the edge to this node.
+  //   if let Some(parent) = node.parent {
+  //     let parent_node = &mut self.nodes[parent];
+  //     parent_node.outgoing_edges.retain(|edge| edge.child != node_id);
+  //   }
+  //   // Delete all children.
+  //   for edge in node.outgoing_edges {
+  //     self.delete_subtree(edge.child);
+  //   }
+  //   Some(())
+  // }
 
   pub fn get_serialized_state(&self) -> JsValue {
     // Serialize the current node.
     let node = &self.nodes[self.cursor];
 
     #[derive(Serialize)]
-    pub struct Info {
+    pub struct Info<'a> {
       pub id: GameNodeId,
-      pub edges: Vec<(Move, String, Info)>,
+      pub evaluation: &'a NodeEval,
+      pub edges: Vec<(Move, String, Info<'a>)>,
     }
 
     // Serialize the entire tree of moves and IDs.
-    fn make_tree(nodes: &SlotMap<GameNodeId, GameNode>, node_id: GameNodeId) -> Info {
+    fn make_tree<'a>(nodes: &'a SlotMap<GameNodeId, GameNode>, node_id: GameNodeId) -> Info<'a> {
       let node = &nodes[node_id];
       let mut edges = Vec::new();
       for edge in &node.outgoing_edges {
@@ -271,6 +311,7 @@ impl GameTree {
       }
       Info {
         id: node_id,
+        evaluation: &node.evaluation,
         edges,
       }
     }
@@ -310,12 +351,11 @@ impl Engine {
   }
 
   pub fn set_state(&mut self, state: JsValue) {
-    panic!("Not implemented");
-    //let new_state = serde_wasm_bindgen::from_value(state).unwrap_or_else(|e| {
-    //  log(&format!("Failed to deserialize state: {}", e));
-    //  panic!("Failed to deserialize state: {}", e);
-    //});
-    //self.mcts.set_state(new_state);
+    let new_state = serde_wasm_bindgen::from_value(state).unwrap_or_else(|e| {
+      log(&format!("Failed to deserialize state: {}", e));
+      panic!("Failed to deserialize state: {}", e);
+    });
+    self.mcts.reroot_tree(&new_state);
   }
 
   pub fn get_moves(&self) -> JsValue {
@@ -415,6 +455,22 @@ impl Engine {
     })
   }
 
+  pub fn get_engine_output(&self) -> JsValue {
+    let (root_score, steps) = self.mcts.get_root_score();
+    serde_wasm_bindgen::to_value(&EngineOutput {
+      js_friendly_board_hash: split_u64_to_u32_pair(self.mcts.get_state().get_transposition_table_hash()),
+      node_eval: NodeEval {
+        white_perspective_score: root_score,
+        white_perspective_wdl: [0.0; 3],
+        top_moves: vec![],
+        steps,
+      },
+    }).unwrap_or_else(|e| {
+      log(&format!("Failed to serialize evaluation: {}", e));
+      JsValue::NULL
+    })
+  }
+
   //pub fn step(&mut self) {
   //  log(&format!("MCTS step done"));
   //  self.mcts.step().await;
@@ -437,7 +493,9 @@ pub fn new_engine(seed: u64) -> Engine {
   log(&format!("Created (1) inference engine"));
   Engine {
     inference_engine: tfjs_inference_engine,
-    mcts:             mcts::Mcts::new(0, seed, tfjs_inference_engine, SearchParams::default()),
+    mcts:             mcts::Mcts::new(
+      0, seed, tfjs_inference_engine, SearchParams::default(), State::starting_state(),
+    ),
     prefix_moves:     Vec::new(),
     //input_array: Box::new([0.0; MAX_BATCH_SIZE * FEATURES_SIZE]),
     //policy_array: Box::new([0.0; MAX_BATCH_SIZE * POLICY_LEN]),
@@ -676,3 +734,33 @@ pub fn test_shared_mem(shared_mem: Int32Array, my_value: i32) {
   shared_mem[0].store(my_value, std::sync::atomic::Ordering::SeqCst);
   */
 }
+
+
+/*
+  pub fn set_engine_state(&mut self, engine: &mut Engine, which_node: JsValue) {
+    let which_node: GameNodeId = serde_wasm_bindgen::from_value(which_node).unwrap_or_else(|e| {
+      log(&format!("Failed to deserialize node id: {}", e));
+      panic!("Failed to deserialize node id: {}", e);
+    });
+    let state = &self.nodes[which_node].state;
+    engine.mcts.reroot_tree(state);
+    // // We find the sequence of moves that leads to the cursor from the starting position.
+    // let mut moves = Vec::new();
+    // let mut current = self.cursor;
+    // while let Some(parent) = self.nodes[current].parent {
+    //   let parent_node = &self.nodes[parent];
+    //   let our_index = parent_node.outgoing_edges.iter().position(|edge| edge.child == current).unwrap();
+    //   moves.push(parent_node.outgoing_edges[our_index].m);
+    //   current = parent;
+    // }
+    // moves.reverse();
+    // // We try to match up these moves with engine.prefix_moves.
+    // let mut i = 0;
+    // while i < moves.len() && i < engine.prefix_moves.len() {
+    //   if moves[i] != engine.prefix_moves[i] {
+    //     break;
+    //   }
+    //   i += 1;
+    // }
+  }
+*/

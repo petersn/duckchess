@@ -6,6 +6,7 @@ use clap::Parser;
 use engine::inference::InferenceEngine;
 use engine::inference_tensorrt::TensorRTEngine;
 use engine::mcts::{Mcts, PendingPath, SearchParams};
+use engine::rules::State;
 use tokio::sync::Mutex;
 
 const GAME_LEN_LIMIT: usize = 800;
@@ -180,12 +181,14 @@ async fn main() {
           seed1,
           inference_engine1,
           search_params1.clone(),
+          State::starting_state(),
         );
         let mcts2 = Mcts::new(
           2 * task_id + 1,
           seed2,
           inference_engine2,
           search_params2.clone(),
+          State::starting_state(),
         );
         let (white_engine_name, black_engine_name) = match engine1_is_white {
           true => (model1_dir, model2_dir),

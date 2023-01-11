@@ -13,7 +13,7 @@ let runEngine: boolean = false;
 function sendBoardState() {
   //console.log(JSON.stringify(engine.get_state()), JSON.stringify(engine.get_moves()));
   const [moves, nextMoves] = engine.get_moves();
-  postMessage({ type: 'board', board: engine.get_state(), moves, nextMoves });
+  //postMessage({ type: 'board', board: engine.get_state(), moves, nextMoves });
   //const board = {"pawns":[[0,0,0,0,0,0,255,0],[0,255,0,0,0,0,0,0]],"knights":[[0,0,0,0,0,0,0,66],[66,0,0,0,0,0,0,0]],"bishops":[[0,0,0,0,0,0,0,36],[36,0,0,0,0,0,0,0]],"rooks":[[0,0,0,0,0,0,0,129],[129,0,0,0,0,0,0,0]],"queens":[[0,0,0,0,0,0,0,8],[8,0,0,0,0,0,0,0]],"kings":[[0,0,0,0,0,0,0,16],[16,0,0,0,0,0,0,0]],"ducks":[0,0,0,0,0,0,0,0],"enPassant":[0,0,0,0,0,0,0,0],"castlingRights":[{"kingSide":true,"queenSide":true},{"kingSide":true,"queenSide":true}],"turn":"white","isDuckMove":false,"moveHistory":[null,null,null,null],"zobrist":0};
   //const moves = [{"from":8,"to":16},{"from":9,"to":17},{"from":10,"to":18},{"from":11,"to":19},{"from":12,"to":20},{"from":13,"to":21},{"from":14,"to":22},{"from":15,"to":23},{"from":8,"to":24},{"from":9,"to":25},{"from":10,"to":26},{"from":11,"to":27},{"from":12,"to":28},{"from":13,"to":29},{"from":14,"to":30},{"from":15,"to":31},{"from":1,"to":16},{"from":1,"to":18},{"from":6,"to":21},{"from":6,"to":23}];
   //postMessage({ type: 'board', board, moves });
@@ -55,8 +55,12 @@ function workLoop() {
     inp.dispose();
     policy.dispose();
     wdl.dispose();
-    const [pv, whiteWinProb, nodes] = engine.get_principal_variation();
-    postMessage({ type: 'evaluation', whiteWinProb, pv, nodes });
+
+    const engineOutput = engine.get_engine_output();
+    postMessage({ type: 'engineOutput', engineOutput });
+
+    //const [pv, whiteWinProb, nodes] = engine.get_principal_variation();
+    //postMessage({ type: 'evaluation', whiteWinProb, pv, nodes });
     // FIXME: Why do I need as any here?
     //await (engine as any).step(array);
   } finally {
@@ -114,7 +118,7 @@ async function initWorker() {
   // Make an 8x8 array of all nulls.
   //const fakeState = Array(8).fill(null).map(() => Array(8).fill(null));
   //postMessage({ type: 'board', board: fakeState, moves: [] });
-  sendBoardState();
+  //sendBoardState();
   workLoop();
 
   //// Create a search worker.
@@ -129,11 +133,14 @@ onmessage = function(e: MessageEvent<MessageToEngineWorker>) {
     case 'init':
       initWorker();
       break;
-    case 'applyMove':
-      console.log('Applying move', e.data.move, 'isHidden', e.data.isHidden);
-      engine.apply_move(e.data.move, e.data.isHidden);
-      sendBoardState();
+    case 'setState':
+      engine.set_state(e.data.state);
       break;
+    //case 'applyMove':
+    //  console.log('Applying move', e.data.move, 'isHidden', e.data.isHidden);
+    //  engine.apply_move(e.data.move, e.data.isHidden);
+    //  sendBoardState();
+    //  break;
     case 'setRunEngine':
       runEngine = e.data.runEngine;
       break;
