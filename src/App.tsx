@@ -11,31 +11,7 @@ import { BenchmarkApp } from './BenchmarkApp';
 // For cosmetic reasons I cap the visits I show, to hide the few visits over the limit we might do.
 const VISIT_LIMIT = 50_000;
 
-const DEFAULT_PGN4 = `
-[GameNr "34193208"]
-[TimeControl "5+4"]
-[Variant "FFA"]
-[RuleVariants "DuckChess EnPassant Play4Mate Stalemate=win"]
-[StartFen4 "2PC"]
-[White "Iceeys"]
-[WhiteElo "1543"]
-[Black "I_prefer_Go"]
-[BlackElo "1490"]
-[Result "1-0"]
-[Termination "Black resigned • 1-0"]
-[Site "www.chess.com/variants/duck-chess/game/34193208"]
-[Date "Wed Jan 11 2023 20:38:38 GMT+0000 (Coordinated Universal Time)"]
-[CurrentMove "16"]
-
-1. h5-h7Θ-g9 .. h10-h8Θg9-g6
-2. Qg4-k8Θg6-h10 .. j10-j9Θh10-i8
-3. Qk8-i6Θi8-h10 .. Ne11-f9Θh10-h5
-4. g5-g7Θh5-h10 .. g10-g9Θh10-i7
-5. Bi4-f7Θi7-g8 .. Nf9xg7Θg8-h9
-6. Qi6-g4Θh9-g10 .. Nj11-i9Θg10-g5
-7. f5-f6Θg5-i8 .. Bi11-k9Θi8-g5
-8. P .. R
-`;
+const DEFAULT_PGN4 = ``;
 
 // FIXME: This is a mildly hacky way to get the router location...
 function getRouterPath(): string {
