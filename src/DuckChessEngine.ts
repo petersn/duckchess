@@ -4,12 +4,8 @@ import { PieceKind } from "./ChessBoard";
 type BasicMessages = {
   type: 'init';
 } | {
-  type: 'applyMove';
-  move: any;
-  isHidden: boolean;
-} | {
-  type: 'historyJump';
-  index: number;
+  type: 'setState';
+  state: any;
 } | {
   type: 'setRunEngine';
   runEngine: boolean;
@@ -20,18 +16,8 @@ export type MessageToEngineWorker = BasicMessages;
 export type MessageFromEngineWorker = {
   type: 'initted';
 } | {
-  type: 'board';
-  board: any;
-  moves: any[];
-  nextMoves: any[];
-} | {
-  type: 'evaluation';
-  whiteWinProb: number;
-  nodes: number;
-  pv: {
-    from: number;
-    to: number;
-  }[];
+  type: 'engineOutput';
+  engineOutput: any;
 };
 
 export type MessageToSearchWorker = BasicMessages | {
@@ -148,13 +134,17 @@ export class DuckChessEngine {
       case 'initted':
         this.setInitFlag(0);
         break;
-      case 'evaluation':
-        const whiteWinProb = e.data.whiteWinProb;
-        const Q = 2 * whiteWinProb - 1;
-        //this.evaluation = 1.11714640912 * Math.tan(1.5620688421 * Q);
-        //this.pv = e.data.pv;
-        //this.nodes = e.data.nodes;
+      case 'engineOutput':
+        const engineOutput = e.data.engineOutput;
+        this.gameTree.apply_engine_output(engineOutput);
         break;
+      //case 'evaluation':
+      //  const whiteWinProb = e.data.whiteWinProb;
+      //  const Q = 2 * whiteWinProb - 1;
+      //  //this.evaluation = 1.11714640912 * Math.tan(1.5620688421 * Q);
+      //  //this.pv = e.data.pv;
+      //  //this.nodes = e.data.nodes;
+      //  break;
     }
     this.forceUpdateCallback();
   }

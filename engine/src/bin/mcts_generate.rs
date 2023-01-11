@@ -4,6 +4,7 @@ use engine::inference_tensorrt::TensorRTEngine;
 use engine::mcts::Mcts;
 use engine::mcts::PendingPath;
 use engine::mcts::SearchParams;
+use engine::rules::State;
 use tokio::io::AsyncBufReadExt;
 use tokio::sync::Mutex;
 
@@ -104,7 +105,7 @@ async fn main() {
       use std::io::Write;
       loop {
         let seed = rand::random::<u64>();
-        let mut mcts = Mcts::new(task_id, seed, inference_engine, search_params.clone());
+        let mut mcts = Mcts::new(task_id, seed, inference_engine, search_params.clone(), State::starting_state());
         // This array tracks the moves that actually occur in the game.
         let mut moves: Vec<engine::rules::Move> = vec![];
         // This array gives a few random example serialized states.

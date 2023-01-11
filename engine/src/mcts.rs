@@ -353,6 +353,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     seed: u64,
     inference_engine: &'a Infer,
     search_params: SearchParams,
+    state: State,
   ) -> Mcts<Infer> {
     let mut this = Self {
       id,
@@ -367,7 +368,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       root_repetition_state: RepetitionState::new(),
       mark_state_counter: 0,
     };
-    this.root = this.add_child_and_adjust_scores(vec![], None, State::starting_state(), 0);
+    this.root = this.add_child_and_adjust_scores(vec![], None, state, 0);
     this
   }
 
@@ -837,6 +838,12 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       self.nodes[*node_index].gc_state == mark_state
     });
     self.nodes.retain(|_, node| node.gc_state == mark_state);
+  }
+
+  pub fn reroot_tree(&mut self, new_state: &State) {
+    self.transposition_table.clear();
+    self.nodes.clear();
+    self.root = self.add_child_and_adjust_scores(vec![], None, new_state.clone(), new_state.plies);
   }
 
   pub fn print_tree_root(&self) {
