@@ -156,7 +156,7 @@ impl MctsNode {
     self.visits += 1;
     self.total_score += new_score; //eval.expected_score_for_player(self.state.turn);
     // FIXME: I need to figure out what to do here.
-    // If 
+    // If
   }
 
   fn total_action_score(
@@ -341,6 +341,7 @@ pub struct Mcts<'a, Infer: InferenceEngine<(usize, PendingPath)>> {
   pub nodes:               SlotMap<NodeIndex, MctsNode>,
   pub transposition_table: HashMap<(u64, u32), NodeIndex>,
   pub root_repetition_state:  RepetitionState,
+  pub mark_state_counter:  u32,
   //pending_paths:       SlotMap<PendingIndex, PendingPath>,
 }
 
@@ -364,6 +365,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       transposition_table: HashMap::new(),
       //pending_paths: SlotMap::with_key(),
       root_repetition_state: RepetitionState::new(),
+      mark_state_counter: 0,
     };
     this.root = this.add_child_and_adjust_scores(vec![], None, State::starting_state(), 0);
     this
@@ -808,9 +810,18 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         self.add_child_and_adjust_scores(vec![], None, new_state, root_node.depth + 1)
       }
     };
-    // Next we garbage collect.
+    // FIXME: This policy of garbage collection is pretty arbitrary.
+    if self.nodes.len() > 3_000 {
+      self.garbage_collect();
+    }
+    //// FIXME: What do I do about pending paths?
+    //assert!(self.pending_paths.is_empty());
+  }
+
+  pub fn garbage_collect(&mut self) {
     // This `mark_state` value need only be unique.
-    let mark_state = 100 + self.nodes[self.root].depth;
+    self.mark_state_counter += 1;
+    let mark_state = self.mark_state_counter;
     let mut stack = vec![self.root];
     while let Some(node_index) = stack.pop() {
       let node = &mut self.nodes[node_index];
@@ -826,9 +837,6 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       self.nodes[*node_index].gc_state == mark_state
     });
     self.nodes.retain(|_, node| node.gc_state == mark_state);
-    //self.transposition_table.clear();
-    //// FIXME: What do I do about pending paths?
-    //assert!(self.pending_paths.is_empty());
   }
 
   pub fn print_tree_root(&self) {
