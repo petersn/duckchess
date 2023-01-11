@@ -11,6 +11,32 @@ import { BenchmarkApp } from './BenchmarkApp';
 // For cosmetic reasons I cap the visits I show, to hide the few visits over the limit we might do.
 const VISIT_LIMIT = 50_000;
 
+const DEFAULT_PGN4 = `
+[GameNr "34193208"]
+[TimeControl "5+4"]
+[Variant "FFA"]
+[RuleVariants "DuckChess EnPassant Play4Mate Stalemate=win"]
+[StartFen4 "2PC"]
+[White "Iceeys"]
+[WhiteElo "1543"]
+[Black "I_prefer_Go"]
+[BlackElo "1490"]
+[Result "1-0"]
+[Termination "Black resigned • 1-0"]
+[Site "www.chess.com/variants/duck-chess/game/34193208"]
+[Date "Wed Jan 11 2023 20:38:38 GMT+0000 (Coordinated Universal Time)"]
+[CurrentMove "16"]
+
+1. h5-h7Θ-g9 .. h10-h8Θg9-g6
+2. Qg4-k8Θg6-h10 .. j10-j9Θh10-i8
+3. Qk8-i6Θi8-h10 .. Ne11-f9Θh10-h5
+4. g5-g7Θh5-h10 .. g10-g9Θh10-i7
+5. Bi4-f7Θi7-g8 .. Nf9xg7Θg8-h9
+6. Qi6-g4Θh9-g10 .. Nj11-i9Θg10-g5
+7. f5-f6Θg5-i8 .. Bi11-k9Θi8-g5
+8. P .. R
+`;
+
 // FIXME: This is a mildly hacky way to get the router location...
 function getRouterPath(): string {
   let routerPath = window.location.pathname;
@@ -72,7 +98,16 @@ function TopBar(props: { screenWidth: number, isMobile: boolean }) {
   );
 }
 
-function WinDrawLossIndicator(props: { isMobile: boolean, wdl: number[] }) {
+function WinDrawLossIndicator(props: { isMobile: boolean, boardFlipped: boolean, wdl: number[] }) {
+  let firstColor = '#444';
+  let lastColor = '#eee';
+  let wdl = props.wdl;
+  if (props.boardFlipped) {
+    firstColor = '#eee';
+    lastColor = '#444';
+    wdl = [wdl[2], wdl[1], wdl[0]];
+  }
+
   const { isMobile } = props;
   return (
     <div style={{
@@ -86,28 +121,28 @@ function WinDrawLossIndicator(props: { isMobile: boolean, wdl: number[] }) {
       <div style={{
         position: 'absolute',
         top: 0,
-        left: isMobile ? 399 * (props.wdl[0] + props.wdl[1]) : 0,
-        width: isMobile ? 399 * props.wdl[2] : 20,
-        height: isMobile ? 20 : 399 * props.wdl[2],
-        backgroundColor: '#444',
+        left: isMobile ? 399 * (wdl[0] + wdl[1]) : 0,
+        width: isMobile ? 399 * wdl[2] : 20,
+        height: isMobile ? 20 : 399 * wdl[2],
+        backgroundColor: firstColor,
       }} />
       {/* Draw */}
       <div style={{
         position: 'absolute',
-        top: isMobile ? 0 : 399 * props.wdl[2],
-        left: isMobile ? 399 * props.wdl[0] : 0,
-        width: isMobile ? 399 * props.wdl[1] : 20,
-        height: isMobile ? 20 : 399 * props.wdl[1],
+        top: isMobile ? 0 : 399 * wdl[2],
+        left: isMobile ? 399 * wdl[0] : 0,
+        width: isMobile ? 399 * wdl[1] : 20,
+        height: isMobile ? 20 : 399 * wdl[1],
         backgroundColor: '#aaa',
       }} />
       {/* White wins */}
       <div style={{
         position: 'absolute',
-        top: isMobile ? 0 : 399 * (props.wdl[2] + props.wdl[1]),
+        top: isMobile ? 0 : 399 * (wdl[2] + wdl[1]),
         left: 0,
-        width: isMobile ? 399 * props.wdl[0] : 20,
-        height: isMobile ? 20 : 399 * props.wdl[0],
-        backgroundColor: '#eee',
+        width: isMobile ? 399 * wdl[0] : 20,
+        height: isMobile ? 20 : 399 * wdl[0],
+        backgroundColor: lastColor,
       }} />
     </div>
   );
@@ -124,12 +159,15 @@ interface Info {
   edges: [Move, string, Info][];
 }
 
+let globalBoardFlipped = false;
+
 function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
   const { engine } = props;
   //const [selectedSquare, setSelectedSquare] = React.useState<[number, number] | null>(null);
   //const [pair, setPair] = React.useState<any>(null);
   //const [duckFen, setDuckFen] = React.useState<string>('');
-  //const [pgn, setPgn] = React.useState<string>('');
+  const [pgn, setPgn] = React.useState<string>(DEFAULT_PGN4);
+  const [boardFlipped, setBoardFlipped] = React.useState<boolean>(globalBoardFlipped);
   const [runEngine, setRunEngine] = React.useState<boolean>(false);
   const [nodeContextMenu, setNodeContextMenu] = React.useState<number | null>(null);
 
@@ -348,6 +386,10 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
       } else if (event.key === 'ArrowRight') {
         engine.historyForward();
         setNodeContextMenu(null);
+      } else if (event.key === 'f') {
+        globalBoardFlipped = !globalBoardFlipped;
+        setBoardFlipped(globalBoardFlipped);
+        setNodeContextMenu(null);
       }
     };
     const globalClick = (event: MouseEvent) => {
@@ -548,6 +590,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         isMobile={props.isMobile}
         isInitialDuckPlacementMove={ser.state.plies === 1}
         highlightDuck={ser.state.isDuckMove}
+        boardFlipped={boardFlipped}
         board={parseRustBoardState(ser.state)}
         boardHash={boardHash}
         legalMoves={ser.legal_moves}
@@ -565,7 +608,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         }}
         style={{ margin: 10 }}
       />
-      <WinDrawLossIndicator isMobile={props.isMobile} wdl={white_wdl} />
+      <WinDrawLossIndicator isMobile={props.isMobile} boardFlipped={boardFlipped} wdl={white_wdl} />
       <div style={{
         //flex: props.isMobile ? undefined : 1,
         height: props.isMobile ? undefined : BOARD_MAX_SIZE,
@@ -608,24 +651,38 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
       <div style={{ flex: 1 }} />
     </div>
 
-    {/*<div style={{ width: '100%', marginTop, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <input type="text" value={duckFen} onChange={e => setDuckFen(e.target.value)} style={{
+    <div style={{ width: '100%', marginTop, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      {/*<input type="text" value={duckFen} onChange={e => setDuckFen(e.target.value)} style={{
         //width: 400,
         width: '96%',
         maxWidth: 400,
         backgroundColor: '#445',
         color: '#eee',
-      }} />
-      <textarea value={pgn} onChange={e => setPgn(e.target.value)} style={{
-        marginTop: 5,
-        //width: 400,
-        width: '96%',
-        maxWidth: 400,
-        height: 100,
-        backgroundColor: '#445',
-        color: '#eee',
-      }} placeholder="Paste PGN here..." />
-    </div>*/}
+      }} />*/}
+      <textarea
+        value={pgn}
+        onChange={e => setPgn(e.target.value)}
+        style={{
+          marginTop: 5,
+          //width: 400,
+          width: '96%',
+          maxWidth: 400,
+          height: 100,
+          backgroundColor: '#445',
+          color: '#eee',
+        }}
+        placeholder="Paste chess.com PGN here..."
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (engine !== null) {
+              engine.setPgn4(pgn);
+            }
+          }
+        }}
+      />
+    </div>
 
     <div style={{ marginTop, textAlign: 'center', width: '95vw' }}>
       Created by Peter Schmidt-Nielsen

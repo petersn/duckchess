@@ -59,6 +59,7 @@ export interface ChessBoardProps {
   isMobile: boolean;
   isInitialDuckPlacementMove: boolean;
   highlightDuck: boolean;
+  boardFlipped: boolean;
   board: PieceKind[][];
   boardHash: number;
   legalMoves: Move[];
@@ -286,11 +287,13 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
             {8 - y}
           </text>;
         }
+        const maybeFlippedX = this.props.boardFlipped ? 7 - x : x;
+        const maybeFlippedY = this.props.boardFlipped ? 7 - y : y;
         svgElements.push(
           <rect
             key={x + y * 8}
-            x={x * SQ}
-            y={y * SQ}
+            x={maybeFlippedX * SQ}
+            y={maybeFlippedY * SQ}
             width={SQ}
             height={SQ}
             fill={backgroundColor}
@@ -361,13 +364,15 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
         if (piece === null)
           continue;
         const path = getChessPieceImagePath(piece);
+        const maybeFlippedX = this.props.boardFlipped ? 7 - x : x;
+        const maybeFlippedY = this.props.boardFlipped ? 7 - y : y;
         if (piece === 'duck' && this.props.highlightDuck) {
           svgElements.push(
             <circle
               style={{ userSelect: 'none', pointerEvents: 'none' }}
               key={x + y * 8 + 64 + 64}
-              cx={x * SQ + 0.5 * SQ}
-              cy={y * SQ + 0.5 * SQ}
+              cx={maybeFlippedX * SQ + 0.5 * SQ}
+              cy={maybeFlippedY * SQ + 0.5 * SQ}
               r={0.5 * SQ}
               fill="yellow"
               filter="url(#glow)"
@@ -378,8 +383,8 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
           <image
             style={{ userSelect: 'none', pointerEvents: 'none' }}
             key={x + y * 8 + 64}
-            x={x * SQ}
-            y={y * SQ}
+            x={maybeFlippedX * SQ}
+            y={maybeFlippedY * SQ}
             width={SQ}
             height={SQ}
             href={path}
@@ -433,11 +438,15 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
       const fromY = 7 - Math.floor(move.from / 8);
       const toX = move.to % 8;
       const toY = 7 - Math.floor(move.to / 8);
+      const mfFromX = this.props.boardFlipped ? 7 - fromX : fromX;
+      const mfFromY = this.props.boardFlipped ? 7 - fromY : fromY;
+      const mfToX = this.props.boardFlipped ? 7 - toX : toX;
+      const mfToY = this.props.boardFlipped ? 7 - toY : toY;
       if (move.from === 64 || move.from === move.to) {
         const arrow = <circle
           style={{ userSelect: 'none', pointerEvents: 'none' }}
           key={`arrow-${move.from}-${move.to}`}
-          cx={toX * 50 + 25} cy={toY * 50 + 25}
+          cx={mfToX * 50 + 25} cy={mfToY * 50 + 25}
           r={13 * (1 + 0.5 * weight)}
           //stroke="rgba(0, 0, 255, 0.35)"
           strokeWidth="5"
@@ -446,13 +455,17 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
         svgElements.push(arrow);
         continue;
       }
-      addArrow('move', fromX, toX, fromY, toY, 'rgba(0, 0, 255,', weight);
+      addArrow('move', mfFromX, mfToX, mfFromY, mfToY, 'rgba(0, 0, 255,', weight);
     }
 
     // Show all of the existing arrows.
     for (const arrow of this.state.userDrawnArrows) {
       const [fromX, fromY, toX, toY] = arrow;
-      addArrow('', fromX, toX, fromY, toY, 'rgba(255, 0, 0,', 0.7);
+      const mfFromX = this.props.boardFlipped ? 7 - fromX : fromX;
+      const mfFromY = this.props.boardFlipped ? 7 - fromY : fromY;
+      const mfToX = this.props.boardFlipped ? 7 - toX : toX;
+      const mfToY = this.props.boardFlipped ? 7 - toY : toY;
+      addArrow('', mfFromX, mfToX, mfFromY, mfToY, 'rgba(255, 0, 0,', 0.7);
     }
 
     // Show the current arrow that's being drawn.
@@ -461,7 +474,11 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
       const fromY = this.state.arrowStart[1];
       const toX = this.state.arrowHover[0];
       const toY = this.state.arrowHover[1];
-      addArrow('hover', fromX, toX, fromY, toY, 'rgba(255, 0, 0,', 0.7);
+      const mfFromX = this.props.boardFlipped ? 7 - fromX : fromX;
+      const mfFromY = this.props.boardFlipped ? 7 - fromY : fromY;
+      const mfToX = this.props.boardFlipped ? 7 - toX : toX;
+      const mfToY = this.props.boardFlipped ? 7 - toY : toY;
+      addArrow('hover', mfFromX, mfToX, mfFromY, mfToY, 'rgba(255, 0, 0,', 0.7);
     }
 
 
@@ -500,10 +517,12 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
         continue;
       const toX = move.to % 8;
       const toY = 7 - Math.floor(move.to / 8);
+      const mfToX = this.props.boardFlipped ? 7 - toX : toX;
+      const mfToY = this.props.boardFlipped ? 7 - toY : toY;
       svgElements.push(<circle
         style={{ userSelect: 'none', pointerEvents: 'none' }}
         key={`circle-${move.to}`}
-        cx={toX * 50 + 25} cy={toY * 50 + 25}
+        cx={mfToX * 50 + 25} cy={mfToY * 50 + 25}
         r={10}
         fill="rgba(0, 255, 0, 0.4)"
       />);
@@ -513,10 +532,12 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
       for (const move of this.props.legalMoves) {
         const toX = move.to % 8;
         const toY = 7 - Math.floor(move.to / 8);
+        const mfToX = this.props.boardFlipped ? 7 - toX : toX;
+        const mfToY = this.props.boardFlipped ? 7 - toY : toY;
         svgElements.push(<circle
           style={{ userSelect: 'none', pointerEvents: 'none' }}
           key={`duck-circle-${move.to}`}
-          cx={toX * 50 + 25} cy={toY * 50 + 25}
+          cx={mfToX * 50 + 25} cy={mfToY * 50 + 25}
           r={10}
           fill="rgba(0, 255, 0, 0.4)"
         />);

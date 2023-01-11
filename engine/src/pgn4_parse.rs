@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct Move {
+pub struct Pgn4Move {
   pub from: u16,
   pub to:   u16,
 }
@@ -10,7 +10,7 @@ pub struct Move {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Pgn4 {
   pub headers: HashMap<String, String>,
-  pub moves:   Vec<Move>,
+  pub moves:   Vec<Pgn4Move>,
 }
 
 #[derive(Debug)]
@@ -22,7 +22,7 @@ enum Token {
 }
 
 fn to_index(xy: (u8, u8)) -> u16 {
-  (xy.0 as u16) * 8 + (xy.1 as u16)
+  (xy.1 as u16) * 8 + (xy.0 as u16)
 }
 
 fn lex_moves(mut s: &str) -> Vec<Token> {
@@ -117,6 +117,14 @@ pub fn parse(mut s: &str) -> Result<Pgn4, String> {
         i += 1;
         continue;
       }
+      (Token::Other('P'), Token::DotDot) => {
+        // Parse a pass.
+        if moves.len() % 4 != 0 {
+          return Err(format!("Badly placed pass with moves.len() = {}", moves.len()));
+        }
+        i += 2;
+        continue;
+      }
       (Token::Other('R'), Token::EndOfText) => {
         // Resignation.
         break;
@@ -155,7 +163,7 @@ pub fn parse(mut s: &str) -> Result<Pgn4, String> {
             i += 2;
             (file, rank)
           }
-          _ => return Err("Expected square".to_string()),
+          _ => return Err(format!("Expected a square, got {:?}", tokens[i])),
         }
       }};
     }
@@ -166,7 +174,7 @@ pub fn parse(mut s: &str) -> Result<Pgn4, String> {
     let arrival_square = parse_square!();
     optional_char!('+', '#');
     //println!("{:?}-{:?}", departure_square, arrival_square);
-    moves.push(Move {
+    moves.push(Pgn4Move {
       from: to_index(departure_square),
       to:   to_index(arrival_square),
     });
@@ -181,7 +189,7 @@ pub fn parse(mut s: &str) -> Result<Pgn4, String> {
     let arrival_square = parse_square!();
     optional_char!('+', '#');
     let departure_square = departure_square.unwrap_or(arrival_square);
-    moves.push(Move {
+    moves.push(Pgn4Move {
       from: to_index(departure_square),
       to:   to_index(arrival_square),
     });

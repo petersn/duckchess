@@ -1,4 +1,4 @@
-import init, { GameTree, new_game_tree } from "engine";
+import init, { GameTree, new_game_tree, parse_pgn4 } from "engine";
 import { PieceKind } from "./ChessBoard";
 
 type BasicMessages = {
@@ -125,6 +125,29 @@ export class DuckChessEngine {
   sendBoardToEngine() {
     const { state } = this.gameTree.get_serialized_state()[0];
     this.engineWorker.postMessage({ type: 'setState', state });
+  }
+
+  setPgn4(pgn4: string) {
+    const result = parse_pgn4(pgn4);
+    console.log('Parsing result:', result);
+    if (result.Err !== undefined) {
+      window.alert('Error parsing PGN4: ' + result.Err);
+      return;
+    }
+    const { headers, moves } = result.Ok;
+    // Update the tree.
+    this.gameTree = new_game_tree();
+    for (let i = 0; i < moves.length; i++) {
+      const move = moves[i];
+      const success = this.gameTree.make_move(move, false);
+      if (!success) {
+        window.alert(`Error parsing PGN4: invalid move ${JSON.stringify(move)} at index ${i}`);
+        return;
+      }
+    }
+    // Update the engine.
+    this.sendBoardToEngine();
+    this.forceUpdateCallback();
   }
 
   setRunEngine(runEngine: boolean) {
