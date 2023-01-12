@@ -745,6 +745,7 @@ function InfoPage(props: { isMobile: boolean }) {
 }
 
 function App() {
+  const [loadProgress, setLoadProgress] = React.useState<number>(0);
   const [engine, setEngine] = React.useState<DuckChessEngine | null>(null);
   const [width, setWidth] = React.useState<number>(window.innerWidth);
 
@@ -754,7 +755,7 @@ function App() {
   };
 
   React.useEffect(() => {
-    createDuckChessEngine(forceUpdate).then(setEngine);
+    createDuckChessEngine(setLoadProgress, forceUpdate).then(setEngine);
   }, []);
 
   React.useEffect(() => {
@@ -797,7 +798,7 @@ function App() {
   }
 
   if (engine === null)
-    return <div>Loading...</div>;
+    return <div>Loading model... {(100 * loadProgress).toFixed(1)}%</div>;
 
   return (
     <Router basename={process.env.PUBLIC_URL}>

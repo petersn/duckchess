@@ -16,6 +16,9 @@ export type MessageToEngineWorker = BasicMessages;
 export type MessageFromEngineWorker = {
   type: 'initted';
 } | {
+  type: 'modelLoadProgress';
+  progress: number;
+} | {
   type: 'engineOutput';
   engineOutput: any;
 };
@@ -86,6 +89,7 @@ export type PlayModeInfo = {
 } | null;
 
 export class DuckChessEngine {
+  loadProgressCallback: (progress: number) => void;
   forceUpdateCallback: () => void;
   engineWorker: Worker;
   searchWorker: Worker;
@@ -95,7 +99,11 @@ export class DuckChessEngine {
   initPromise: Promise<null>;
   playMode: PlayModeInfo = null;
 
-  constructor(forceUpdateCallback: () => void) {
+  constructor(
+    loadProgressCallback: (progress: number) => void,
+    forceUpdateCallback: () => void,
+  ) {
+    this.loadProgressCallback = loadProgressCallback;
     this.forceUpdateCallback = forceUpdateCallback;
     this.engineWorker = new Worker(new URL('./EngineWorker.ts', import.meta.url));
     this.engineWorker.onmessage = this.onEngineMessage;
@@ -191,10 +199,13 @@ export class DuckChessEngine {
       case 'initted':
         this.setInitFlag(0);
         break;
+      case 'modelLoadProgress':
+        this.loadProgressCallback(e.data.progress);
+        break;
       case 'engineOutput':
         const engineOutput = e.data.engineOutput;
         this.gameTree.apply_engine_output(engineOutput);
-        this.maybeMakeEngineMove()
+        this.maybeMakeEngineMove();
         break;
       //case 'evaluation':
       //  const whiteWinProb = e.data.whiteWinProb;
@@ -223,10 +234,11 @@ export class DuckChessEngine {
 }
 
 export async function createDuckChessEngine(
+  loadProgressCallback: (progress: number) => void,
   forceUpdate: () => void,
 ): Promise<DuckChessEngine> {
   await init();
-  const engine = new DuckChessEngine(forceUpdate);
+  const engine = new DuckChessEngine(loadProgressCallback, forceUpdate);
   await engine.initPromise;
   return engine;
 }

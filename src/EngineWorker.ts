@@ -71,7 +71,7 @@ function workLoop() {
 async function initWorker() {
   const hasThreads = await threads();
   console.log('Has threads:', hasThreads);
-  const sharedArrayBuffer = new SharedArrayBuffer(4 * 1024 * 1024);
+  //const sharedArrayBuffer = new SharedArrayBuffer(4 * 1024 * 1024);
   const wasm = await init();
   console.log('Channels:', channel_count());
 
@@ -114,7 +114,14 @@ async function initWorker() {
   //model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/model-medium/model.json')
   //model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/run-016-model-058/model.json')
   //model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/run-016-model-220/model.json')
-  model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/models/run-016-model-200/model.json')
+  model = await tf.loadLayersModel(
+    process.env.PUBLIC_URL + '/models/run-016-model-200/model.json',
+    {
+      onProgress: (progress) => {
+        postMessage({ type: 'modelLoadProgress', progress });
+      },
+    },
+  );
   postMessage({ type: 'initted' });
   // Make an 8x8 array of all nulls.
   //const fakeState = Array(8).fill(null).map(() => Array(8).fill(null));
