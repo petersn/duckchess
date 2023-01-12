@@ -98,6 +98,7 @@ export class DuckChessEngine {
   resolveInitPromise: (value: null) => void = null as any;
   initPromise: Promise<null>;
   playMode: PlayModeInfo = null;
+  thinkProgress: number = 0;
 
   constructor(
     loadProgressCallback: (progress: number) => void,
@@ -186,7 +187,14 @@ export class DuckChessEngine {
       this.playMode.player,
       this.playMode.steps,
     );
-    if (move !== null) {
+    // Numbers represent progress.
+    if (typeof move === 'number') {
+      if (move !== this.thinkProgress) {
+        this.thinkProgress = move;
+        this.forceUpdateCallback();
+      }
+    } else if (move !== null) {
+      // Non-null represents a move.
       console.log('Making engine move:', move);
       this.gameTree.make_move(move, false)
       this.sendBoardToEngine();

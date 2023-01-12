@@ -257,6 +257,12 @@ impl GameTree {
 
   pub fn get_play_move(&self, player: &str, steps: u32) -> JsValue {
     let node = &self.nodes[self.cursor];
+    // Our loading bar goes from 0 to 0.7 during the main move, then from 0.7 to 1.0 during the duck move.
+    let (base_progress, mult) = match node.state.is_duck_move {
+      false => (0.0, 0.7),
+      true => (0.7, 0.3),
+    };
+
     let player = match player {
       "black" => Player::Black,
       "white" => Player::White,
@@ -274,7 +280,7 @@ impl GameTree {
       Some(m) => m,
       None => {
         log("No top moves");
-        return JsValue::NULL;
+        return JsValue::from_f64(base_progress as f64);
       }
     };
     let second_move_weight = match node.evaluation.top_moves.get(1) {
@@ -286,7 +292,9 @@ impl GameTree {
     let additional_steps = steps as f32 - node.evaluation.steps as f32;
     if additional_steps > 0.0 && top_move_visits < second_move_visits + additional_steps {
       // We need more steps to be sure.
-      return JsValue::NULL;
+      let remaining = (second_move_visits + additional_steps - top_move_visits).min(additional_steps);
+      let progress = 1.0 - remaining / steps as f32;
+      return JsValue::from_f64((base_progress + mult * progress) as f64);
     }
     serde_wasm_bindgen::to_value(&top_move).unwrap_or_else(|e| {
       log(&format!("Failed to serialize move: {}", e));
@@ -338,6 +346,7 @@ impl GameTree {
       pub id: GameNodeId,
       pub evaluation: &'a NodeEval,
       pub edges: Vec<(Move, String, Info<'a>)>,
+      pub turn: &'static str,
     }
 
     // Serialize the entire tree of moves and IDs.
@@ -355,6 +364,10 @@ impl GameTree {
         id: node_id,
         evaluation: &node.evaluation,
         edges,
+        turn: match node.state.turn {
+          Player::Black => "black",
+          Player::White => "white",
+        },
       }
     }
     let info = make_tree(&self.nodes, self.root);

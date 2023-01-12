@@ -137,6 +137,7 @@ interface Info {
     steps: number;
   };
   edges: [Move, string, Info][];
+  turn: 'white' | 'black';
 }
 
 let globalBoardFlipped = false;
@@ -553,6 +554,8 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
     (Nodes: {Math.min(nodes, VISIT_LIMIT)})
   </>;
 
+  const isEnginesTurn = thisNodeInfo[0] !== null && thisNodeInfo[0].turn === engine.playMode?.player;
+
   return <>
     <div style={{
       width: '100%',
@@ -627,18 +630,33 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
           margin: props.isMobile ? 'auto' : undefined,
         }}>
           {/*<div style={{ fontWeight: 'bold', fontSize: '120%', marginBottom: 10 }}>Engine</div>*/}
-          {toolMode === 'analysis' && <>
-            <input type="checkbox" checked={runEngine} onChange={e => {
-              setRunEngine(e.target.checked);
-              if (engine !== null) {
-                engine.setRunEngine(e.target.checked);
-              }
-            }} /> Run engine {engineStatus}
-          </>}
+          <div style={{ position: 'relative', width: '100%', height: 25 }}>
+            {toolMode === 'analysis' ? <>
+              <input type="checkbox" checked={runEngine} onChange={e => {
+                setRunEngine(e.target.checked);
+                if (engine !== null) {
+                  engine.setRunEngine(e.target.checked);
+                }
+              }} /> Run engine {engineStatus}
+            </> : <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: (100 * Math.max(0.05, engine.thinkProgress)) + '%',
+                height: 20,
+                backgroundColor: isEnginesTurn ? '#944' : undefined,
+                outline: isEnginesTurn ? '1px solid black' : undefined,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {isEnginesTurn ? 'Thinking...' : 'Your move'}
+            </div>}
+          </div>
 
           <div style={{
             overflowY: 'scroll',
-            height: BOARD_MAX_SIZE - 40,
+            height: BOARD_MAX_SIZE - 46,
           }}>
             {renderedMoveRows}
           </div>
