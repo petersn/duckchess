@@ -151,7 +151,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
   const [pgn, setPgn] = React.useState<string>(DEFAULT_PGN4);
   const [boardFlipped, setBoardFlipped] = React.useState<boolean>(globalBoardFlipped);
   //const [enginePlayer, setEnginePlayer] = React.useState<'white' | 'black' | null>(null);
-  const [runEngine, setRunEngine] = React.useState<boolean>(false);
+  const [runEngine, setRunEngine] = React.useState<boolean>(true);
   const [nodeContextMenu, setNodeContextMenu] = React.useState<number | null>(null);
 
   const setForceUpdateCounter = React.useState(0)[1];
