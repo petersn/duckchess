@@ -299,7 +299,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
       </div>;
     }
 
-    const score = move.steps === 0 ? '' :
+    const score = (toolMode !== 'analysis' || move.steps === 0) ? '' :
       Math.max(-99.9, Math.min(99.9, (4 * Math.tan(3.14 * move.pawn_score! - 1.57)))).toFixed(1);
 
     return <span
