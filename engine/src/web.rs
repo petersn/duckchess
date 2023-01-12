@@ -359,7 +359,7 @@ impl GameTree {
     }
     let info = make_tree(&self.nodes, self.root);
     // We have to shorten the board hash for JavaScript.
-    let board_hash = node.state.get_transposition_table_hash() as u32;
+    let board_hash = node.state.get_transposition_table_hash() & 0xffffffffffff;
     serde_wasm_bindgen::to_value(&(node, info, self.cursor, board_hash)).unwrap_or_else(|e| {
       log(&format!("Failed to serialize state: {}", e));
       panic!("Failed to serialize state: {}", e);
