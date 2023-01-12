@@ -216,7 +216,7 @@ technically statistically biases the games slightly towards being shorter.)
         # Edit: I just adjusted it down to 5e-6.
         # Edit: I just adjusted the starting lr down to 1e-4, and the final down to 2e-6.
         lerp_coef = max(0, min(1, (current_model_number - 1) / 19))
-        learning_rate = math.exp( math.log(1e-4) * (1 - lerp_coef) + math.log(1e-6) * lerp_coef )
+        learning_rate = math.exp( math.log(1e-4) * (1 - lerp_coef) + math.log(5e-6) * lerp_coef )
         print("\x1b[91mLearning rate:", learning_rate, "\x1b[0m")
 
         optional_old_optim_state = []
