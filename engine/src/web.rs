@@ -255,6 +255,45 @@ impl GameTree {
     }
   }
 
+  pub fn get_play_move(&self, player: &str, steps: u32) -> JsValue {
+    let node = &self.nodes[self.cursor];
+    let player = match player {
+      "black" => Player::Black,
+      "white" => Player::White,
+      _ => {
+        log(&format!("Invalid player: {}", player));
+        return JsValue::NULL;
+      }
+    };
+    // If it's not this player's turn to move, then return None.
+    if node.state.turn != player {
+      return JsValue::NULL;
+    }
+    // Check if the top move has enough visits that it can't be surpassed before the limit is hit.
+    let (top_move, top_move_weight) = match node.evaluation.top_moves.first() {
+      Some(m) => m,
+      None => {
+        log("No top moves");
+        return JsValue::NULL;
+      }
+    };
+    let second_move_weight = match node.evaluation.top_moves.get(1) {
+      None => 0.0,
+      Some((_, weight)) => *weight,
+    };
+    let top_move_visits = top_move_weight * node.evaluation.steps as f32;
+    let second_move_visits = second_move_weight * node.evaluation.steps as f32;
+    let additional_steps = steps as f32 - node.evaluation.steps as f32;
+    if additional_steps > 0.0 && top_move_visits < second_move_visits + additional_steps {
+      // We need more steps to be sure.
+      return JsValue::NULL;
+    }
+    serde_wasm_bindgen::to_value(&top_move).unwrap_or_else(|e| {
+      log(&format!("Failed to serialize move: {}", e));
+      JsValue::NULL
+    })
+  }
+
   /// Traverses to the parent.
   pub fn history_back(&mut self) -> bool {
     if let Some(parent) = self.nodes[self.cursor].parent {

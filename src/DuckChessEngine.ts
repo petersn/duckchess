@@ -80,6 +80,11 @@ export function parseRustBoardState(state: any): PieceKind[][] {
   return board;
 }
 
+export type PlayModeInfo = {
+  player: 'white' | 'black';
+  steps: number;
+} | null;
+
 export class DuckChessEngine {
   forceUpdateCallback: () => void;
   engineWorker: Worker;
@@ -88,6 +93,7 @@ export class DuckChessEngine {
   initFlags: boolean[] = [false, false];
   resolveInitPromise: (value: null) => void = null as any;
   initPromise: Promise<null>;
+  playMode: PlayModeInfo = null;
 
   constructor(forceUpdateCallback: () => void) {
     this.forceUpdateCallback = forceUpdateCallback;
@@ -154,8 +160,29 @@ export class DuckChessEngine {
     this.engineWorker.postMessage({ type: 'setRunEngine', runEngine });
   }
 
+  setPlayMode(playMode: PlayModeInfo) {
+    this.playMode = playMode;
+    if (this.playMode === null)
+      return;
+    this.engineWorker.postMessage({ type: 'setRunEngine', runEngine: true });
+  }
+
   runAlphaBetaBenchmark(callback: (results: AlphaBetaBenchmarkResults) => void) {
     //this.searchWorker.postMessage({ type: 'runAlphaBetaBenchmark' });
+  }
+
+  maybeMakeEngineMove() {
+    if (this.playMode === null)
+      return;
+    const move = this.gameTree.get_play_move(
+      this.playMode.player,
+      this.playMode.steps,
+    );
+    if (move !== null) {
+      console.log('Making engine move:', move);
+      this.gameTree.make_move(move, false)
+      this.sendBoardToEngine();
+    }
   }
 
   onEngineMessage = (e: MessageEvent<MessageFromEngineWorker>) => {
@@ -167,6 +194,7 @@ export class DuckChessEngine {
       case 'engineOutput':
         const engineOutput = e.data.engineOutput;
         this.gameTree.apply_engine_output(engineOutput);
+        this.maybeMakeEngineMove()
         break;
       //case 'evaluation':
       //  const whiteWinProb = e.data.whiteWinProb;

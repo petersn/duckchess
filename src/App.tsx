@@ -11,7 +11,11 @@ import { BenchmarkApp } from './BenchmarkApp';
 // For cosmetic reasons I cap the visits I show, to hide the few visits over the limit we might do.
 const VISIT_LIMIT = 50_000;
 
+const DEFAULT_MODEL_NAME = 'large-r16-s200-256x20';
 const DEFAULT_PGN4 = ``;
+
+
+type ToolMode = 'analysis' | 'play1k' | 'play10k';
 
 // FIXME: This is a mildly hacky way to get the router location...
 function getRouterPath(): string {
@@ -142,8 +146,11 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
   //const [selectedSquare, setSelectedSquare] = React.useState<[number, number] | null>(null);
   //const [pair, setPair] = React.useState<any>(null);
   //const [duckFen, setDuckFen] = React.useState<string>('');
+  const [modelName, setModelName] = React.useState<string>(DEFAULT_MODEL_NAME);
+  const [toolMode, setToolMode] = React.useState<ToolMode>('analysis');
   const [pgn, setPgn] = React.useState<string>(DEFAULT_PGN4);
   const [boardFlipped, setBoardFlipped] = React.useState<boolean>(globalBoardFlipped);
+  //const [enginePlayer, setEnginePlayer] = React.useState<'white' | 'black' | null>(null);
   const [runEngine, setRunEngine] = React.useState<boolean>(false);
   const [nodeContextMenu, setNodeContextMenu] = React.useState<number | null>(null);
 
@@ -152,7 +159,22 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
     setForceUpdateCounter(Math.random());
   };
 
-  const [ser, a, cursor, boardHash]: [any, Info, any, number] = engine.gameTree.get_serialized_state();
+  function adjustToolMode(toolMode: ToolMode) {
+    setToolMode(toolMode);
+    // If the tool mode is set to one of the play modes, adjust the engine for this.
+    const enginePlayer = boardFlipped ? 'white' : 'black';
+    if (toolMode === 'play1k') {
+      engine.setPlayMode({ player: enginePlayer, steps: 1000 });
+    } else if (toolMode === 'play10k') {
+      engine.setPlayMode({ player: enginePlayer, steps: 10000 });
+    } else {
+      engine.setPlayMode(null);
+      engine.setRunEngine(runEngine);
+      //setEnginePlayer(null);
+    }
+  }
+
+  let [ser, info, cursor, boardHash]: [any, Info, any, number] = engine.gameTree.get_serialized_state();
 
   interface MoveRowEntry {
     name: string;
@@ -168,7 +190,6 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
   }
 
   const moveRows: MoveRow[] = [];
-  let info = a;
   let moveNum = 0;
 
   let thisNodeInfo: (Info | null)[] = [null];
@@ -277,7 +298,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         }}>Promote</div>}
       </div>;
     }
-  
+
     const score = move.steps === 0 ? '' :
       Math.max(-99.9, Math.min(99.9, (4 * Math.tan(3.14 * move.pawn_score! - 1.57)))).toFixed(1);
 
@@ -513,7 +534,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
   let nodes = 0;
   let white_wdl = [0, 0, 0];
   let topMoves: [Move, number][] = [];
-  if (thisNodeInfo[0] !== null) {
+  if (toolMode === 'analysis' && thisNodeInfo[0] !== null) {
     nodes = thisNodeInfo[0].evaluation.steps;
     white_wdl = thisNodeInfo[0].evaluation.white_perspective_wdl;
     topMoves = thisNodeInfo[0].evaluation.top_moves.slice(0, 3);
@@ -584,7 +605,9 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         }}
         style={{ margin: 10 }}
       />
-      <WinDrawLossIndicator isMobile={props.isMobile} boardFlipped={boardFlipped} wdl={white_wdl} />
+      {toolMode === 'analysis' &&
+        <WinDrawLossIndicator isMobile={props.isMobile} boardFlipped={boardFlipped} wdl={white_wdl} />
+      }
       <div style={{
         //flex: props.isMobile ? undefined : 1,
         height: props.isMobile ? undefined : BOARD_MAX_SIZE,
@@ -602,12 +625,14 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
           margin: props.isMobile ? 'auto' : undefined,
         }}>
           {/*<div style={{ fontWeight: 'bold', fontSize: '120%', marginBottom: 10 }}>Engine</div>*/}
-          <input type="checkbox" checked={runEngine} onChange={e => {
-            setRunEngine(e.target.checked);
-            if (engine !== null) {
-              engine.setRunEngine(e.target.checked);
-            }
-          }} /> Run engine {engineStatus}
+          {toolMode === 'analysis' && <>
+            <input type="checkbox" checked={runEngine} onChange={e => {
+              setRunEngine(e.target.checked);
+              if (engine !== null) {
+                engine.setRunEngine(e.target.checked);
+              }
+            }} /> Run engine {engineStatus}
+          </>}
 
           <div style={{
             overflowY: 'scroll',
@@ -635,6 +660,44 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         backgroundColor: '#445',
         color: '#eee',
       }} />*/}
+      <div style={{
+        width: 400,
+        display: 'flex',
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+      }}>
+        {/*<label>Model: <select
+          value={modelName}
+          onChange={(e) => setModelName(e.target.value)}
+        >
+          <option value="medium-r16-s223-128x10">Medium</option>
+          <option value="large-r16-s200-256x20">Large</option>
+        </select></label>*/}
+
+        <label>Mode: <select
+          value={toolMode}
+          onChange={(e) => adjustToolMode(e.target.value as ToolMode)}
+        >
+          <option value="analysis">Analysis</option>
+          <option value="play1k">Play (1k steps)</option>
+          <option value="play10k">Play (10k steps)</option>
+        </select></label>
+
+        <button onClick={() => {
+          if (engine !== null) {
+            globalBoardFlipped = !globalBoardFlipped;
+            setBoardFlipped(globalBoardFlipped);
+            setNodeContextMenu(null);
+          }
+        }}>Flip board</button>
+
+        <button onClick={() => {
+          if (engine !== null) {
+            engine.setPgn4(pgn);
+            setNodeContextMenu(null);
+          }
+        }}>Load PGN</button>
+      </div>
       <textarea
         value={pgn}
         onChange={e => setPgn(e.target.value)}

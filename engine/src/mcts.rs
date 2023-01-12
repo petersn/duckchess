@@ -916,6 +916,21 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
   }
 
   pub fn reroot_tree(&mut self, new_state: &State) {
+    let new_state_hash = new_state.get_transposition_table_hash();
+    // First check if we have a child that matches this state.
+    let root_node = &self.nodes[self.root];
+    for (_, edge) in &root_node.outgoing_edges {
+      let child_node = &self.nodes[edge.node];
+      if child_node.state.get_transposition_table_hash() == new_state_hash {
+        self.root = edge.node;
+        // FIXME: This policy of garbage collection is pretty arbitrary.
+        if self.nodes.len() > 3_000 {
+          self.garbage_collect();
+        }
+        return;
+      }
+    }
+
     self.transposition_table.clear();
     self.nodes.clear();
     self.root = self.add_child_and_adjust_scores(vec![], None, new_state.clone(), new_state.plies);
