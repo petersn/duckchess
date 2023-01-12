@@ -15,7 +15,7 @@ const DEFAULT_MODEL_NAME = 'large-r16-s200-256x20';
 const DEFAULT_PGN4 = ``;
 
 
-type ToolMode = 'analysis' | 'play1k' | 'play10k';
+type ToolMode = 'analysis' | 'play100' | 'play1k' | 'play10k';
 
 // FIXME: This is a mildly hacky way to get the router location...
 function getRouterPath(): string {
@@ -163,7 +163,9 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
     setToolMode(toolMode);
     // If the tool mode is set to one of the play modes, adjust the engine for this.
     const enginePlayer = boardFlipped ? 'white' : 'black';
-    if (toolMode === 'play1k') {
+    if (toolMode === 'play100') {
+      engine.setPlayMode({ player: enginePlayer, steps: 100 });
+    } else if (toolMode === 'play1k') {
       engine.setPlayMode({ player: enginePlayer, steps: 1000 });
     } else if (toolMode === 'play10k') {
       engine.setPlayMode({ player: enginePlayer, steps: 10000 });
@@ -282,7 +284,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         border: '1px solid black',
         padding: 4,
         zIndex: 1,
-        transform: 'translate(-100%, 0)',
+        transform: props.isMobile ? 'translate(25%, 0)' : 'translate(-100%, 0)',
       }}>
         <div className='contextMenuButton' onClick={() => {
           engine.gameTree.delete_by_id(move.id);
@@ -679,6 +681,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
           onChange={(e) => adjustToolMode(e.target.value as ToolMode)}
         >
           <option value="analysis">Analysis</option>
+          <option value="play100">Play (100 steps)</option>
           <option value="play1k">Play (1k steps)</option>
           <option value="play10k">Play (10k steps)</option>
         </select></label>
@@ -730,12 +733,6 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
       <span style={{ fontSize: '50%', opacity: 0.5 }}>Piece SVGs: Cburnett (CC BY-SA 3), Duck SVG + all code: my creation (CC0)</span>
     </div>
   </>;
-}
-
-function BenchmarkPage(props: { isMobile: boolean, engine: DuckChessEngine | null }) {
-  if (props.engine === null)
-    return <div>Loading...</div>;
-  return <BenchmarkApp isMobile={props.isMobile} engine={props.engine} />;
 }
 
 function InfoPage(props: { isMobile: boolean }) {
@@ -804,7 +801,7 @@ function App() {
     <Router basename={process.env.PUBLIC_URL}>
       <Routes>
         <Route path="/analysis" element={navigation(<AnalysisPage isMobile={isMobile} engine={engine} />)} />
-        <Route path="/benchmark" element={navigation(<BenchmarkPage isMobile={isMobile} engine={engine} />)} />
+        <Route path="/benchmark" element={navigation(<BenchmarkApp isMobile={isMobile} engine={engine} />)} />
         <Route path="/info" element={navigation(<InfoPage isMobile={isMobile} />)} />
         <Route path="/" element={navigation(<Navigate to={"/analysis"} replace />)} />
       </Routes>
