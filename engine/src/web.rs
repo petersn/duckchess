@@ -411,6 +411,7 @@ impl Engine {
       panic!("Failed to deserialize state: {}", e);
     });
     self.mcts.reroot_tree(&new_state);
+    self.mcts.apply_noise_to_root();
   }
 
   pub fn get_moves(&self) -> JsValue {

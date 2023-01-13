@@ -16,6 +16,13 @@ use crate::rules::{Move, State, RepetitionState, GameOutcome, Player};
 //const FIRST_PLAY_URGENCY: f32 = 0.2;
 const ROOT_SOFTMAX_TEMP: f32 = 1.2;
 const DIRICHLET_ALPHA: f32 = 0.1;
+
+// For the in-browser search we use pretty light dirichlet noise.
+#[cfg(target_arch = "wasm32")]
+const DIRICHLET_WEIGHT: f32 = 0.15;
+
+// For game generation we use the same value AlphaZero did.
+#[cfg(not(target_arch = "wasm32"))]
 const DIRICHLET_WEIGHT: f32 = 0.25;
 
 // Create slotmap keys
