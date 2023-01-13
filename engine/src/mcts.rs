@@ -14,7 +14,7 @@ use crate::rules::{Move, State, RepetitionState, GameOutcome, Player};
 //const EXPLORATION_ALPHA: f32 = 1.0;
 //const DUCK_EXPLORATION_ALPHA: f32 = 0.5;
 //const FIRST_PLAY_URGENCY: f32 = 0.2;
-const ROOT_SOFTMAX_TEMP: f32 = 1.2;
+const ROOT_SOFTMAX_TEMP: f32 = 1.1;
 const DIRICHLET_ALPHA: f32 = 0.1;
 
 // For the in-browser search we use pretty light dirichlet noise.
