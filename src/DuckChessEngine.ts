@@ -34,8 +34,7 @@ export type MessageFromSearchWorker = {
   results: AlphaBetaBenchmarkResults;
 } | {
   type: 'mateSearch';
-  mateEval: number;
-  nextMoves: any[];
+  engineOutput: any;
 };
 
 export interface AlphaBetaBenchmarkResults {
@@ -140,6 +139,7 @@ export class DuckChessEngine {
   sendBoardToEngine() {
     const { state } = this.gameTree.get_serialized_state()[0];
     this.engineWorker.postMessage({ type: 'setState', state });
+    this.searchWorker.postMessage({ type: 'setState', state });
   }
 
   setPgn4(pgn4: string) {
@@ -166,7 +166,8 @@ export class DuckChessEngine {
   }
 
   setRunEngine(runEngine: boolean) {
-    this.engineWorker.postMessage({ type: 'setRunEngine', runEngine });
+    for (const worker of [this.engineWorker, this.searchWorker])
+      worker.postMessage({ type: 'setRunEngine', runEngine });
   }
 
   setPlayMode(playMode: PlayModeInfo) {
@@ -227,10 +228,15 @@ export class DuckChessEngine {
   }
 
   onSearchMessage = (e: MessageEvent<MessageFromSearchWorker>) => {
-    console.log('Main thread got:', e.data);
+    //console.log('Main thread got:', e.data);
     switch (e.data.type) {
       case 'initted':
         this.setInitFlag(1);
+        break;
+      case 'mateSearch':
+        const engineOutput = e.data.engineOutput;
+        this.gameTree.apply_engine_output(engineOutput);
+        this.maybeMakeEngineMove();
         break;
       case 'alphaBetaBenchmarkResults':
         //this.benchmarkCallback(e.data.results);

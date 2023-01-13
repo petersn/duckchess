@@ -5,6 +5,7 @@ import { MessageFromSearchWorker } from './DuckChessEngine';
 declare function postMessage(message: MessageFromSearchWorker): void;
 
 let pvs: Pvs;
+let runEngine: boolean = false;
 
 async function initSearchWorker(sharedArrayBuffer: SharedArrayBuffer) {
   await init();
@@ -48,16 +49,26 @@ async function runAlphaBetaBenchmark() {
 }
 
 onmessage = function(e: MessageEvent<any>) {
-  console.log('Search worker got:', e.data);
+  //console.log('Search worker got:', e.data);
   switch (e.data.type) {
     case 'init':
       initSearchWorker(e.data.mem);
       break;
-    case 'applyMove':
-      pvs.apply_move(e.data.move, e.data.isHidden);
+    case 'setState':
+      pvs.set_state(e.data.state);
+      if (runEngine) {
+        for (const d of [1, 2]) {
+          const engineOutput = pvs.mate_search(d);
+          postMessage({ type: 'mateSearch', engineOutput });
+        }
+      }
+      //pvs.apply_move(e.data.move, e.data.isHidden);
       //const result = pvs.mate_search(2);
       //console.log('Mate search result', result[0][0], 'nodes:', result[1]);
       //postMessage({ type: 'mateSearch', mateEval: result[0][0], nextMoves: result[0][1] });
+      break;
+    case 'setRunEngine':
+      runEngine = e.data.runEngine;
       break;
     case 'runAlphaBetaBenchmark':
       runAlphaBetaBenchmark();

@@ -317,7 +317,7 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
               // Check if there's a piece here.
               if (this.props.board[y][x] === null)
                 return;
-              console.log('mouse down', x, y);
+              //console.log('mouse down', x, y);
               // Begin dragging.
               const rect = e.currentTarget.getBoundingClientRect();
               this.dragState = {
@@ -335,7 +335,7 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
                 this.endArrow(x, y);
                 return;
               }
-              console.log('mouse up', x, y);
+              //console.log('mouse up', x, y);
               // Check for a drop.
               if (this.dragState) {
                 this.onClick(x, y, true);

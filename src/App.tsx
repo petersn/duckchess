@@ -133,6 +133,7 @@ interface Info {
   evaluation: {
     white_perspective_score: number;
     white_perspective_wdl: [number, number, number];
+    mate_score: number | null;
     top_moves: [Move, number][];
     steps: number;
   };
@@ -182,12 +183,14 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
   interface MoveRowEntry {
     name: string;
     pawn_score: number | null;
+    mate_score: number | null;
     steps: number;
     id: any;
   }
 
   interface MoveRow {
-    pawn_score: number | null;
+    //pawn_score: number | null;
+    //mate_score: number | null;
     moves: (MoveRowEntry | null)[];
     smallRowContent: React.ReactNode | null;
   }
@@ -224,6 +227,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         {effectiveI == 0 || '('} {moveSpan({
           name: prefix + moveName,
           pawn_score: child.evaluation.white_perspective_score,
+          mate_score: child.evaluation.mate_score,
           steps: child.evaluation.steps,
           id: child.id,
         }, false)} {generateSmallRow(child, moveNum + 1, '', false)} {effectiveI == 0 || ')'}
@@ -234,7 +238,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
 
   while (info.edges.length > 0) {
     if (moveNum % 4 === 0 ) {
-      moveRows.push({ pawn_score: info.evaluation.white_perspective_score, moves: [null, null, null, null], smallRowContent: null });
+      moveRows.push({ moves: [null, null, null, null], smallRowContent: null });
     }
     // If there are side branches then insert a little indicator for them.
     let prefix = '';
@@ -243,18 +247,18 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
       if (moveNum % 4 >= 2)
         prefix = '...';
       const smallRow: MoveRow = {
-        pawn_score: null,
         moves: [],
         smallRowContent: generateSmallRow(info, moveNum, prefix, true)
       }
       moveRows.push(smallRow);
-      moveRows.push({ pawn_score: null, moves: [null, null, null, null], smallRowContent: null });
+      moveRows.push({ moves: [null, null, null, null], smallRowContent: null });
     }
     const [move, moveName, child] = info.edges[0];
     const moveRow = moveRows[moveRows.length - 1];
     moveRow.moves[moveNum % 4] = {
       name: prefix + moveName,
       pawn_score: child.evaluation.white_perspective_score,
+      mate_score: child.evaluation.mate_score,
       steps: child.evaluation.steps,
       id: child.id,
     };
@@ -302,8 +306,21 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
       </div>;
     }
 
-    const score = (toolMode !== 'analysis' || move.steps === 0 || !isFull) ? '' :
-      Math.max(-99.9, Math.min(99.9, (4 * Math.tan(3.14 * move.pawn_score! - 1.57)))).toFixed(1);
+    let score = '';
+    if (toolMode === 'analysis' && move.steps !== 0 && isFull) {
+      if (move.mate_score != null) {
+        // We now map the mate_score (which is plies to mate) to a standard mate.
+        // So, a value of 1 means the player to move can immediately capture the king.
+        // A value of 2 means that the player to move must move the duck, then get captured.
+        // Therefore, mate_score in (1, 2, 3) corresponds to a "mate in 1",
+        // while (4, 5, 6, 7) corresponds to a "mate in 2", and so on.
+        // So we set:
+        const mate_in = Math.trunc(move.mate_score / 4) + 1;
+        score = 'M' + mate_in;
+      } else {
+        score = Math.max(-99.9, Math.min(99.9, (4 * Math.tan(3.14 * move.pawn_score! - 1.57)))).toFixed(1);
+      }
+    }
 
     return <span
       style={{
@@ -600,7 +617,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         topMoves={topMoves} //topMoves}
         onMove={(move, isHidden) => {
           //if (engine !== null) {
-            console.log('[snp1] move', move, isHidden);
+            //console.log('[snp1] move', move, isHidden);
             engine.gameTree.make_move(move, isHidden);
             engine.sendBoardToEngine();
             forceUpdate();

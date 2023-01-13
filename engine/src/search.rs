@@ -202,7 +202,10 @@ impl Engine {
     pv
   }
 
-  pub fn mate_search(&mut self, depth: u16) -> (IntEvaluation, Option<(Move, Move)>) {
+  pub fn mate_search(
+    &mut self,
+    depth: u16,
+  ) -> (IntEvaluation, Option<(Move, Move)>) {
     //self.nodes_searched = 0;
     let start_state = self.state.clone();
     //self.mate_search_inner(depth, &start_state, EVAL_VERY_NEGATIVE, EVAL_VERY_POSITIVE)
@@ -265,6 +268,12 @@ impl Engine {
         best_score = score;
         best_pair = Some(move_pair);
       }
+    }
+    // We now make the best score slightly less extreme, to preference shorter mates.
+    if best_score > 0 {
+      best_score -= 1;
+    } else if best_score < 0 {
+      best_score += 1;
     }
     (best_score, best_pair)
 

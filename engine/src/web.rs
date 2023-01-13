@@ -43,6 +43,9 @@ pub struct TreeEdge {
 pub struct NodeEval {
   white_perspective_score: f32,
   white_perspective_wdl: [f32; 3],
+  // +1 means white has mate in 1, +2 means mate in two, and so on.
+  // Likewise, negative values indicate mates for black.
+  mate_score: Option<i32>,
   top_moves: Vec<(Move, f32)>,
   steps: u32,
 }
@@ -86,6 +89,7 @@ impl GameNode {
       evaluation: NodeEval {
         white_perspective_score: 0.5,
         white_perspective_wdl: [0.0; 3],
+        mate_score: None,
         top_moves: vec![],
         steps: 0,
       },
@@ -522,6 +526,7 @@ impl Engine {
       node_eval: NodeEval {
         white_perspective_score,
         white_perspective_wdl,
+        mate_score: None,
         top_moves,
         steps,
       },
@@ -580,38 +585,46 @@ pub struct Pvs {
 
 #[wasm_bindgen]
 impl Pvs {
-  pub fn apply_move(&mut self, m: JsValue, is_hidden: bool) -> bool {
-    let m: Move = serde_wasm_bindgen::from_value(m).unwrap_or_else(|e| {
-      log(&format!("Failed to deserialize move: {}", e));
-      panic!("Failed to deserialize move: {}", e);
+  // pub fn apply_move(&mut self, m: JsValue, is_hidden: bool) -> bool {
+  //   let m: Move = serde_wasm_bindgen::from_value(m).unwrap_or_else(|e| {
+  //     log(&format!("Failed to deserialize move: {}", e));
+  //     panic!("Failed to deserialize move: {}", e);
+  //   });
+  //   if is_hidden {
+  //     // FIXME: I need to make this properly insert duck moves.
+  //     match self.engine.get_state().compute_duck_skip_move(m) {
+  //       Some(duck_move) => {
+  //         match self.engine.get_state_mut().apply_move::<false>(duck_move, None) {
+  //           Ok(_) => {}
+  //           Err(msg) => {
+  //             log(&format!("Failed to apply move: {}", msg));
+  //             return false;
+  //           }
+  //         }
+  //         //self.engine.apply_move(duck_move);
+  //       }
+  //       None => {
+  //         log("Invalid duck move");
+  //         return false;
+  //       }
+  //     }
+  //   }
+  //   match self.engine.get_state_mut().apply_move::<false>(m, None) {
+  //     Ok(_) => {}
+  //     Err(msg) => {
+  //       log(&format!("Failed to apply move: {}", msg));
+  //       return false;
+  //     }
+  //   }
+  //   true
+  // }
+
+  pub fn set_state(&mut self, state: JsValue) {
+    let new_state = serde_wasm_bindgen::from_value(state).unwrap_or_else(|e| {
+      log(&format!("Failed to deserialize state: {}", e));
+      panic!("Failed to deserialize state: {}", e);
     });
-    if is_hidden {
-      // FIXME: I need to make this properly insert duck moves.
-      match self.engine.get_state().compute_duck_skip_move(m) {
-        Some(duck_move) => {
-          match self.engine.get_state_mut().apply_move::<false>(duck_move, None) {
-            Ok(_) => {}
-            Err(msg) => {
-              log(&format!("Failed to apply move: {}", msg));
-              return false;
-            }
-          }
-          //self.engine.apply_move(duck_move);
-        }
-        None => {
-          log("Invalid duck move");
-          return false;
-        }
-      }
-    }
-    match self.engine.get_state_mut().apply_move::<false>(m, None) {
-      Ok(_) => {}
-      Err(msg) => {
-        log(&format!("Failed to apply move: {}", msg));
-        return false;
-      }
-    }
-    true
+    self.engine.set_state(new_state);
   }
 
   pub fn mate_search(&mut self, depth: u16) -> JsValue {
@@ -633,10 +646,38 @@ impl Pvs {
       Player::White => eval,
       Player::Black => -eval,
     };
-    serde_wasm_bindgen::to_value(&(eval, moves, self.engine.nodes_searched)).unwrap_or_else(|e| {
-      log(&format!("Failed to serialize score: {}", e));
+    let (white_perspective_score, white_perspective_wdl) = match eval.cmp(&0) {
+      std::cmp::Ordering::Less => (0.0, [0.0, 0.0, 1.0]),
+      std::cmp::Ordering::Equal => (0.5, [0.0, 1.0, 0.0]),
+      std::cmp::Ordering::Greater => (1.0, [1.0, 0.0, 0.0]),
+    };
+    let mate_score = match eval.cmp(&0) {
+      std::cmp::Ordering::Less => Some(-1001 - eval),
+      std::cmp::Ordering::Equal => None,
+      std::cmp::Ordering::Greater => Some(1001 - eval),
+    };
+    // If we have a move then we make up a fake step number to override all others.
+    let (steps, top_moves) = match (eval, moves) {
+      (0, _) | (_, None) => (0, Vec::new()),
+      (_, Some((m, _))) => (1_000_000, vec![(m, 1.0)]),
+    };
+    serde_wasm_bindgen::to_value(&EngineOutput {
+      js_friendly_board_hash: split_u64_to_u32_pair(self.engine.get_state().get_transposition_table_hash()),
+      node_eval: NodeEval {
+        white_perspective_score,
+        white_perspective_wdl,
+        mate_score,
+        top_moves,
+        steps,
+      },
+    }).unwrap_or_else(|e| {
+      log(&format!("Failed to serialize evaluation: {}", e));
       JsValue::NULL
     })
+    //serde_wasm_bindgen::to_value(&(eval, moves, self.engine.nodes_searched)).unwrap_or_else(|e| {
+    //  log(&format!("Failed to serialize score: {}", e));
+    //  JsValue::NULL
+    //})
   }
 }
 
