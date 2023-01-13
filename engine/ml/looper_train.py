@@ -44,12 +44,12 @@ if __name__ == "__main__":
         dataset = make_dataset.collect_data(args.games)
 
     print("Converting tensors")
-    train_features = torch.tensor(dataset.features)
-    train_policy_indices = torch.tensor(dataset.policy_indices)
-    train_policy_probs = torch.tensor(dataset.policy_probs)
+    train_features = torch.from_numpy(dataset.features)
+    train_policy_indices = torch.from_numpy(dataset.policy_indices)
+    train_policy_probs = torch.from_numpy(dataset.policy_probs)
     #train_policy = torch.tensor(train_policy.reshape((-1, 64 * 64)))
     train_wdl_index = torch.tensor(dataset.wdl_index.astype(np.int64))
-    train_mcts_root_value = torch.tensor(dataset.mcts_root_value)
+    train_mcts_root_value = torch.from_numpy(dataset.mcts_root_value)
 
     print("Got data:", train_features.shape, train_policy_indices.shape, train_policy_probs.shape, train_wdl_index.shape, train_mcts_root_value.shape)
 

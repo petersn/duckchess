@@ -70,8 +70,8 @@ def get_step(name):
 run_name = open("CURRENT_RUN").read().strip()
 
 names = sorted(ratings.keys())
-xs = [get_step(name) for name in names][-85:]
-ys = [ratings[name] for name in names][-85:]
+xs = [get_step(name) for name in names][-160:]
+ys = [ratings[name] for name in names][-160:]
 import matplotlib.pyplot as plt
 plt.plot(xs, ys)
 plt.scatter(xs, ys, s=6)
