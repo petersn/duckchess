@@ -1,39 +1,68 @@
 import init, { new_engine, max_batch_size, channel_count, parse_pgn4, Engine, perft, perft_nnue, perft_eval, test_threads, test_simd, test_shared_mem, new_game_tree } from 'engine';
 import * as tf from '@tensorflow/tfjs';
-import { MessageFromEngineWorker, MessageToEngineWorker } from './DuckChessEngine';
+import { MessageFromEngineWorker, MessageToEngineWorker, ModelName } from './DuckChessEngine';
 import { threads } from 'wasm-feature-detect';
 
 // Declare the type of postMessage
 declare function postMessage(message: MessageFromEngineWorker): void;
 
-let model: tf.LayersModel;
+let currentModel: string = 'none';
+const modelRegistry: Map<string, tf.LayersModel | 'loading'> = new Map();
 let engine: Engine;
 let runEngine: boolean = false;
 
-function sendBoardState() {
-  //console.log(JSON.stringify(engine.get_state()), JSON.stringify(engine.get_moves()));
-  const [moves, nextMoves] = engine.get_moves();
-  //postMessage({ type: 'board', board: engine.get_state(), moves, nextMoves });
-  //const board = {"pawns":[[0,0,0,0,0,0,255,0],[0,255,0,0,0,0,0,0]],"knights":[[0,0,0,0,0,0,0,66],[66,0,0,0,0,0,0,0]],"bishops":[[0,0,0,0,0,0,0,36],[36,0,0,0,0,0,0,0]],"rooks":[[0,0,0,0,0,0,0,129],[129,0,0,0,0,0,0,0]],"queens":[[0,0,0,0,0,0,0,8],[8,0,0,0,0,0,0,0]],"kings":[[0,0,0,0,0,0,0,16],[16,0,0,0,0,0,0,0]],"ducks":[0,0,0,0,0,0,0,0],"enPassant":[0,0,0,0,0,0,0,0],"castlingRights":[{"kingSide":true,"queenSide":true},{"kingSide":true,"queenSide":true}],"turn":"white","isDuckMove":false,"moveHistory":[null,null,null,null],"zobrist":0};
-  //const moves = [{"from":8,"to":16},{"from":9,"to":17},{"from":10,"to":18},{"from":11,"to":19},{"from":12,"to":20},{"from":13,"to":21},{"from":14,"to":22},{"from":15,"to":23},{"from":8,"to":24},{"from":9,"to":25},{"from":10,"to":26},{"from":11,"to":27},{"from":12,"to":28},{"from":13,"to":29},{"from":14,"to":30},{"from":15,"to":31},{"from":1,"to":16},{"from":1,"to":18},{"from":6,"to":21},{"from":6,"to":23}];
-  //postMessage({ type: 'board', board, moves });
-}
+async function setModel(modelName: ModelName) {
+  console.log('Setting model to', modelName);
+  currentModel = modelName;
+  // Don't start loading again.
+  if (modelRegistry.has(modelName))
+    return;
+  modelRegistry.set(modelName, 'loading');
+  console.log('Loading model', modelName);
 
-const onSearchWorkerMessage = (e: MessageEvent<any>) => {
-  console.log(e);
+  let path = '';
+  switch (modelName) {
+    case 'medium-001-128x10':
+      path = '/models/run-016-step-233-medium/model.json';
+      break;
+    case 'large-001-256x20':
+      path = '/models/run-016-model-200/model.json';
+      break;
+    default:
+      throw new Error('Unknown model name: ' + modelName);
+  }
+  const model = await tf.loadLayersModel(
+    process.env.PUBLIC_URL + path,
+    {
+      onProgress: (progress) => {
+        console.log('Loading', modelName, 'progress', progress);
+        postMessage({
+          type: 'modelLoadProgress',
+          progress,
+          modelName,
+        });
+      },
+    },
+  );
+  console.log('Loaded model', modelName);
+  modelRegistry.set(modelName, model);
 }
 
 function workLoop() {
+  const channelCount = channel_count();
   try {
     if (!runEngine)
       return;
-    let inputArray = new Float32Array(max_batch_size() * channel_count() * 8 * 8);
+    const model = modelRegistry.get(currentModel);
+    if (model === undefined || model === 'loading')
+      return;
+    let inputArray = new Float32Array(max_batch_size() * channelCount * 8 * 8);
     const batchSize = engine.step_until_batch(inputArray);
     //const batchSize = 1 as any;
     if (batchSize === 0) {
       return;
     }
-    inputArray = inputArray.slice(0, batchSize * channel_count() * 8 * 8);
+    inputArray = inputArray.slice(0, batchSize * channelCount * 8 * 8);
     //// Compute how many entries in this array are nonzero.
     //let nonZeroCount = 0;
     //for (let i = 0; i < inputArray.length; i++) {
@@ -43,7 +72,7 @@ function workLoop() {
     //}
     //console.log('Nonzero', nonZeroCount, 'of', inputArray.length);
     //console.log('batchSize', batchSize);
-    const inp = tf.tensor4d(inputArray, [batchSize, channel_count(), 8, 8]);
+    const inp = tf.tensor4d(inputArray, [batchSize, channelCount, 8, 8]);
     const [policy, wdl] = model.predict(inp) as [tf.Tensor, tf.Tensor];
     const policyData = policy.dataSync() as Float32Array;
     const wdlData = wdl.dataSync() as Float32Array;
@@ -114,14 +143,6 @@ async function initWorker() {
   //model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/model-medium/model.json')
   //model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/run-016-model-058/model.json')
   //model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/run-016-model-220/model.json')
-  model = await tf.loadLayersModel(
-    process.env.PUBLIC_URL + '/models/run-016-model-200/model.json',
-    {
-      onProgress: (progress) => {
-        postMessage({ type: 'modelLoadProgress', progress });
-      },
-    },
-  );
   postMessage({ type: 'initted' });
   // Make an 8x8 array of all nulls.
   //const fakeState = Array(8).fill(null).map(() => Array(8).fill(null));
@@ -143,6 +164,9 @@ onmessage = function(e: MessageEvent<MessageToEngineWorker>) {
       break;
     case 'setState':
       engine.set_state(e.data.state);
+      break;
+    case 'setModel':
+      setModel(e.data.modelName);
       break;
     //case 'applyMove':
     //  console.log('Applying move', e.data.move, 'isHidden', e.data.isHidden);

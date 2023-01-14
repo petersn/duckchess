@@ -61,6 +61,8 @@ export interface ChessBoardProps {
   highlightDuck: boolean;
   boardFlipped: boolean;
   board: PieceKind[][];
+  moveHistory: (Move | undefined)[];
+  isDuckMove: boolean;
   boardHash: number;
   legalMoves: Move[];
   hiddenLegalMoves: Move[];
@@ -245,6 +247,13 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
     const SQ = 50;
     const svgElements = [];
 
+    const moveHistoryHighlight: number[] = [];
+    // If we're on a duck move then highlight just the opponent's last non-duckmove.
+    let historyMoveIndex = this.props.isDuckMove ? 0 : 1;
+    const move = this.props.moveHistory[historyMoveIndex];
+    if (move !== undefined)
+      moveHistoryHighlight.push(move.from, move.to);
+
     // Draw the backdrop of squares.
     for (let y = 0; y < 8; y++) {
       for (let x = 0; x < 8; x++) {
@@ -253,6 +262,9 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
         let foregroundColor = (x + y) % 2 === 0 ? '#b97' : '#eca';
         //if (state.highlight[7 - y] & (1 << x))
         //  backgroundColor = (x + y) % 2 === 0 ? '#dd9' : '#aa6';
+        if (moveHistoryHighlight.includes(x + (7 - y) * 8)) {
+          backgroundColor = (x + y) % 2 === 0 ? '#efa' : '#bb7';
+        }
         if (this.state.userHighlightedSquares.some(([hx, hy]) => hx === x && hy === y)) {
           backgroundColor = '#f77';
         }
@@ -572,6 +584,7 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
           top: 0,
           transform: `translate(-50%, -50%)`,
           pointerEvents: 'none',
+          zIndex: 50,
         }}
       >
         {this.state.draggingPiece !== null && <ChessPiece

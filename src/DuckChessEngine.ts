@@ -1,6 +1,8 @@
 import init, { GameTree, new_game_tree, parse_pgn4 } from "engine";
 import { PieceKind } from "./ChessBoard";
 
+export type ModelName = 'medium-001-128x10' | 'large-001-256x20';
+
 type BasicMessages = {
   type: 'init';
 } | {
@@ -11,12 +13,16 @@ type BasicMessages = {
   runEngine: boolean;
 };
 
-export type MessageToEngineWorker = BasicMessages;
+export type MessageToEngineWorker = BasicMessages | {
+  type: 'setModel';
+  modelName: ModelName;
+}
 
 export type MessageFromEngineWorker = {
   type: 'initted';
 } | {
   type: 'modelLoadProgress';
+  modelName: ModelName;
   progress: number;
 } | {
   type: 'engineOutput';
@@ -88,7 +94,7 @@ export type PlayModeInfo = {
 } | null;
 
 export class DuckChessEngine {
-  loadProgressCallback: (progress: number) => void;
+  loadProgressCallback: (modelName: ModelName, progress: number) => void;
   forceUpdateCallback: () => void;
   engineWorker: Worker;
   searchWorker: Worker;
@@ -100,7 +106,7 @@ export class DuckChessEngine {
   thinkProgress: number = 0;
 
   constructor(
-    loadProgressCallback: (progress: number) => void,
+    loadProgressCallback: (modelName: ModelName, progress: number) => void,
     forceUpdateCallback: () => void,
   ) {
     this.loadProgressCallback = loadProgressCallback;
@@ -134,6 +140,9 @@ export class DuckChessEngine {
     this.gameTree.history_forward();
     this.sendBoardToEngine();
     this.forceUpdateCallback();
+    setTimeout(() => {
+      this.maybeMakeEngineMove();
+    }, 100);
   }
 
   sendBoardToEngine() {
@@ -175,6 +184,11 @@ export class DuckChessEngine {
     if (this.playMode === null)
       return;
     this.engineWorker.postMessage({ type: 'setRunEngine', runEngine: true });
+    this.maybeMakeEngineMove();
+  }
+
+  setModel(modelName: ModelName) {
+    this.engineWorker.postMessage({ type: 'setModel', modelName });
   }
 
   runAlphaBetaBenchmark(callback: (results: AlphaBetaBenchmarkResults) => void) {
@@ -199,6 +213,7 @@ export class DuckChessEngine {
       console.log('Making engine move:', move);
       this.gameTree.make_move(move, false)
       this.sendBoardToEngine();
+      this.forceUpdateCallback();
     }
   }
 
@@ -209,12 +224,13 @@ export class DuckChessEngine {
         this.setInitFlag(0);
         break;
       case 'modelLoadProgress':
-        this.loadProgressCallback(e.data.progress);
+        this.loadProgressCallback(e.data.modelName, e.data.progress);
         break;
       case 'engineOutput':
         const engineOutput = e.data.engineOutput;
         this.gameTree.apply_engine_output(engineOutput);
         this.maybeMakeEngineMove();
+        this.forceUpdateCallback();
         break;
       //case 'evaluation':
       //  const whiteWinProb = e.data.whiteWinProb;
@@ -224,7 +240,7 @@ export class DuckChessEngine {
       //  //this.nodes = e.data.nodes;
       //  break;
     }
-    this.forceUpdateCallback();
+    //this.forceUpdateCallback();
   }
 
   onSearchMessage = (e: MessageEvent<MessageFromSearchWorker>) => {
@@ -243,16 +259,18 @@ export class DuckChessEngine {
         //this.benchmarkCallback = () => {};
         break;
     }
-    this.forceUpdateCallback();
+    //this.forceUpdateCallback();
   }
 }
 
 export async function createDuckChessEngine(
-  loadProgressCallback: (progress: number) => void,
+  loadProgressCallback: (modelName: ModelName, progress: number) => void,
   forceUpdate: () => void,
+  modelName: ModelName,
 ): Promise<DuckChessEngine> {
   await init();
   const engine = new DuckChessEngine(loadProgressCallback, forceUpdate);
   await engine.initPromise;
+  engine.setModel(modelName);
   return engine;
 }

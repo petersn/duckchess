@@ -259,7 +259,24 @@ impl GameTree {
     }
   }
 
+  fn find_pv_leaf(&self) -> GameNodeId {
+    let mut current = self.root;
+    loop {
+      let node = &self.nodes[current];
+      if node.outgoing_edges.is_empty() {
+        return current;
+      }
+      current = node.outgoing_edges[0].child;
+    }
+  }
+
   pub fn get_play_move(&self, player: &str, steps: u32) -> JsValue {
+    // Don't make a move unless the cursor is at the end of the PV.
+    let pv_leaf = self.find_pv_leaf();
+    if self.cursor != pv_leaf {
+      return JsValue::NULL;
+    }
+    // Find the end of the principal variation.
     let node = &self.nodes[self.cursor];
     // Our loading bar goes from 0 to 0.7 during the main move, then from 0.7 to 1.0 during the duck move.
     let (base_progress, mult) = match node.state.is_duck_move {
@@ -377,7 +394,13 @@ impl GameTree {
     let info = make_tree(&self.nodes, self.root);
     // We have to shorten the board hash for JavaScript.
     let board_hash = node.state.get_transposition_table_hash() & 0xffffffffffff;
-    serde_wasm_bindgen::to_value(&(node, info, self.cursor, board_hash)).unwrap_or_else(|e| {
+    serde_wasm_bindgen::to_value(&(
+      node,
+      info,
+      self.cursor,
+      self.find_pv_leaf(),
+      board_hash,
+    )).unwrap_or_else(|e| {
       log(&format!("Failed to serialize state: {}", e));
       panic!("Failed to serialize state: {}", e);
     })

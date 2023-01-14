@@ -2,7 +2,7 @@ import { engine } from '@tensorflow/tfjs';
 import React from 'react';
 import './App.css';
 import init, { new_game_tree, GameTree, get_visit_limit } from 'engine';
-import { AlphaBetaBenchmarkResults, createDuckChessEngine, DuckChessEngine, MessageFromEngineWorker, MessageFromSearchWorker, parseRustBoardState } from './DuckChessEngine';
+import { AlphaBetaBenchmarkResults, createDuckChessEngine, DuckChessEngine, MessageFromEngineWorker, MessageFromSearchWorker, ModelName, parseRustBoardState } from './DuckChessEngine';
 import { ChessBoard, ChessPiece, PieceKind, BOARD_MAX_SIZE, Move } from './ChessBoard';
 import { BrowserRouter as Router, Route, Link, Routes, Navigate } from 'react-router-dom';
 import { BenchmarkApp } from './BenchmarkApp';
@@ -11,7 +11,6 @@ import { BenchmarkApp } from './BenchmarkApp';
 // For cosmetic reasons I cap the visits I show, to hide the few visits over the limit we might do.
 const VISIT_LIMIT = 50_000;
 
-const DEFAULT_MODEL_NAME = 'large-r16-s200-256x20';
 const DEFAULT_PGN4 = ``;
 
 
@@ -141,6 +140,10 @@ interface Info {
   turn: 'white' | 'black';
 }
 
+function getDefaultModelName(): ModelName {
+  return localStorage.getItem('modelName') as ModelName || 'medium-001-128x10';
+}
+
 let globalBoardFlipped = false;
 
 function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
@@ -148,7 +151,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
   //const [selectedSquare, setSelectedSquare] = React.useState<[number, number] | null>(null);
   //const [pair, setPair] = React.useState<any>(null);
   //const [duckFen, setDuckFen] = React.useState<string>('');
-  const [modelName, setModelName] = React.useState<string>(DEFAULT_MODEL_NAME);
+  const [modelName, setModelName] = React.useState<ModelName>(getDefaultModelName());
   const [toolMode, setToolMode] = React.useState<ToolMode>('analysis');
   const [pgn, setPgn] = React.useState<string>(DEFAULT_PGN4);
   const [boardFlipped, setBoardFlipped] = React.useState<boolean>(globalBoardFlipped);
@@ -160,6 +163,12 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
   const forceUpdate = () => {
     setForceUpdateCounter(Math.random());
   };
+
+  function adjustModelName(modelName: ModelName) {
+    setModelName(modelName);
+    localStorage.setItem('modelName', modelName);
+    engine.setModel(modelName);
+  }
 
   function adjustToolMode(toolMode: ToolMode) {
     setToolMode(toolMode);
@@ -178,7 +187,8 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
     }
   }
 
-  let [ser, info, cursor, boardHash]: [any, Info, any, number] = engine.gameTree.get_serialized_state();
+  let [ser, info, cursor, pvLeaf, boardHash]: [any, Info, any, any, number] = engine.gameTree.get_serialized_state();
+  //console.log('GOT:', cursor, pvLeaf);
 
   interface MoveRowEntry {
     name: string;
@@ -333,6 +343,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         engine.sendBoardToEngine();
         setNodeContextMenu(null);
         forceUpdate();
+        engine.maybeMakeEngineMove();
       }}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -571,9 +582,30 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
     (Nodes: {Math.min(nodes, VISIT_LIMIT)})
   </>;
 
-  const isEnginesTurn = thisNodeInfo[0] !== null && thisNodeInfo[0].turn === engine.playMode?.player;
+  const isHistoryMove = cursor.idx !== pvLeaf.idx;
+  const isEnginesTurn = (!isHistoryMove) && thisNodeInfo[0] !== null && thisNodeInfo[0].turn === engine.playMode?.player;
+
+  const modelProgress = globalModelLoadProgress[modelName];
 
   return <>
+    {modelProgress !== undefined && modelProgress < 1 && <div style={{
+      position: 'absolute',
+      top: 5,
+      left: 5,
+      width: 200,
+      height: 75,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      border: '1px solid #222',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      pointerEvents: 'none',
+      userSelect: 'none',
+      zIndex: 100,
+    }}>
+      Loading model: {Math.floor(modelProgress * 100)}%
+    </div>}
+
     <div style={{
       width: '100%',
       height: '100%',
@@ -611,6 +643,8 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         highlightDuck={ser.state.isDuckMove}
         boardFlipped={boardFlipped}
         board={parseRustBoardState(ser.state)}
+        moveHistory={ser.state.moveHistory}
+        isDuckMove={ser.state.isDuckMove}
         boardHash={boardHash}
         legalMoves={ser.legal_moves}
         hiddenLegalMoves={ser.legal_duck_skipping_moves}
@@ -667,7 +701,8 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
                 whiteSpace: 'nowrap',
               }}
             >
-              {isEnginesTurn ? 'Thinking...' : 'Your move'}
+              {isHistoryMove ? 'Game history' :
+                (isEnginesTurn ? 'Thinking...' : 'Your move')}
             </div>}
           </div>
 
@@ -710,6 +745,14 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
           <option value="medium-r16-s223-128x10">Medium</option>
           <option value="large-r16-s200-256x20">Large</option>
         </select></label>*/}
+
+        <label>Model: <select
+          value={modelName}
+          onChange={(e) => adjustModelName(e.target.value as ModelName)}
+        >
+          <option value="medium-001-128x10">Medium</option>
+          <option value="large-001-256x20">Large</option>
+        </select></label>
 
         <label>Mode: <select
           value={toolMode}
@@ -776,8 +819,9 @@ function InfoPage(props: { isMobile: boolean }) {
   );
 }
 
+const globalModelLoadProgress: { [key: string]: number } = {};
+
 function App() {
-  const [loadProgress, setLoadProgress] = React.useState<number>(0);
   const [engine, setEngine] = React.useState<DuckChessEngine | null>(null);
   const [width, setWidth] = React.useState<number>(window.innerWidth);
 
@@ -787,7 +831,14 @@ function App() {
   };
 
   React.useEffect(() => {
-    createDuckChessEngine(setLoadProgress, forceUpdate).then(setEngine);
+    createDuckChessEngine(
+      (modelName: ModelName, progress: number) => {
+        globalModelLoadProgress[modelName] = progress;
+        forceUpdate();
+      },
+      forceUpdate,
+      getDefaultModelName(),
+    ).then(setEngine);
   }, []);
 
   React.useEffect(() => {
@@ -830,7 +881,7 @@ function App() {
   }
 
   if (engine === null)
-    return <div>Loading model... {(100 * loadProgress).toFixed(1)}%</div>;
+    return <div>Loading...</div>;
 
   return (
     <Router basename={process.env.PUBLIC_URL}>
