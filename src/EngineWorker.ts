@@ -6,6 +6,21 @@ import { threads } from 'wasm-feature-detect';
 // Declare the type of postMessage
 declare function postMessage(message: MessageFromEngineWorker): void;
 
+// In order to allow this file to be used either as a Web Worker, or a module from the
+// main thread, we add a hook that allows one to redirect the postMessage calls.
+let postMessageAlternative: ((message: MessageFromEngineWorker) => void) | null = null;
+export function setPostMessageAlternative(f: (message: MessageFromEngineWorker) => void) {
+  postMessageAlternative = f;
+}
+
+function postMessageWrapper(message: MessageFromEngineWorker) {
+  if (postMessageAlternative !== null) {
+    postMessageAlternative(message);
+  } else {
+    postMessage(message);
+  }
+}
+
 let currentModel: string = 'none';
 const modelRegistry: Map<string, tf.LayersModel | 'loading'> = new Map();
 let engine: Engine;
@@ -36,7 +51,7 @@ async function setModel(modelName: ModelName) {
     {
       onProgress: (progress) => {
         console.log('Loading', modelName, 'progress', progress);
-        postMessage({
+        postMessageWrapper({
           type: 'modelLoadProgress',
           progress,
           modelName,
@@ -86,10 +101,10 @@ function workLoop() {
     wdl.dispose();
 
     const engineOutput = engine.get_engine_output();
-    postMessage({ type: 'engineOutput', engineOutput });
+    postMessageWrapper({ type: 'engineOutput', engineOutput });
 
     //const [pv, whiteWinProb, nodes] = engine.get_principal_variation();
-    //postMessage({ type: 'evaluation', whiteWinProb, pv, nodes });
+    //postMessageWrapper({ type: 'evaluation', whiteWinProb, pv, nodes });
     // FIXME: Why do I need as any here?
     //await (engine as any).step(array);
   } finally {
@@ -97,14 +112,17 @@ function workLoop() {
   }
 }
 
-async function initWorker() {
+async function initWorker(requireWebGL: boolean) {
   const success = await tf.setBackend('webgl');
   if (!success) {
     console.error('Failed to init WebGL backend!');
-    postMessage({
+    postMessageWrapper({
       type: 'backendFailure',
       message: "WebGL failed -- site will run at maybe 5% of full speed. If you're using Safari, try Chrome or Firefox instead.",
+      requireWebGL,
     });
+    if (requireWebGL)
+      return;
   }
 
   const hasThreads = await threads();
@@ -152,38 +170,42 @@ async function initWorker() {
   //model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/model-medium/model.json')
   //model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/run-016-model-058/model.json')
   //model = await tf.loadLayersModel(process.env.PUBLIC_URL + '/run-016-model-220/model.json')
-  postMessage({ type: 'initted' });
+  postMessageWrapper({ type: 'initted' });
   // Make an 8x8 array of all nulls.
   //const fakeState = Array(8).fill(null).map(() => Array(8).fill(null));
-  //postMessage({ type: 'board', board: fakeState, moves: [] });
+  //postMessageWrapper({ type: 'board', board: fakeState, moves: [] });
   //sendBoardState();
   workLoop();
 
   //// Create a search worker.
   //worker = new Worker(new URL('./SearchWorker.ts', import.meta.url));
   //worker.onmessage = onSearchWorkerMessage;
-  //worker.postMessage({ type: 'init', mem: sharedArrayBuffer });
+  //worker.postMessageWrapper({ type: 'init', mem: sharedArrayBuffer });
+}
+
+export function handleMessage(msg: MessageToEngineWorker) {
+  switch (msg.type) {
+    case 'init':
+      initWorker(msg.requireWebGL);
+      break;
+    case 'setState':
+      engine.set_state(msg.state);
+      break;
+    case 'setModel':
+      setModel(msg.modelName);
+      break;
+    //case 'applyMove':
+    //  console.log('Applying move', msg.move, 'isHidden', msg.isHidden);
+    //  engine.apply_move(msg.move, msg.isHidden);
+    //  sendBoardState();
+    //  break;
+    case 'setRunEngine':
+      runEngine = msg.runEngine;
+      break;
+  }
 }
 
 onmessage = function(e: MessageEvent<MessageToEngineWorker>) {
   //console.log('Web worker got:', e.data);
-  switch (e.data.type) {
-    case 'init':
-      initWorker();
-      break;
-    case 'setState':
-      engine.set_state(e.data.state);
-      break;
-    case 'setModel':
-      setModel(e.data.modelName);
-      break;
-    //case 'applyMove':
-    //  console.log('Applying move', e.data.move, 'isHidden', e.data.isHidden);
-    //  engine.apply_move(e.data.move, e.data.isHidden);
-    //  sendBoardState();
-    //  break;
-    case 'setRunEngine':
-      runEngine = e.data.runEngine;
-      break;
-  }
+  handleMessage(e.data);
 }

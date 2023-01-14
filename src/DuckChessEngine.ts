@@ -1,11 +1,10 @@
 import init, { GameTree, new_game_tree, parse_pgn4 } from "engine";
 import { PieceKind } from "./ChessBoard";
+import * as EngineWorkerModule from './EngineWorker';
 
 export type ModelName = 'medium-001-128x10' | 'large-001-256x20';
 
 type BasicMessages = {
-  type: 'init';
-} | {
   type: 'setState';
   state: any;
 } | {
@@ -14,6 +13,9 @@ type BasicMessages = {
 };
 
 export type MessageToEngineWorker = BasicMessages | {
+  type: 'init';
+  requireWebGL: boolean;
+} | {
   type: 'setModel';
   modelName: ModelName;
 }
@@ -30,9 +32,12 @@ export type MessageFromEngineWorker = {
 } | {
   type: 'backendFailure';
   message: string;
+  requireWebGL: boolean;
 };
 
 export type MessageToSearchWorker = BasicMessages | {
+  type: 'init';
+} | {
   type: 'runAlphaBetaBenchmark';
 };
 
@@ -96,6 +101,20 @@ export type PlayModeInfo = {
   steps: number;
 } | null;
 
+class FakeEngineWorker {
+  postMessage = (msg: MessageToEngineWorker) => {
+    EngineWorkerModule.handleMessage(msg);
+  }
+}
+
+function makeFakeEngineWorker(
+  onEngineMessage: (msg: MessageFromEngineWorker) => void,
+): Worker {
+  EngineWorkerModule.setPostMessageAlternative(onEngineMessage);
+  const fakeEngineWorker = new FakeEngineWorker();
+  return fakeEngineWorker as Worker;
+}
+
 export class DuckChessEngine {
   loadProgressCallback: (modelName: ModelName, progress: number) => void;
   forceUpdateCallback: () => void;
@@ -114,13 +133,16 @@ export class DuckChessEngine {
   ) {
     this.loadProgressCallback = loadProgressCallback;
     this.forceUpdateCallback = forceUpdateCallback;
-    this.engineWorker = new Worker(new URL('./EngineWorker.ts', import.meta.url));
-    this.engineWorker.onmessage = this.onEngineMessage;
+    //this.engineWorker = new Worker(new URL('./EngineWorker.ts', import.meta.url));
+    //this.engineWorker.onmessage = this.onEngineMessage;
+    this.engineWorker = makeFakeEngineWorker(this.handleEngineMessage);
+//    this.engineWorker.onmessage = this.onEngineMessage;
     this.searchWorker = new Worker(new URL('./SearchWorker.ts', import.meta.url));
     this.searchWorker.onmessage = this.onSearchMessage;
-    for (const worker of [this.engineWorker, this.searchWorker]) {
-      worker.postMessage({ type: 'init' });
-    }
+    // First we try to initialize TensorFlow.js in a Web Worker, requiring WebGL.
+    // If this fails we'll try to initialize it on the main thread, not requiring WebGL.
+    this.engineWorker.postMessage({ type: 'init', requireWebGL: true });
+    this.searchWorker.postMessage({ type: 'init' });
     this.gameTree = new_game_tree();
     this.initPromise = new Promise((resolve) => {
       this.resolveInitPromise = resolve;
@@ -230,33 +252,37 @@ export class DuckChessEngine {
     this.forceUpdateCallback();
   }
 
-  onEngineMessage = (e: MessageEvent<MessageFromEngineWorker>) => {
-    //console.log('Main thread got:', e.data);
-    switch (e.data.type) {
+  handleEngineMessage = (msg: MessageFromEngineWorker) => {
+    //console.log('Main thread got:', msg);
+    switch (msg.type) {
       case 'initted':
         this.setInitFlag(0);
         break;
       case 'modelLoadProgress':
-        this.loadProgressCallback(e.data.modelName, e.data.progress);
+        this.loadProgressCallback(msg.modelName, msg.progress);
         break;
       case 'engineOutput':
-        const engineOutput = e.data.engineOutput;
+        const engineOutput = msg.engineOutput;
         this.gameTree.apply_engine_output(engineOutput);
         this.maybeMakeEngineMove();
         this.forceUpdateCallback();
         break;
       case 'backendFailure':
-        window.alert(e.data.message);
+        window.alert(msg.message);
         break;
       //case 'evaluation':
-      //  const whiteWinProb = e.data.whiteWinProb;
+      //  const whiteWinProb = msg.whiteWinProb;
       //  const Q = 2 * whiteWinProb - 1;
       //  //this.evaluation = 1.11714640912 * Math.tan(1.5620688421 * Q); // 4 * tan(3.14 * x - 1.57)
-      //  //this.pv = e.data.pv;
-      //  //this.nodes = e.data.nodes;
+      //  //this.pv = msg.pv;
+      //  //this.nodes = msg.nodes;
       //  break;
     }
     //this.forceUpdateCallback();
+  }
+
+  onEngineMessage = (e: MessageEvent<MessageFromEngineWorker>) => {
+    this.handleEngineMessage(e.data);
   }
 
   onSearchMessage = (e: MessageEvent<MessageFromSearchWorker>) => {
