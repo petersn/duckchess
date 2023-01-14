@@ -493,13 +493,16 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         move_gen_scratch: &mut Vec<Move>,
         sought_outcome: Option<GameOutcome>,
       ) -> bool {
+        //if position.is_duck_move {
+        //  crate::log("check_if_position_has_move_producing_outcome: position is duck move");
+        //}
         assert!(!position.is_duck_move);
         move_gen_scratch.clear();
         // Set quiescence because we're looking for a capture.
         position.move_gen::<true>(move_gen_scratch);
         for m in move_gen_scratch {
           let mut state_after_move = position.clone();
-          state_after_move.apply_move::<false>(*m, None).unwrap();
+          state_after_move.apply_move::<false>(*m, None).expect("mate-in-1-check-position-apply-move");
           if state_after_move.get_outcome() == sought_outcome {
             return true;
           }
@@ -510,7 +513,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       let loss_outcome = Some(GameOutcome::Win(root.state.turn.other_player()));
 
       // Check if this move hangs mate in one.
-      let mut hangs_mate = false;
+      let mut hangs_mate;
       if root.state.is_duck_move {
         // If we just made a duck move, then make sure that they don't have any moves that kill us.
         hangs_mate = check_if_position_has_move_producing_outcome(
@@ -521,10 +524,11 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       } else {
         // If we just made a non-duck move, make sure that we have at least one duck move that doesn't lose.
         hangs_mate = true;
+        move_gen_scratch0.clear();
         state_after_move.move_gen::<false>(&mut move_gen_scratch0);
         for duck_followup in &move_gen_scratch0 {
-          let mut state_after_duck_followup = root.state.clone();
-          state_after_duck_followup.apply_move::<false>(*duck_followup, None).unwrap();
+          let mut state_after_duck_followup = state_after_move.clone();
+          state_after_duck_followup.apply_move::<false>(*duck_followup, None).expect("mate-in-1-duck-followup-apply-move");
           if !check_if_position_has_move_producing_outcome(
             &state_after_duck_followup,
             &mut move_gen_scratch1,
@@ -535,7 +539,6 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
           }
         }
       }
-
       if hangs_mate {
         //crate::log(&format!("Found hanging mate in one: {:?}", m));
         *weight = 0.0;
