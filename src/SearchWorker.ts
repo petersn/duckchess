@@ -1,4 +1,4 @@
-import init, { new_engine, max_batch_size, channel_count, parse_pgn4, Engine, perft, perft_nnue, perft_eval, test_threads, test_simd, test_shared_mem, Pvs, new_pvs } from 'engine';
+import init, { perft, perft_eval, Pvs, new_pvs } from 'engine';
 import { MessageFromSearchWorker } from './DuckChessEngine';
 
 // Declare the type of postMessage
