@@ -7,7 +7,7 @@ import { ChessBoard, ChessPiece, PieceKind, BOARD_MAX_SIZE, Move } from './Chess
 import { BrowserRouter as Router, Route, Link, Routes, Navigate } from 'react-router-dom';
 import { BenchmarkApp } from './BenchmarkApp';
 
-const GUI_VERSION = 'v0.1.2';
+const GUI_VERSION = 'v0.1.3';
 
 // FIXME: This is hacky.
 // For cosmetic reasons I cap the visits I show, to hide the few visits over the limit we might do.
@@ -297,13 +297,17 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
     if (nodeContextMenu === move.id.idx) {
       contextMenu = <div style={{
         position: 'absolute',
-        top: 0,
-        left: 0,
+        top: 20,
+        left: '50%',
         backgroundColor: '#336',
         border: '1px solid black',
         padding: 4,
         zIndex: 80,
-        transform: props.isMobile ? 'translate(25%, 0)' : 'translate(-100%, 0)',
+        userSelect: 'none',
+        fontSize: '14pt',
+        textAlign: 'center',
+        transform: 'translate(-50%, 0)',
+        //transform: props.isMobile ? 'translate(25%, 0)' : 'translate(-100%, 0)',
       }}>
         <div className='contextMenuButton' onClick={() => {
           engine.gameTree.delete_by_id(move.id);
@@ -317,6 +321,10 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
           setNodeContextMenu(null);
           forceUpdate();
         }}>Promote</div>}
+        <div className='contextMenuButton' style={{ fontSize: '80%' }} onClick={() => {
+          setNodeContextMenu(null);
+          forceUpdate();
+        }}>Cancel</div>
       </div>;
     }
 
@@ -370,7 +378,8 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
     if (row.smallRowContent !== null) {
       return <div key={i} style={{
         fontSize: '80%',
-        opacity: 0.8,
+        color: '#ddd',
+        //opacity: 0.8,
         backgroundColor: '#777',
         margin: 1,
       }}>
@@ -719,7 +728,6 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
           </div>
 
           <div style={{
-            overflowX: 'visible',
             overflowY: 'scroll',
             height: BOARD_MAX_SIZE - 46,
           }}>
