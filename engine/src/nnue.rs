@@ -238,46 +238,55 @@ cfg_if::cfg_if! {
       }
     }
   } else if #[cfg(target_arch = "wasm32")] {
-    use std::arch::wasm32::*;
-    type VecI8 = v128;
-    type VecI16 = v128;
+    //use std::arch::wasm32::*;
+    //type VecI8 = v128;
+    //type VecI16 = v128;
+    type VecI8 = [i8; 16];
+    type VecI16 = [i16; 8];
 
     #[inline(always)]
-    fn veci16_zeros() -> VecI16 { unsafe { i16x8_splat(0) } }
+    //fn veci16_zeros() -> VecI16 { unsafe { i16x8_splat(0) } }
+    fn veci16_zeros() -> VecI16 { todo!() }
 
     #[inline(always)]
-    fn veci16_add(a: VecI16, b: VecI16) -> VecI16 { unsafe { i16x8_add(a, b) } }
+    //fn veci16_add(a: VecI16, b: VecI16) -> VecI16 { unsafe { i16x8_add(a, b) } }
+    fn veci16_add(a: VecI16, b: VecI16) -> VecI16 { todo!() }
 
     #[inline(always)]
-    fn veci16_sub(a: VecI16, b: VecI16) -> VecI16 { unsafe { i16x8_sub(a, b) } }
+    //fn veci16_sub(a: VecI16, b: VecI16) -> VecI16 { unsafe { i16x8_sub(a, b) } }
+    fn veci16_sub(a: VecI16, b: VecI16) -> VecI16 { todo!() }
 
     #[inline(always)]
-    fn veci16_shr_bias_to_main(a: VecI16) -> VecI16 { unsafe { i16x8_shr(a, 4) } }
+    //fn veci16_shr_bias_to_main(a: VecI16) -> VecI16 { unsafe { i16x8_shr(a, 4) } }
+    fn veci16_shr_bias_to_main(a: VecI16) -> VecI16 { todo!() }
 
     #[inline(always)]
-    fn vec_narrow_pair(a: VecI16, b: VecI16) -> VecI8 {
-      unsafe { i8x16_max(i8x16_splat(0), i8x16_narrow_i16x8(a, b)) }
-    }
+    //fn vec_narrow_pair(a: VecI16, b: VecI16) -> VecI8 {
+    //  unsafe { i8x16_max(i8x16_splat(0), i8x16_narrow_i16x8(a, b)) }
+    //}
+    fn vec_narrow_pair(a: VecI16, b: VecI16) -> VecI8 { todo!() }
 
     #[inline(always)]
-    fn vec_matmul_sat_fma(accum: VecI16, a: VecI8, b: VecI8) -> VecI16 {
-      unsafe {
-        let a = i16x8_extmul_low_i8x16(a, b);
-        let b = i16x8_extmul_high_i8x16(a, b);
-        i16x8_add(accum, i16x8_add(a, b))
-      }
-    }
+    //fn vec_matmul_sat_fma(accum: VecI16, a: VecI8, b: VecI8) -> VecI16 {
+    //  unsafe {
+    //    let a = i16x8_extmul_low_i8x16(a, b);
+    //    let b = i16x8_extmul_high_i8x16(a, b);
+    //    i16x8_add(accum, i16x8_add(a, b))
+    //  }
+    //}
+    fn vec_matmul_sat_fma(accum: VecI16, a: VecI8, b: VecI8) -> VecI16 { todo!() }
 
     #[inline(always)]
-    fn veci16_horizontal_sat_sum(a: VecI16) -> i16 {
-      unsafe {
-        let zeros = i16x8_splat(0);
-        let a = i16x8_add_sat(a, i16x8_shuffle::<4, 5, 6, 7, 0, 1, 2, 3>(a, zeros));
-        let a = i16x8_add_sat(a, i16x8_shuffle::<2, 3, 4, 5, 6, 7, 0, 1>(a, zeros));
-        let a = i16x8_add_sat(a, i16x8_shuffle::<1, 2, 3, 4, 5, 6, 7, 0>(a, zeros));
-        i16x8_extract_lane::<0>(a)
-      }
-    }
+    //fn veci16_horizontal_sat_sum(a: VecI16) -> i16 {
+    //  unsafe {
+    //    let zeros = i16x8_splat(0);
+    //    let a = i16x8_add_sat(a, i16x8_shuffle::<4, 5, 6, 7, 0, 1, 2, 3>(a, zeros));
+    //    let a = i16x8_add_sat(a, i16x8_shuffle::<2, 3, 4, 5, 6, 7, 0, 1>(a, zeros));
+    //    let a = i16x8_add_sat(a, i16x8_shuffle::<1, 2, 3, 4, 5, 6, 7, 0>(a, zeros));
+    //    i16x8_extract_lane::<0>(a)
+    //  }
+    //}
+    fn veci16_horizontal_sat_sum(a: VecI16) -> i16 { todo!() }
   } else {
     compile_error!("Unsupported architecture.");
   }
