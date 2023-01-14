@@ -26,7 +26,7 @@ async function setModel(modelName: ModelName) {
       path = '/models/run-016-step-233-medium/model.json';
       break;
     case 'large-001-256x20':
-      path = '/models/run-016-model-200/model.json';
+      path = '/models/run-016-step-200/model.json';
       break;
     default:
       throw new Error('Unknown model name: ' + modelName);
