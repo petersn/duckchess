@@ -73,6 +73,7 @@ export interface ChessBoardProps {
 
 interface ChessBoardState {
   selectedSquare: [number, number] | null;
+  clickExempt: [number, number] | null;
   draggingPiece: PieceKind;
   skipSquare: [number, number];
 
@@ -95,6 +96,7 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
     super(props);
     this.state = {
       selectedSquare: null,
+      clickExempt: null,
       draggingPiece: null,
       skipSquare: [-1, -1],
       userDrawnArrows: [],
@@ -334,6 +336,13 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
             height={SQ}
             fill={backgroundColor}
             onClick={(e) => {
+              // If this square is click exempt, skip it.
+              if (
+                this.state.clickExempt !== null &&
+                this.state.clickExempt[0] === x &&
+                this.state.clickExempt[1] === y
+              )
+                return;
               let soft = this.props.board[y][x] === null;
               // If this is the initial duck placement then it's not soft.
               if (this.props.isInitialDuckPlacementMove)
@@ -346,16 +355,27 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
                 this.beginArrow(x, y);
                 return;
               }
-              // If the square is unoccupied, then we soft click it, preventing selection.
-              const soft = this.props.board[y][x] === null;
-              // Click this square, unless it's already selected.
-              if (!this.state.selectedSquare || this.state.selectedSquare[0] !== x || this.state.selectedSquare[1] !== y) {
-                console.log('Mouse down click');
-                this.onClick(x, y, soft);
-              }
+              //// If the square is unoccupied, then we soft click it, preventing selection.
+              //const soft = this.props.board[y][x] === null;
+              //// Click this square, unless it's already selected.
+              //if (!this.state.selectedSquare || this.state.selectedSquare[0] !== x || this.state.selectedSquare[1] !== y) {
+              //  console.log('Mouse down click');
+              //  this.onClick(x, y, soft);
+              //}
               // Check if there's a piece here.
               if (this.props.board[y][x] === null)
                 return;
+              const hereSelected = (
+                this.state.selectedSquare &&
+                this.state.selectedSquare[0] === x &&
+                this.state.selectedSquare[1] === y
+              );
+              this.setState({
+                // Force selection to this square, if there's a piece here.
+                selectedSquare: [x, y],
+                // If you release on this square then it won't click.
+                clickExempt: hereSelected ? null : [x, y],
+              });
               //console.log('mouse down', x, y);
               // Begin dragging.
               const rect = e.currentTarget.getBoundingClientRect();
