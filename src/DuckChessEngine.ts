@@ -27,6 +27,9 @@ export type MessageFromEngineWorker = {
 } | {
   type: 'engineOutput';
   engineOutput: any;
+} | {
+  type: 'backendFailure';
+  message: string;
 };
 
 export type MessageToSearchWorker = BasicMessages | {
@@ -241,6 +244,9 @@ export class DuckChessEngine {
         this.gameTree.apply_engine_output(engineOutput);
         this.maybeMakeEngineMove();
         this.forceUpdateCallback();
+        break;
+      case 'backendFailure':
+        window.alert(e.data.message);
         break;
       //case 'evaluation':
       //  const whiteWinProb = e.data.whiteWinProb;

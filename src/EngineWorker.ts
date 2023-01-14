@@ -98,6 +98,15 @@ function workLoop() {
 }
 
 async function initWorker() {
+  const success = await tf.setBackend('webgl');
+  if (!success) {
+    console.error('Failed to init WebGL backend!');
+    postMessage({
+      type: 'backendFailure',
+      message: "WebGL failed -- site will run at maybe 5% of full speed. If you're using Safari, try Chrome or Firefox instead.",
+    });
+  }
+
   const hasThreads = await threads();
   console.log('Has threads:', hasThreads);
   //const sharedArrayBuffer = new SharedArrayBuffer(4 * 1024 * 1024);
