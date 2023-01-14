@@ -1,11 +1,13 @@
 import { engine } from '@tensorflow/tfjs';
 import React from 'react';
 import './App.css';
-import init, { new_game_tree, GameTree, get_visit_limit } from 'engine';
+import init, { new_game_tree, GameTree, get_visit_limit, get_wasm_version } from 'engine';
 import { AlphaBetaBenchmarkResults, createDuckChessEngine, DuckChessEngine, MessageFromEngineWorker, MessageFromSearchWorker, ModelName, parseRustBoardState } from './DuckChessEngine';
 import { ChessBoard, ChessPiece, PieceKind, BOARD_MAX_SIZE, Move } from './ChessBoard';
 import { BrowserRouter as Router, Route, Link, Routes, Navigate } from 'react-router-dom';
 import { BenchmarkApp } from './BenchmarkApp';
+
+const GUI_VERSION = '0.1.0';
 
 // FIXME: This is hacky.
 // For cosmetic reasons I cap the visits I show, to hide the few visits over the limit we might do.
@@ -810,7 +812,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
       Created by Peter Schmidt-Nielsen
       (<a href="https://twitter.com/ptrschmdtnlsn">Twitter</a>, <a href="https://peter.website">Website</a>)<br/>
       Engine + web interface: <a href="https://github.com/petersn/duckchess">github.com/petersn/duckchess</a><br/>
-      <span style={{ fontSize: '50%', opacity: 0.5 }}>Piece SVGs: Cburnett (CC BY-SA 3), Duck SVG + all code: my creation (CC0)</span>
+      <span style={{ fontSize: '50%', opacity: 0.5 }}>{GUI_VERSION}-{get_wasm_version()} Piece SVGs: Cburnett (CC BY-SA 3), Duck SVG + all code: my creation (CC0)</span>
     </div>
   </>;
 }
