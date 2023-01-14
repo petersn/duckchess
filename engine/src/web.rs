@@ -887,7 +887,7 @@ pub fn test_shared_mem(shared_mem: Int32Array, my_value: i32) {
 
 #[wasm_bindgen]
 pub fn get_wasm_version() -> String {
-  "v0.1.1".to_string()
+  "v0.1.2".to_string()
 }
 
 /*

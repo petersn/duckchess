@@ -750,14 +750,6 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
           <option value="large-r16-s200-256x20">Large</option>
         </select></label>*/}
 
-        <label>Model: <select
-          value={modelName}
-          onChange={(e) => adjustModelName(e.target.value as ModelName)}
-        >
-          <option value="medium-001-128x10">Medium</option>
-          <option value="large-001-256x20">Large</option>
-        </select></label>
-
         <label>Mode: <select
           value={toolMode}
           onChange={(e) => adjustToolMode(e.target.value as ToolMode)}
@@ -766,6 +758,14 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
           <option value="play100">Play (100 steps)</option>
           <option value="play1k">Play (1k steps)</option>
           <option value="play10k">Play (10k steps)</option>
+        </select></label>
+
+        <label>Model: <select
+          value={modelName}
+          onChange={(e) => adjustModelName(e.target.value as ModelName)}
+        >
+          <option value="medium-001-128x10">Medium</option>
+          <option value="large-001-256x20">Large</option>
         </select></label>
 
         <button onClick={() => {

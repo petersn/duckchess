@@ -475,7 +475,8 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     let score = white_wdl[0] + white_wdl[1] * 0.5;
     // Reweight any mates in one to be maximum weight,
     // and reweight moves that hang mate in one to be zero weight.
-    let mut move_gen_scratch = vec![];
+    let mut move_gen_scratch0 = vec![];
+    let mut move_gen_scratch1 = vec![];
     for (m, weight) in &mut top_moves {
       let mut state_after_move = root.state.clone();
       state_after_move.apply_move::<false>(*m, None).unwrap();
@@ -486,20 +487,58 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         // FIXME: Adjust the score here.
         break;
       }
-      // Check if the opponent has a mate in one
-      if !state_after_move.is_duck_move {
+
+      fn check_if_position_has_move_producing_outcome(
+        position: &State,
+        move_gen_scratch: &mut Vec<Move>,
+        sought_outcome: Option<GameOutcome>,
+      ) -> bool {
+        assert!(!position.is_duck_move);
         move_gen_scratch.clear();
-        state_after_move.move_gen::<false>(&mut move_gen_scratch);
-        let loss_outcome = Some(GameOutcome::Win(root.state.turn.other_player()));
-        for m in &move_gen_scratch {
-          let mut state_after_opponent_move = state_after_move.clone();
-          state_after_opponent_move.apply_move::<false>(*m, None).unwrap();
-          if state_after_opponent_move.get_outcome() == loss_outcome {
-            //crate::log(&format!("Found move that hangs mate in one: {:?}", m));
-            *weight = 0.0;
+        // Set quiescence because we're looking for a capture.
+        position.move_gen::<true>(move_gen_scratch);
+        for m in move_gen_scratch {
+          let mut state_after_move = position.clone();
+          state_after_move.apply_move::<false>(*m, None).unwrap();
+          if state_after_move.get_outcome() == sought_outcome {
+            return true;
+          }
+        }
+        false
+      }
+
+      let loss_outcome = Some(GameOutcome::Win(root.state.turn.other_player()));
+
+      // Check if this move hangs mate in one.
+      let mut hangs_mate = false;
+      if root.state.is_duck_move {
+        // If we just made a duck move, then make sure that they don't have any moves that kill us.
+        hangs_mate = check_if_position_has_move_producing_outcome(
+          &state_after_move,
+          &mut move_gen_scratch0,
+          loss_outcome,
+        );
+      } else {
+        // If we just made a non-duck move, make sure that we have at least one duck move that doesn't lose.
+        hangs_mate = true;
+        state_after_move.move_gen::<false>(&mut move_gen_scratch0);
+        for duck_followup in &move_gen_scratch0 {
+          let mut state_after_duck_followup = root.state.clone();
+          state_after_duck_followup.apply_move::<false>(*duck_followup, None).unwrap();
+          if !check_if_position_has_move_producing_outcome(
+            &state_after_duck_followup,
+            &mut move_gen_scratch1,
+            loss_outcome,
+          ) {
+            hangs_mate = false;
             break;
           }
         }
+      }
+
+      if hangs_mate {
+        //crate::log(&format!("Found hanging mate in one: {:?}", m));
+        *weight = 0.0;
       }
     }
     // Normalize weights.
