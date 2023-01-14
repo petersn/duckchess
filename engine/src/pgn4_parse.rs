@@ -137,9 +137,9 @@ pub fn parse(mut s: &str) -> Result<Pgn4, String> {
       ($($c:literal),*) => {
         match tokens[i] {
           $(
-            Token::Other($c) => i += 1,
+            Token::Other($c) => { i += 1; true },
           )*
-          _ => {},
+          _ => false,
         }
       }
     }
@@ -173,6 +173,13 @@ pub fn parse(mut s: &str) -> Result<Pgn4, String> {
     expect_one_of!('-', 'x');
     let arrival_square = parse_square!();
     optional_char!('+', '#');
+    // Allow an optional promotion, so long as it's to a queen.
+    if optional_char!('=') {
+      if optional_char!('R', 'B', 'N') {
+        return Err("Sorry, under-promotion isn't supported right now".to_string());
+      }
+      expect_one_of!('Q');
+    }
     //println!("{:?}-{:?}", departure_square, arrival_square);
     moves.push(Pgn4Move {
       from: to_index(departure_square),
@@ -188,6 +195,14 @@ pub fn parse(mut s: &str) -> Result<Pgn4, String> {
     expect_one_of!('-');
     let arrival_square = parse_square!();
     optional_char!('+', '#');
+    // Allow an optional promotion, so long as it's to a queen.
+    if optional_char!('=') {
+      if optional_char!('R', 'B', 'N') {
+        return Err("Sorry, under-promotion isn't supported right now".to_string());
+      }
+      expect_one_of!('Q');
+    }
+
     let departure_square = departure_square.unwrap_or(arrival_square);
     moves.push(Pgn4Move {
       from: to_index(departure_square),
