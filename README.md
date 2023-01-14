@@ -6,6 +6,11 @@ Live version: [https://peter.website/duck-chess](https://peter.website/duck-ches
 
 The engine uses TensorFlow.js to perform inference, and a WASM backend written in Rust for MCTS.
 
+## Building
+
+Currently everything is a big mess, but I can clean up the code at some point if folks want to modify it.
+But I'm going to leave it as a massive mess until someone expresses interest.
+
 ## Bug reports / improvements
 
 Feel free to email me at schmidtnielsenpeter@gmail.com
