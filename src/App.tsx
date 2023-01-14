@@ -295,10 +295,12 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
     if (nodeContextMenu === move.id.idx) {
       contextMenu = <div style={{
         position: 'absolute',
+        top: 0,
+        left: 0,
         backgroundColor: '#336',
         border: '1px solid black',
         padding: 4,
-        zIndex: 1,
+        zIndex: 80,
         transform: props.isMobile ? 'translate(25%, 0)' : 'translate(-100%, 0)',
       }}>
         <div className='contextMenuButton' onClick={() => {
@@ -335,6 +337,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
     return <span
       style={{
         ...moveSpanStyle,
+        position: 'relative',
         color: move.id.idx === nodeContextMenu ? 'yellow' :
         (move.id.idx === cursor.idx ? 'red' : '#ddd'),
       }}
@@ -402,10 +405,8 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
   React.useEffect(() => {
     const shortcutsHandler = (event: KeyboardEvent) => {
       if (event.key === ' ') {
-        // Make the top move.
-        //if (engine !== null && engine.pv.length !== 0) {
-        //  engine.makeMove(engine.pv[0], false);
-        //}
+        engine.makeTopMove();
+        setNodeContextMenu(null);
       } else if (event.key === 'Escape') {
         setNodeContextMenu(null);
       } else if (event.key === 'ArrowLeft') {
@@ -707,6 +708,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
           </div>
 
           <div style={{
+            overflowX: 'visible',
             overflowY: 'scroll',
             height: BOARD_MAX_SIZE - 46,
           }}>

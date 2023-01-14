@@ -217,6 +217,16 @@ export class DuckChessEngine {
     }
   }
 
+  makeTopMove() {
+    const move = this.gameTree.get_top_move();
+    console.log('Making top move:', move);
+    if (move === null)
+      return;
+    this.gameTree.make_move(move, false);
+    this.sendBoardToEngine();
+    this.forceUpdateCallback();
+  }
+
   onEngineMessage = (e: MessageEvent<MessageFromEngineWorker>) => {
     //console.log('Main thread got:', e.data);
     switch (e.data.type) {

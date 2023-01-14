@@ -182,22 +182,46 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
         this.setState({ selectedSquare: [x, y] });
       }
     } else {
-      let [fromX, fromY] = this.state.selectedSquare;
-      fromY = 7 - fromY;
-      y = 7 - y;
-      const encodedFrom = 8 * fromY + fromX;
-      const encodedTo = 8 * y + x;
-      const isHidden = this.props.hiddenLegalMoves.some(m => m.from === encodedFrom && m.to === encodedTo);
-      // Find the first move that matches the selected square and the clicked square.
-      const m = [...this.props.legalMoves, ...this.props.hiddenLegalMoves].find((m: any) => m.from === encodedFrom && m.to === encodedTo);
-      if (m) {
-        this.props.onMove(m, isHidden);
-        //engineWorker.applyMove(m);
-        //setForceUpdateCounter(forceUpdateCounter + 1);
-      }
-      //setSelectedSquare(null);
+      if (this.tryToCompleteMove(x, y))
+        return;
       this.setState({ selectedSquare: null });
+      // let [fromX, fromY] = this.state.selectedSquare;
+      // fromY = 7 - fromY;
+      // const encodedFrom = 8 * fromY + fromX;
+      // const encodedTo = 8 * (7 - y) + x;
+      // const isHidden = this.props.hiddenLegalMoves.some(m => m.from === encodedFrom && m.to === encodedTo);
+      // // Find the first move that matches the selected square and the clicked square.
+      // const m = [...this.props.legalMoves, ...this.props.hiddenLegalMoves].find((m: any) => m.from === encodedFrom && m.to === encodedTo);
+      // if (m) {
+      //   this.props.onMove(m, isHidden);
+      //   //engineWorker.applyMove(m);
+      //   //setForceUpdateCounter(forceUpdateCounter + 1);
+      //   this.setState({ selectedSquare: null });
+      // } else {
+      //   this.setState({ selectedSquare: [x, y] });
+      // }
+      //setSelectedSquare(null);
     }
+  }
+
+  tryToCompleteMove(x: number, y: number): boolean {
+    if (this.state.selectedSquare === null)
+      return false;
+    let [fromX, fromY] = this.state.selectedSquare;
+    fromY = 7 - fromY;
+    const encodedFrom = 8 * fromY + fromX;
+    const encodedTo = 8 * (7 - y) + x;
+    const isHidden = this.props.hiddenLegalMoves.some(m => m.from === encodedFrom && m.to === encodedTo);
+    // Find the first move that matches the selected square and the clicked square.
+    const m = [...this.props.legalMoves, ...this.props.hiddenLegalMoves].find((m: any) => m.from === encodedFrom && m.to === encodedTo);
+    if (m) {
+      this.props.onMove(m, isHidden);
+      //engineWorker.applyMove(m);
+      //setForceUpdateCounter(forceUpdateCounter + 1);
+      this.setState({ selectedSquare: null });
+      return true;
+    }
+    return false;
   }
 
   beginArrow(x: number, y: number) {
@@ -314,6 +338,7 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
               // If this is the initial duck placement then it's not soft.
               if (this.props.isInitialDuckPlacementMove)
                 soft = false;
+              console.log('On click click')
               this.onClick(x, y, soft);
             }}
             onMouseDown={(e) => {
@@ -324,8 +349,10 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
               // If the square is unoccupied, then we soft click it, preventing selection.
               const soft = this.props.board[y][x] === null;
               // Click this square, unless it's already selected.
-              if (!this.state.selectedSquare || this.state.selectedSquare[0] !== x || this.state.selectedSquare[1] !== y)
+              if (!this.state.selectedSquare || this.state.selectedSquare[0] !== x || this.state.selectedSquare[1] !== y) {
+                console.log('Mouse down click');
                 this.onClick(x, y, soft);
+              }
               // Check if there's a piece here.
               if (this.props.board[y][x] === null)
                 return;
@@ -350,7 +377,9 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
               //console.log('mouse up', x, y);
               // Check for a drop.
               if (this.dragState) {
-                this.onClick(x, y, true);
+                this.tryToCompleteMove(x, y);
+                //console.log('Mouse up click')
+                //this.onClick(x, y, true);
               }
             }}
             onMouseEnter={(e) => {
@@ -405,6 +434,43 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
       }
     }
 
+    // Add a circle for every legal move from the selected square.
+    const circles: React.ReactNode[] = [];
+    for (const move of [...this.props.legalMoves, ...this.props.hiddenLegalMoves]) {
+      if (this.state.selectedSquare === null)
+        continue;
+      const [fromX, fromY] = this.state.selectedSquare;
+      if (move.from !== fromX + (7 - fromY) * 8)
+        continue;
+      const toX = move.to % 8;
+      const toY = 7 - Math.floor(move.to / 8);
+      const mfToX = this.props.boardFlipped ? 7 - toX : toX;
+      const mfToY = this.props.boardFlipped ? 7 - toY : toY;
+      svgElements.push(<circle
+        style={{ userSelect: 'none', pointerEvents: 'none' }}
+        key={`circle-${move.to}`}
+        cx={mfToX * 50 + 25} cy={mfToY * 50 + 25}
+        r={10}
+        fill="rgba(0, 255, 0, 0.4)"
+      />);
+    }
+
+    if (this.props.isInitialDuckPlacementMove) {
+      for (const move of this.props.legalMoves) {
+        const toX = move.to % 8;
+        const toY = 7 - Math.floor(move.to / 8);
+        const mfToX = this.props.boardFlipped ? 7 - toX : toX;
+        const mfToY = this.props.boardFlipped ? 7 - toY : toY;
+        svgElements.push(<circle
+          style={{ userSelect: 'none', pointerEvents: 'none' }}
+          key={`duck-circle-${move.to}`}
+          cx={mfToX * 50 + 25} cy={mfToY * 50 + 25}
+          r={10}
+          fill="rgba(0, 255, 0, 0.4)"
+        />);
+      }
+    }
+
     function addArrow(
       key: string,
       fromX: number,
@@ -443,7 +509,13 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
     }
 
     // Add arrows for highlit moves.
-    for (const [move, weight] of this.props.topMoves) {
+    let isNumberOneMove = true;
+    for (let [move, weight] of this.props.topMoves) {
+      if (isNumberOneMove)
+        weight = Math.min(1, weight + 0.15);
+      else
+        weight = Math.max(0, weight - 0.1);
+      isNumberOneMove = false;
       //if (!move)
       //  continue;
       const fromX = move.from % 8;
@@ -518,43 +590,6 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
       }
     }
     */
-
-    // Add a circle for every legal move from the selected square.
-    const circles: React.ReactNode[] = [];
-    for (const move of [...this.props.legalMoves, ...this.props.hiddenLegalMoves]) {
-      if (this.state.selectedSquare === null)
-        continue;
-      const [fromX, fromY] = this.state.selectedSquare;
-      if (move.from !== fromX + (7 - fromY) * 8)
-        continue;
-      const toX = move.to % 8;
-      const toY = 7 - Math.floor(move.to / 8);
-      const mfToX = this.props.boardFlipped ? 7 - toX : toX;
-      const mfToY = this.props.boardFlipped ? 7 - toY : toY;
-      svgElements.push(<circle
-        style={{ userSelect: 'none', pointerEvents: 'none' }}
-        key={`circle-${move.to}`}
-        cx={mfToX * 50 + 25} cy={mfToY * 50 + 25}
-        r={10}
-        fill="rgba(0, 255, 0, 0.4)"
-      />);
-    }
-
-    if (this.props.isInitialDuckPlacementMove) {
-      for (const move of this.props.legalMoves) {
-        const toX = move.to % 8;
-        const toY = 7 - Math.floor(move.to / 8);
-        const mfToX = this.props.boardFlipped ? 7 - toX : toX;
-        const mfToY = this.props.boardFlipped ? 7 - toY : toY;
-        svgElements.push(<circle
-          style={{ userSelect: 'none', pointerEvents: 'none' }}
-          key={`duck-circle-${move.to}`}
-          cx={mfToX * 50 + 25} cy={mfToY * 50 + 25}
-          r={10}
-          fill="rgba(0, 255, 0, 0.4)"
-        />);
-      }
-    }
 
     return <>
       <svg

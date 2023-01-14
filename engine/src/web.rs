@@ -323,6 +323,21 @@ impl GameTree {
     })
   }
 
+  pub fn get_top_move(&self) -> JsValue {
+    let node = &self.nodes[self.cursor];
+    let top_move = match node.evaluation.top_moves.first() {
+      Some((m, _)) => m,
+      None => {
+        log("No top moves");
+        return JsValue::NULL;
+      }
+    };
+    serde_wasm_bindgen::to_value(&top_move).unwrap_or_else(|e| {
+      log(&format!("Failed to serialize move: {}", e));
+      JsValue::NULL
+    })
+  }
+
   /// Traverses to the parent.
   pub fn history_back(&mut self) -> bool {
     if let Some(parent) = self.nodes[self.cursor].parent {

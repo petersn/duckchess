@@ -202,6 +202,7 @@ impl MctsNode {
     nodes: &SlotMap<NodeIndex, MctsNode>,
     m: Move,
   ) -> f32 {
+    // FIXME: Implement sticky mates here.
     let effective_visits = self.visits + self.in_flight;
     let (u, q) = match self.outgoing_edges.get(&m) {
       None => (
@@ -212,9 +213,16 @@ impl MctsNode {
       ),
       Some(edge) => {
         let child = &nodes[edge.node];
+        let subtree_value = child.get_subtree_value();
+        let perspective_score = subtree_value.expected_score_for_player(self.state.turn);
+        //// If the child has an exact winning/losing score, then we amplify it enormously.
+        //// TODO: What do I do with exact drawn scores?
+        //if subtree_value.is_exact && perspective_score.abs() > 0.99 {
+        //  return (perspective_score - 0.5) * 1000.0;
+        //}
         (
           (effective_visits as f32).sqrt() / (1.0 + (child.visits + child.in_flight) as f32),
-          child.get_subtree_value().expected_score_for_player(self.state.turn),
+          perspective_score,
         )
       }
     };
@@ -465,6 +473,40 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     //assert!((white_wdl[0] + white_wdl[1] + white_wdl[2] - 1.0).abs() < 1e-3);
     // Compute expected score for white.
     let score = white_wdl[0] + white_wdl[1] * 0.5;
+    // Reweight any mates in one to be maximum weight,
+    // and reweight moves that hang mate in one to be zero weight.
+    let mut move_gen_scratch = vec![];
+    for (m, weight) in &mut top_moves {
+      let mut state_after_move = root.state.clone();
+      state_after_move.apply_move::<false>(*m, None).unwrap();
+      // Check if we just won.
+      if state_after_move.get_outcome() == Some(GameOutcome::Win(root.state.turn)) {
+        //crate::log(&format!("Found mate in one: {:?}", m));
+        *weight = 100.0;
+        // FIXME: Adjust the score here.
+        break;
+      }
+      // Check if the opponent has a mate in one
+      if !state_after_move.is_duck_move {
+        move_gen_scratch.clear();
+        state_after_move.move_gen::<false>(&mut move_gen_scratch);
+        let loss_outcome = Some(GameOutcome::Win(root.state.turn.other_player()));
+        for m in &move_gen_scratch {
+          let mut state_after_opponent_move = state_after_move.clone();
+          state_after_opponent_move.apply_move::<false>(*m, None).unwrap();
+          if state_after_opponent_move.get_outcome() == loss_outcome {
+            //crate::log(&format!("Found move that hangs mate in one: {:?}", m));
+            *weight = 0.0;
+            break;
+          }
+        }
+      }
+    }
+    // Normalize weights.
+    let total_weight: f32 = top_moves.iter().map(|(_, w)| w).sum();
+    for (_, weight) in &mut top_moves {
+      *weight /= total_weight;
+    }
     // Sort the moves by weight.
     top_moves.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
     return (score, white_wdl, top_moves, total_visits);
