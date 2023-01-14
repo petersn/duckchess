@@ -1,4 +1,4 @@
-use std::arch::wasm32::*;
+//use std::arch::wasm32::*;
 use std::collections::HashMap;
 
 use js_sys::{Array, Atomics, Int32Array, SharedArrayBuffer, Uint8Array};
@@ -831,6 +831,7 @@ pub fn perft_nnue() -> usize {
   run_perft::<true, false>()
 }
 
+/*
 #[wasm_bindgen]
 pub fn test_simd() {
   let mut v = [i16x8(0, 1, 2, 3, 4, 5, 6, 7); 8];
@@ -839,7 +840,9 @@ pub fn test_simd() {
   }
   log(&format!("{:?}", v));
 }
+*/
 
+/*
 #[wasm_bindgen]
 pub fn test_threads() {
   let mut threads = vec![];
@@ -858,7 +861,9 @@ pub fn test_threads() {
     t.join().unwrap();
   }
 }
+*/
 
+/*
 #[wasm_bindgen]
 pub fn test_shared_mem(shared_mem: Int32Array, my_value: i32) {
   log("Version 3");
@@ -878,6 +883,7 @@ pub fn test_shared_mem(shared_mem: Int32Array, my_value: i32) {
   shared_mem[0].store(my_value, std::sync::atomic::Ordering::SeqCst);
   */
 }
+*/
 
 #[wasm_bindgen]
 pub fn get_wasm_version() -> String {
