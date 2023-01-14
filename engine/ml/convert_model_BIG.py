@@ -11,6 +11,7 @@ if __name__ == "__main__":
     parser.add_argument("--input", type=str)
     parser.add_argument("--output", type=str)
     parser.add_argument("--big", action="store_true")
+    parser.add_argument("--medium", action="store_true")
     parser.add_argument("--tfjs", action="store_true")
     args = parser.parse_args()
 
@@ -23,6 +24,8 @@ if __name__ == "__main__":
 
     if args.big:
         import model_keras_BIG as model_keras
+    elif args.medium:
+        import model_keras_MEDIUM as model_keras
     else:
         import model_keras
 
@@ -36,6 +39,11 @@ if __name__ == "__main__":
         i = [w.name.startswith("conv2d_42/") for w in weights_list].index(True)
         print("First conv2d_42 index:", i)
         weights_list[i : i + 2], weights_list[i + 2 : i + 4] = weights_list[i + 2 : i + 4], weights_list[i : i + 2]
+    if args.medium:
+        i = [w.name.startswith("conv2d_22/") for w in weights_list].index(True)
+        print("First conv2d_22 index:", i)
+        weights_list[i : i + 2], weights_list[i + 2 : i + 4] = weights_list[i + 2 : i + 4], weights_list[i : i + 2]
+
 
     state_dict = torch.load(args.input)
     for (torch_name, torch_weight), keras_weight in zip(state_dict.items(), weights_list):
