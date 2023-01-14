@@ -133,10 +133,8 @@ export class DuckChessEngine {
   ) {
     this.loadProgressCallback = loadProgressCallback;
     this.forceUpdateCallback = forceUpdateCallback;
-    //this.engineWorker = new Worker(new URL('./EngineWorker.ts', import.meta.url));
-    //this.engineWorker.onmessage = this.onEngineMessage;
-    this.engineWorker = makeFakeEngineWorker(this.handleEngineMessage);
-//    this.engineWorker.onmessage = this.onEngineMessage;
+    this.engineWorker = new Worker(new URL('./EngineWorker.ts', import.meta.url));
+    this.engineWorker.onmessage = this.onEngineMessage;
     this.searchWorker = new Worker(new URL('./SearchWorker.ts', import.meta.url));
     this.searchWorker.onmessage = this.onSearchMessage;
     // First we try to initialize TensorFlow.js in a Web Worker, requiring WebGL.
@@ -268,6 +266,13 @@ export class DuckChessEngine {
         this.forceUpdateCallback();
         break;
       case 'backendFailure':
+        // If WebGL was required, then this is the attempt to init in the Web Worker.
+        // Simply try again, but not in a Web Worker.
+        if (msg.requireWebGL) {
+          console.error('Failed to initialize TensorFlow.js in a Web Worker, trying again on the main thread.');
+          this.engineWorker = makeFakeEngineWorker(this.handleEngineMessage);
+          break;
+        }
         window.alert(msg.message);
         break;
       //case 'evaluation':

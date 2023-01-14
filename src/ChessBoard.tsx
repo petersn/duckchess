@@ -355,13 +355,13 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
                 this.beginArrow(x, y);
                 return;
               }
-              //// If the square is unoccupied, then we soft click it, preventing selection.
-              //const soft = this.props.board[y][x] === null;
-              //// Click this square, unless it's already selected.
-              //if (!this.state.selectedSquare || this.state.selectedSquare[0] !== x || this.state.selectedSquare[1] !== y) {
-              //  console.log('Mouse down click');
-              //  this.onClick(x, y, soft);
-              //}
+              // If the square is unoccupied, then we soft click it, preventing selection.
+              const soft = this.props.board[y][x] === null;
+              // Click this square, unless it's already selected.
+              if (!this.state.selectedSquare || this.state.selectedSquare[0] !== x || this.state.selectedSquare[1] !== y) {
+                console.log('Mouse down click');
+                this.onClick(x, y, soft);
+              }
               // Check if there's a piece here.
               if (this.props.board[y][x] === null)
                 return;
