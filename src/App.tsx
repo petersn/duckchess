@@ -7,7 +7,7 @@ import { ChessBoard, ChessPiece, PieceKind, BOARD_MAX_SIZE, Move } from './Chess
 import { BrowserRouter as Router, Route, Link, Routes, Navigate } from 'react-router-dom';
 import { BenchmarkApp } from './BenchmarkApp';
 
-const GUI_VERSION = '0.1.1';
+const GUI_VERSION = 'v0.1.2';
 
 // FIXME: This is hacky.
 // For cosmetic reasons I cap the visits I show, to hide the few visits over the limit we might do.
@@ -692,6 +692,15 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
                   engine.setRunEngine(e.target.checked);
                 }
               }} /> Run engine {engineStatus}
+              <div style={{ float: 'right' }} >
+                <button onClick={() => {
+                  if (props.isMobile) {
+                    adjustToolMode('play100');
+                  } else {
+                    adjustToolMode('play1k');
+                  }
+                }}>Play mode</button>
+              </div>
             </> : <div
               style={{
                 position: 'absolute',
