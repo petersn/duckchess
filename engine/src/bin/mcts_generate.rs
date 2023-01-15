@@ -104,6 +104,7 @@ async fn main() {
     tasks.push(tokio::spawn(async move {
       use std::io::Write;
       loop {
+        let model_name_start = inference_engine.get_current_model_name();
         let seed = rand::random::<u64>();
         let mut mcts = Mcts::new(task_id, seed, inference_engine, search_params.clone(), State::starting_state());
         // This array tracks the moves that actually occur in the game.
@@ -222,6 +223,8 @@ async fn main() {
         {
           let mut file = output_file.lock().await;
           let obj = serde_json::json!({
+            "model_start": model_name_start,
+            "model_end": inference_engine.get_current_model_name(),
             "outcome": mcts.get_state().get_outcome().map(|o| o.to_str()),
             "final_state": mcts.get_state(),
             "moves": moves,

@@ -42,6 +42,10 @@ impl<Cookie> TensorRTEngine<Cookie> {
     self.tensorrt.lock().unwrap().load_model(model_path);
     Ok(())
   }
+
+  pub fn get_current_model_name(&self) -> String {
+    self.tensorrt.lock().unwrap().get_current_model_name().to_string()
+  }
 }
 
 impl<Cookie> inference::InferenceEngine<Cookie> for TensorRTEngine<Cookie> {

@@ -45,6 +45,7 @@ extern "C" {
 
 pub struct TensorRT {
   pointer: *mut TensorRTWrapper,
+  current_model_name: String,
 }
 
 impl Drop for TensorRT {
@@ -64,11 +65,17 @@ impl TensorRT {
     unsafe {
       TensorRT {
         pointer: TensorRTWrapper_new(cuda_device, max_batch_size),
+        current_model_name: "<no model>".to_string(),
       }
     }
   }
 
+  pub fn get_current_model_name(&self) -> &str {
+    &self.current_model_name
+  }
+
   pub fn load_model(&mut self, model_path: &str) {
+    self.current_model_name = model_path.to_string();
     unsafe {
       let cstr = CString::new(model_path).unwrap();
       TensorRTWrapper_load_model(self.pointer, cstr.as_ptr());
