@@ -1,3 +1,4 @@
+import os
 import re
 import sys
 import json
@@ -68,6 +69,11 @@ def get_step(name):
     return int(re.search(r"step-(\d+)", name).group(1))
 
 run_name = open("CURRENT_RUN").read().strip()
+
+ratings_path = os.path.join(run_name, "ratings.json")
+with open(ratings_path, "w") as f:
+    json.dump(ratings, f, indent=2)
+    f.write("\n")
 
 names = sorted(ratings.keys())
 xs = [get_step(name) for name in names][-160:]
