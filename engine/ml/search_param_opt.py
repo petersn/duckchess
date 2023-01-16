@@ -28,26 +28,30 @@ except:
     pass
 
 global_lock = Lock()
-gpu_allocations = 0
+gpu_allocations = -1
 
 def allocate_gpu():
     global gpu_allocations
     with global_lock:
         gpu_allocations += 1
-        return "01"[gpu_allocations % 2]
+        return "012345"[gpu_allocations % 5]
 
 def process():
     # Allocate a GPU.
-    #gpu = allocate_gpu()
-    #print(f"Working on GPU {gpu}")
+    gpu = allocate_gpu()
+    print(f"Working on GPU {gpu}")
+    if gpu == "0":
+        model_dir_X = model_dir
+    else:
+        model_dir_X = model_dir.replace("compute8.9", "compute8.6")
     subprocess.check_call(
         [
             prefix + "/compete",
             "--playouts1", str(playouts),
             "--playouts2", str(playouts),
             "--randomize-search-params",
-            "--model1-dir", model_dir,
-            "--model2-dir", model_dir,
+            "--model1-dir", model_dir_X,
+            "--model2-dir", model_dir_X,
             "--output-dir", output_dir,
         ],
         close_fds=True,
@@ -55,7 +59,7 @@ def process():
             os.environ,
             TF_FORCE_GPU_ALLOW_GROWTH="true",
             LD_LIBRARY_PATH=prefix,
-            #CUDA_VISIBLE_DEVICES=gpu,
+            CUDA_VISIBLE_DEVICES=gpu,
         ),
     )
 
@@ -65,10 +69,10 @@ if __name__ == "__main__":
         print("  python search_param_opt.py --generate")
         print("  python search_param_opt.py --analyze")
         sys.exit(1)
-    process_count = 1
+    process_count = 6
     mode = sys.argv[1]
     if mode == "--generate":
-        tpe = ThreadPoolExecutor(max_workers=2)
+        tpe = ThreadPoolExecutor(max_workers=6)
         futures = [
             tpe.submit(process)
             for _ in range(process_count)
