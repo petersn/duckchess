@@ -26,6 +26,26 @@ function getRouterPath(): string {
   return routerPath;
 }
 
+function LimitationsPage(props: { isMobile: boolean }) {
+  return <div style={{ width: 600 }}>
+    <h1>Limitations</h1>
+    This engine currently has some major limitations:
+    <ul>
+      <li>Under-promotion isn't implemented quite yet, sorry. :(</li>
+      <li>No 50-move rule is implemented, although threefold repetition is implemented.</li>
+      <li>The alpha-beta mate search doesn't know about threefold repetition yet, so the engine might report a mate that is ruled out by threefold.</li>
+      <li>The network was trained with very little discounting in time, so it has a tendency to faff about in the endgame even when it's overwhelmingly winning.</li>
+      <li>Likewise, if the engine is overwhelmingly losing it will sometimes start to play sub-optimal moves, as MCTS barely distinguishes a 0% chance of winning from a 1% chance.</li>
+    </ul>
+    If you find bugs, please report them on <a href="https://github.com/petersn/duckchess/issues">GitHub</a>!
+    <div style={{ marginTop: 20, fontSize: '150%' }}>
+      <Link to={'/'}>
+        Back
+      </Link>
+    </div>
+  </div>;
+}
+
 function TopBar(props: { screenWidth: number, isMobile: boolean }) {
   // If the window is really narrow we need a different layout.
   const narrow = props.screenWidth < 320;
@@ -830,7 +850,11 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
       Created by Peter Schmidt-Nielsen
       (<a href="https://twitter.com/ptrschmdtnlsn">Twitter</a>, <a href="https://peter.website">Website</a>)<br/>
       Engine + web interface: <a href="https://github.com/petersn/duckchess">github.com/petersn/duckchess</a><br/>
-      <span style={{ fontSize: '50%', opacity: 0.5 }}>{GUI_VERSION}-{get_wasm_version()} Piece SVGs: Cburnett (CC BY-SA 3), Duck SVG + all code: my creation (CC0)</span>
+      <span style={{ fontSize: '50%', opacity: 0.5 }}>{GUI_VERSION}-{get_wasm_version()} Piece SVGs: Cburnett (CC BY-SA 3), Duck SVG + all code: my creation (CC0)</span><br/>
+
+      <Link to={'/limitations'}>
+        Click here for more info on limitations of the engine
+      </Link>
     </div>
   </>;
 }
@@ -911,6 +935,7 @@ function App() {
         <Route path="/analysis" element={navigation(<AnalysisPage isMobile={isMobile} engine={engine} />)} />
         <Route path="/benchmark" element={navigation(<BenchmarkApp isMobile={isMobile} engine={engine} />)} />
         <Route path="/info" element={navigation(<InfoPage isMobile={isMobile} />)} />
+        <Route path="/limitations" element={navigation(<LimitationsPage isMobile={isMobile} />)} />
         <Route path="/" element={navigation(<Navigate to={"/analysis"} replace />)} />
       </Routes>
     </Router>
