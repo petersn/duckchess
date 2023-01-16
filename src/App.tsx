@@ -33,7 +33,10 @@ function LimitationsPage(props: { isMobile: boolean }) {
     <ul>
       <li>Under-promotion isn't implemented quite yet, sorry. :(</li>
       <li>No 50-move rule is implemented, although threefold repetition is implemented.</li>
-      <li>The alpha-beta mate search doesn't know about threefold repetition yet, so the engine might report a mate that is ruled out by threefold.</li>
+      <li>In some occasional circumstances the engine will fail to properly understand threefold, due to specifics of how threefold is dealt with in the transposition table.
+        The engine might either play a move blundering a threefold from a winning position, or be artifically scared of a non-existent threefold.
+        This is fixable, but it's unfortunately rather annoying, so I might not do it immediately.</li>
+      <li>The alpha-beta mate search doesn't know about threefold repetition at all yet, so the engine might report a mate that is ruled out by threefold.</li>
       <li>The network was trained with very little discounting in time, so it has a tendency to faff about in the endgame even when it's overwhelmingly winning.</li>
       <li>Likewise, if the engine is overwhelmingly losing it will sometimes start to play sub-optimal moves, as MCTS barely distinguishes a 0% chance of winning from a 1% chance.</li>
     </ul>
