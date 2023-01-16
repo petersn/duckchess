@@ -641,10 +641,24 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     let mut repetition_state = self.root_repetition_state.clone();
     for node_index in &path {
       let repetition_along_path = repetition_state.add(self.nodes[*node_index].hash);
-      assert!(!repetition_along_path);
+      // This is one of the trickiest details I have to figure out how I want to handle.
+      // Basically, due to transpositions a path can result in a threefold, but only
+      // some parents should consider there to be a new drawn move from it.
+      // For now, to avoid adding children that are erroneously marked as threefold,
+      // I simply don't mark a threefold if it occurs along the path.
+      // But there can still be nodes reached via non-threefoldy paths marked as threefoldy,
+      // because they were initially added to the tree when reached by another path.
+      // FIXME: Figure out what to do with this mess.
+      if repetition_along_path {
+        //crate::log(&format!("Found repetition along path at depth {}.", depth));
+      }
+      //assert!(!repetition_along_path);
     }
     // Finally, check if adding the new state results in a threefold repetition.
     let threefold_repetition = repetition_state.would_adding_cause_threefold(new_hash);
+    if threefold_repetition {
+      //crate::log(&format!("Found threefold repetition at depth {}.", depth));
+    }
     //let threefold_repetition = false;
 
     //let parent_repetition_state = match path.last() {

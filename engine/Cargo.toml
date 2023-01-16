@@ -34,6 +34,11 @@ pyo3 = { version = "0.17.2", features = ["extension-module"] }
 clap = { version = "4.0.18", features = ["derive"] }
 tokio = { version = "1.21.2", features = ["full"] }
 
+#[target.'cfg(target_arch="wasm32")']
+#rustflags = [
+#  "-C", "link-args=-z stack-size=50000000",
+#]
+
 #[profile.release]
 #lto = true
 #debug = true

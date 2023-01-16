@@ -7,7 +7,7 @@ import { ChessBoard, ChessPiece, PieceKind, BOARD_MAX_SIZE, Move } from './Chess
 import { BrowserRouter as Router, Route, Link, Routes, Navigate } from 'react-router-dom';
 import { BenchmarkApp } from './BenchmarkApp';
 
-const GUI_VERSION = 'v0.1.4';
+const GUI_VERSION = 'v0.1.8';
 
 // FIXME: This is hacky.
 // For cosmetic reasons I cap the visits I show, to hide the few visits over the limit we might do.
@@ -357,8 +357,9 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         // Therefore, mate_score in (1, 2, 3) corresponds to a "mate in 1",
         // while (4, 5, 6, 7) corresponds to a "mate in 2", and so on.
         // So we set:
-        const mate_in = Math.trunc(move.mate_score / 4) + 1;
-        score = 'M' + mate_in;
+        const sign = move.mate_score > 0 ? '' : '-';
+        const mate_in = Math.floor(Math.abs(move.mate_score) / 4) + 1;
+        score = 'M' + sign + mate_in;
       } else {
         score = Math.max(-99.9, Math.min(99.9, (4 * Math.tan(3.14 * move.pawn_score! - 1.57)))).toFixed(1);
       }

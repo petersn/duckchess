@@ -424,6 +424,7 @@ impl GameTree {
       pub turn: &'static str,
     }
 
+    // FIXME: I think the nested structs here can cause the serialization to overflow the WASM stack.
     // Serialize the entire tree of moves and IDs.
     fn make_tree<'a>(nodes: &'a SlotMap<GameNodeId, GameNode>, node_id: GameNodeId) -> Info<'a> {
       let node = &nodes[node_id];
@@ -931,7 +932,11 @@ pub fn test_shared_mem(shared_mem: Int32Array, my_value: i32) {
 
 #[wasm_bindgen]
 pub fn get_wasm_version() -> String {
-  "v0.1.4".to_string()
+  #[cfg(debug_assertions)]
+  return "v0.1.8-debug".to_string();
+
+  #[cfg(not(debug_assertions))]
+  return "v0.1.8".to_string();
 }
 
 /*
