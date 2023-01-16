@@ -19,8 +19,13 @@ import numpy as np
 #output_dir = "hyper-opt-games-200visits"
 prefix = "run-016/"
 model_dir = prefix + "step-275/model-compute8.9.trt"
-output_dir = "hyper-opt-games-200visits-run016"
-playouts = 200
+output_dir = "hyper-opt-games-1000visits-run016"
+playouts = 1000
+
+try:
+    os.mkdir(output_dir)
+except:
+    pass
 
 global_lock = Lock()
 gpu_allocations = 0
