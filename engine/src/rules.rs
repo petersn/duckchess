@@ -1095,6 +1095,17 @@ impl RepetitionState {
     }
   }
 
+  pub fn from_hashes(hashes: &[u64]) -> RepetitionState {
+    let mut mapping = HashMap::new();
+    for hash in hashes {
+      let count = mapping.entry(*hash).or_insert(0);
+      *count += 1;
+    }
+    RepetitionState {
+      mapping,
+    }
+  }
+
   pub fn add(&mut self, zobrist: u64) -> bool {
     let count = self.mapping.entry(zobrist).or_insert(0);
     *count += 1;

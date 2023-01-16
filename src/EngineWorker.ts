@@ -189,7 +189,7 @@ export function handleMessage(msg: MessageToEngineWorker) {
       initWorker(msg.requireWebGL);
       break;
     case 'setState':
-      engine.set_state(msg.state);
+      engine.set_state(msg.state, msg.repetitionHashes);
       break;
     case 'setModel':
       setModel(msg.modelName);

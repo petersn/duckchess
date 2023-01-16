@@ -7,6 +7,7 @@ export type ModelName = 'medium-001-128x10' | 'large-001-256x20';
 type BasicMessages = {
   type: 'setState';
   state: any;
+  repetitionHashes: [number, number][];
 } | {
   type: 'setRunEngine';
   runEngine: boolean;
@@ -169,9 +170,9 @@ export class DuckChessEngine {
   }
 
   sendBoardToEngine() {
-    const { state } = this.gameTree.get_serialized_state()[0];
-    this.engineWorker.postMessage({ type: 'setState', state });
-    this.searchWorker.postMessage({ type: 'setState', state });
+    const [state, repetitionHashes] = this.gameTree.get_state_and_repetition_hashes();
+    this.engineWorker.postMessage({ type: 'setState', state, repetitionHashes });
+    this.searchWorker.postMessage({ type: 'setState', state, repetitionHashes });
   }
 
   setPgn4(pgn4: string) {

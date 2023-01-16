@@ -61,6 +61,7 @@ export interface ChessBoardProps {
   highlightDuck: boolean;
   boardFlipped: boolean;
   board: PieceKind[][];
+  pastOccurrences: number;
   moveHistory: (Move | undefined)[];
   isDuckMove: boolean;
   boardHash: number;
@@ -610,6 +611,32 @@ export class ChessBoard extends React.Component<ChessBoardProps, ChessBoardState
       }
     }
     */
+
+    if (this.props.pastOccurrences > 0) {
+      let text = 'Somehow more than three repetitions??';
+      if (this.props.pastOccurrences === 1)
+        text = 'Twofold';
+      else if (this.props.pastOccurrences === 2)
+        text = 'Threefold (draw)';
+      svgElements.push(
+        <text
+          key="repetitions"
+          x="0"
+          y="0"
+          textAnchor="left"
+          alignmentBaseline="hanging"
+          fill="yellow"
+          style={{
+            fontSize: 20,
+            textShadow: '-1px 0 2px black, 0 1px 2px black, 1px 0 2px black, 0 -1px 2px black',
+            pointerEvents: 'none',
+            userSelect: 'none',
+          }}
+        >
+          {text}
+        </text>
+      );
+    }
 
     return <>
       <svg

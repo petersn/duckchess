@@ -655,6 +655,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         highlightDuck={ser.state.isDuckMove}
         boardFlipped={boardFlipped}
         board={parseRustBoardState(ser.state)}
+        pastOccurrences={ser.past_occurrences}
         moveHistory={ser.state.moveHistory}
         isDuckMove={ser.state.isDuckMove}
         boardHash={boardHash}

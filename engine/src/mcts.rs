@@ -17,6 +17,10 @@ use crate::rules::{Move, State, RepetitionState, GameOutcome, Player};
 const ROOT_SOFTMAX_TEMP: f32 = 1.1;
 const DIRICHLET_ALPHA: f32 = 0.1;
 
+// FIXME: This policy of garbage collection is pretty arbitrary.
+// I simply garbage collect if we have more than this many nodes after each reroot.
+const GC_LEVEL: usize = 2_000;
+
 // For the in-browser search we use pretty light dirichlet noise.
 #[cfg(target_arch = "wasm32")]
 const DIRICHLET_WEIGHT: f32 = 0.15;
@@ -82,10 +86,10 @@ impl std::str::FromStr for SearchParams {
 }
 
 #[inline(always)]
-fn state_to_default_full_prec_model_outputs(state: &State) -> FullPrecisionModelOutputs {
+fn state_to_default_full_prec_model_outputs(outcome: Option<GameOutcome>) -> FullPrecisionModelOutputs {
   let mut value = Evaluation::EVEN_EVAL;
   let mut white_wdl = [0.0, 1.0, 0.0];
-  match state.get_outcome() {
+  match outcome {
     None => {}
     Some(GameOutcome::Draw) => {
       value.is_exact = true;
@@ -117,7 +121,7 @@ pub struct EdgeEntry {
 pub struct MctsNode {
   pub depth:             u32,
   pub state:             State,
-  //pub hash:              u64,
+  pub hash:              u64,
   pub moves:             Vec<Move>,
   pub outputs:           ModelOutputs,
   pub dirichlet_applied: bool,
@@ -135,21 +139,27 @@ pub struct MctsNode {
 }
 
 impl MctsNode {
-  fn new(state: State, depth: u32) -> Self {
+  fn new(state: State, depth: u32, hash: u64, is_threefold_repetition: bool) -> Self {
     //let hash = state.get_transposition_table_hash();
-    let needs_eval = state.get_outcome().is_none();
+    let effective_outcome = match is_threefold_repetition {
+      true => Some(GameOutcome::Draw),
+      false => state.get_outcome(),
+    };
+    let needs_eval = effective_outcome.is_none();
     let mut moves = vec![];
-    state.move_gen::<false>(&mut moves);
+    if needs_eval {
+      state.move_gen::<false>(&mut moves);
+    }
     // FIXME: in terminal positions I need to make up a correct WDL value.
     let outputs = ModelOutputs::quantize_from(
-      state_to_default_full_prec_model_outputs(&state),
+      state_to_default_full_prec_model_outputs(effective_outcome),
       &moves,
     );
     //outputs.renormalize(&moves);
     Self {
       depth,
       state,
-      //hash,
+      hash,
       moves,
       outputs,
       dirichlet_applied: false,
@@ -383,7 +393,9 @@ pub struct Mcts<'a, Infer: InferenceEngine<(usize, PendingPath)>> {
   pub rng:                 Rng,
   pub root:                NodeIndex,
   pub nodes:               SlotMap<NodeIndex, MctsNode>,
-  pub transposition_table: HashMap<(u64, u32), NodeIndex>,
+  pub transposition_table: HashMap<(u64, u32, bool), NodeIndex>,
+  // Critically, this RepetitionState includes all states *previous*
+  // to the root state, and not the root state itself.
   pub root_repetition_state:  RepetitionState,
   pub mark_state_counter:  u32,
   //pending_paths:       SlotMap<PendingIndex, PendingPath>,
@@ -625,15 +637,15 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     depth: u32,
   ) -> NodeIndex {
     let new_hash = state.get_transposition_table_hash();
-    // // We check if this path results in a threefold repetition.
-    // let mut repetition_state = self.root_repetition_state.clone();
-    // for node_index in &path {
-    //   let repetition_along_path = repetition_state.add(self.nodes[*node_index].hash);
-    //   assert!(!repetition_along_path);
-    // }
-    // // Finally, check if adding the new state results in a threefold repetition.
-    // let threefold_repetition = repetition_state.would_adding_cause_threefold(new_hash);
-    let threefold_repetition = false;
+    // We check if this path results in a threefold repetition.
+    let mut repetition_state = self.root_repetition_state.clone();
+    for node_index in &path {
+      let repetition_along_path = repetition_state.add(self.nodes[*node_index].hash);
+      assert!(!repetition_along_path);
+    }
+    // Finally, check if adding the new state results in a threefold repetition.
+    let threefold_repetition = repetition_state.would_adding_cause_threefold(new_hash);
+    //let threefold_repetition = false;
 
     //let parent_repetition_state = match path.last() {
     //  None => &self.empty_repetition_state,
@@ -641,7 +653,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     //};
     //println!("Adding child at depth {} (path={:?}).", depth, path);
     // Check our transposition table to see if this new state has already been reached.
-    let transposition_table_key = (new_hash, depth);
+    let transposition_table_key = (new_hash, depth, threefold_repetition);
     // We get a node, possibly new.
     let last_node_index = match self.transposition_table.entry(transposition_table_key) {
       Entry::Occupied(mut entry) => {
@@ -662,14 +674,14 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
               writeln!(f, "{:?}", transposition_node.state).unwrap();
               writeln!(f, "Hash key: {:?}", transposition_table_key).unwrap();
             }
-            let node = MctsNode::new(state, depth);
+            let node = MctsNode::new(state, depth, new_hash, threefold_repetition);
             let new_node_index = self.nodes.insert(node);
             entry.insert(new_node_index)
           }
         }
       }
       Entry::Vacant(entry) => {
-        let node = MctsNode::new(state, depth);
+        let node = MctsNode::new(state, depth, new_hash, threefold_repetition);
         let new_node_index = self.nodes.insert(node);
         *entry.insert(new_node_index)
       }
@@ -978,7 +990,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       }
     };
     // FIXME: This policy of garbage collection is pretty arbitrary.
-    if self.nodes.len() > 3_000 {
+    if self.nodes.len() > GC_LEVEL {
       self.garbage_collect();
     }
     //// FIXME: What do I do about pending paths?
@@ -1006,16 +1018,19 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     self.nodes.retain(|_, node| node.gc_state == mark_state);
   }
 
-  pub fn reroot_tree(&mut self, new_state: &State) {
+  pub fn reroot_tree(&mut self, new_state: &State, past_hashes: &[u64]) {
+    self.root_repetition_state = RepetitionState::from_hashes(past_hashes);
+
     let new_state_hash = new_state.get_transposition_table_hash();
     // First check if we have a child that matches this state.
     let root_node = &self.nodes[self.root];
     for (_, edge) in &root_node.outgoing_edges {
       let child_node = &self.nodes[edge.node];
+      // FIXME: I guess I'm not checking for a collision here?
       if child_node.state.get_transposition_table_hash() == new_state_hash {
         self.root = edge.node;
         // FIXME: This policy of garbage collection is pretty arbitrary.
-        if self.nodes.len() > 3_000 {
+        if self.nodes.len() > GC_LEVEL {
           self.garbage_collect();
         }
         return;

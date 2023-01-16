@@ -65,20 +65,35 @@ pub struct GameNode {
   legal_duck_skipping_moves: Vec<Move>,
   outgoing_edges: Vec<TreeEdge>,
   evaluation: NodeEval,
+  past_occurrences: u32,
 }
 
 impl GameNode {
-  fn new(state: rules::State, parent: Option<GameNodeId>) -> Self {
+  fn new(state: rules::State, parent: Option<GameNodeId>, past_occurrences: u32) -> Self {
     let mut legal_moves = Vec::new();
     let mut legal_duck_skipping_moves = Vec::new();
-    state.move_gen::<false>(&mut legal_moves);
-    if state.is_duck_move && state.get_outcome().is_none() {
-      let mut next_state = state.clone();
-      next_state.turn = next_state.turn.other_player();
-      next_state.is_duck_move = false;
-      // Remove the duck, because we could put it somewhere to not interfere.
-      next_state.ducks.0 = 0;
-      next_state.move_gen::<false>(&mut legal_duck_skipping_moves);
+    let is_threefold = past_occurrences >= 2;
+    if !is_threefold {
+      state.move_gen::<false>(&mut legal_moves);
+      if state.is_duck_move && state.get_outcome().is_none() {
+        let mut next_state = state.clone();
+        next_state.turn = next_state.turn.other_player();
+        next_state.is_duck_move = false;
+        // Remove the duck, because we could put it somewhere to not interfere.
+        next_state.ducks.0 = 0;
+        next_state.move_gen::<false>(&mut legal_duck_skipping_moves);
+      }
+    }
+    let mut evaluation = NodeEval {
+      white_perspective_score: 0.5,
+      white_perspective_wdl: [0.0; 3],
+      mate_score: None,
+      top_moves: vec![],
+      steps: 0,
+    };
+    if is_threefold {
+      evaluation.white_perspective_wdl[1] = 1.0;
+      evaluation.steps = 10_000_000;
     }
     Self {
       state,
@@ -86,13 +101,8 @@ impl GameNode {
       legal_moves,
       legal_duck_skipping_moves,
       outgoing_edges: Vec::new(),
-      evaluation: NodeEval {
-        white_perspective_score: 0.5,
-        white_perspective_wdl: [0.0; 3],
-        mate_score: None,
-        top_moves: vec![],
-        steps: 0,
-      },
+      evaluation,
+      past_occurrences,
     }
   }
 }
@@ -128,8 +138,20 @@ impl GameTree {
   }
 
   fn new_node(&mut self, state: rules::State, parent: Option<GameNodeId>) -> GameNodeId {
+    // FIXME: Double check what Copilot wrote here.
+    let mut past_occurrences = 0;
+    let mut p = parent;
+    while let Some(pp) = p {
+      if self.nodes[pp].state.equal_states(&state) {
+        past_occurrences += 1;
+        if past_occurrences == 2 {
+          break;
+        }
+      }
+      p = self.nodes[pp].parent;
+    }
     let hash = state.get_transposition_table_hash();
-    let id = self.nodes.insert_with_key(|id| GameNode::new(state, parent));
+    let id = self.nodes.insert_with_key(|id| GameNode::new(state, parent, past_occurrences));
     self.state_to_id.insert(hash, id);
     id
   }
@@ -137,7 +159,7 @@ impl GameTree {
   fn inner_make_move(&mut self, m: Move) -> bool {
     let node = &mut self.nodes[self.cursor];
     if !node.legal_moves.contains(&m) {
-      log(&format!("Illegal move: {:?}", m));
+      log(&format!("GameTree::inner_make_move: Illegal move: {:?}", m));
       return false;
     }
     // Check if we have an edge for this move already.
@@ -373,6 +395,23 @@ impl GameTree {
   //   Some(())
   // }
 
+  pub fn get_state_and_repetition_hashes(&self) -> JsValue {
+    let node = &self.nodes[self.cursor];
+    let mut hashes = Vec::new();
+    let mut here = node;
+    while let Some(parent) = here.parent {
+      hashes.push(split_u64_to_u32_pair(here.state.get_transposition_table_hash()));
+      here = &self.nodes[parent];
+    }
+    serde_wasm_bindgen::to_value(&(
+      &node.state,
+      hashes,
+    )).unwrap_or_else(|e| {
+      log(&format!("Failed to serialize hashes: {}", e));
+      JsValue::NULL
+    })
+  }
+
   pub fn get_serialized_state(&self) -> JsValue {
     // Serialize the current node.
     let node = &self.nodes[self.cursor];
@@ -447,12 +486,17 @@ impl Engine {
     })
   }
 
-  pub fn set_state(&mut self, state: JsValue) {
+  pub fn set_state(&mut self, state: JsValue, repetition_hashes: JsValue) {
     let new_state = serde_wasm_bindgen::from_value(state).unwrap_or_else(|e| {
       log(&format!("Failed to deserialize state: {}", e));
       panic!("Failed to deserialize state: {}", e);
     });
-    self.mcts.reroot_tree(&new_state);
+    let repetition_hashes: Vec<(u32, u32)> = serde_wasm_bindgen::from_value(repetition_hashes).unwrap_or_else(|e| {
+      log(&format!("Failed to deserialize past hashes: {}", e));
+      panic!("Failed to deserialize past hashes: {}", e);
+    });
+    let repetition_hashes: Vec<u64> = repetition_hashes.into_iter().map(combine_u32_pair_to_u64).collect();
+    self.mcts.reroot_tree(&new_state, &repetition_hashes);
     self.mcts.apply_noise_to_root();
   }
 

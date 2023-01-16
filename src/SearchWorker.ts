@@ -57,7 +57,7 @@ onmessage = function(e: MessageEvent<any>) {
     case 'setState':
       pvs.set_state(e.data.state);
       if (runEngine) {
-        for (const d of [1, 2]) {
+        for (const d of [1, 2, 3]) {
           const engineOutput = pvs.mate_search(d);
           postMessage({ type: 'mateSearch', engineOutput });
         }
