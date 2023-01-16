@@ -14,25 +14,13 @@ import numpy as np
 # FIXME: This whole file is very busted right now.
 
 # We perform a tournament.
-prefix = "run-011-duck-chess/"
-model_dir = prefix + "step-065/model-keras/"
-output_dir = "hyper-opt-games-200visits"
+#prefix = "run-011-duck-chess/"
+#model_dir = prefix + "step-065/model-keras/"
+#output_dir = "hyper-opt-games-200visits"
+prefix = "run-016/"
+model_dir = prefix + "step-275/model-compute8.9.trt"
+output_dir = "hyper-opt-games-200visits-run016"
 playouts = 200
-game_limit = 200
-regular_alphas = [0.5, 1.0, 2.0, 4.0]
-duck_alphas = [0.5, 1.0, 2.0, 4.0]
-fpus = [0.2]
-#fpus = [-0.1, 0.0, 0.1, 0.2, 0.3]
-
-# Find all players.
-players = [
-    (a, da, fpu)
-    for a, da, fpu in itertools.product(regular_alphas, duck_alphas, fpus)
-]
-
-pairs = list(itertools.combinations(players, 2))
-random.shuffle(pairs)
-
 
 global_lock = Lock()
 gpu_allocations = 0
@@ -43,33 +31,28 @@ def allocate_gpu():
         gpu_allocations += 1
         return "01"[gpu_allocations % 2]
 
-def process_pair(pair):
+def process():
     # Allocate a GPU.
-    gpu = allocate_gpu()
-    sp1 = f"alpha={pair[0][0]}:duckalpha={pair[0][1]}:fpu={pair[0][2]}"
-    sp2 = f"alpha={pair[1][0]}:duckalpha={pair[1][1]}:fpu={pair[1][2]}"
-    print(f"Working on {sp1} vs {sp2} on GPU {gpu}")
+    #gpu = allocate_gpu()
+    #print(f"Working on GPU {gpu}")
     subprocess.check_call(
         [
             prefix + "/compete",
-            "--playouts", str(playouts),
-            #"--search-params1", sp1,
-            #"--search-params2", sp2,
+            "--playouts1", str(playouts),
+            "--playouts2", str(playouts),
             "--randomize-search-params",
             "--model1-dir", model_dir,
             "--model2-dir", model_dir,
             "--output-dir", output_dir,
-            #"--game-limit", str(game_limit),
         ],
         close_fds=True,
         env=dict(
             os.environ,
             TF_FORCE_GPU_ALLOW_GROWTH="true",
             LD_LIBRARY_PATH=prefix,
-            CUDA_VISIBLE_DEVICES=gpu,
+            #CUDA_VISIBLE_DEVICES=gpu,
         ),
     )
-    print(f"Done with {sp1} vs {sp2} on GPU {gpu}")
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
@@ -77,12 +60,13 @@ if __name__ == "__main__":
         print("  python search_param_opt.py --generate")
         print("  python search_param_opt.py --analyze")
         sys.exit(1)
+    process_count = 1
     mode = sys.argv[1]
     if mode == "--generate":
         tpe = ThreadPoolExecutor(max_workers=2)
         futures = [
-            tpe.submit(process_pair, pair)
-            for pair in pairs[:2]
+            tpe.submit(process)
+            for _ in range(process_count)
         ]
         for future in futures:
             future.result()
