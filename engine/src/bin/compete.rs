@@ -42,24 +42,27 @@ struct Args {
 
 fn generate_random_search_params() -> SearchParams {
   let exploration_alpha = match rand::random::<u32>() % 4 {
-    0 => 0.25,
-    1 => 0.5,
-    2 => 1.0,
-    3 => 2.0,
+    0 => 0.125,
+    1 => 0.25,
+    2 => 0.5,
+    3 => 1.0,
+    //3 => 2.0,
     _ => unreachable!(),
   };
   let duck_exploration_alpha = match rand::random::<u32>() % 4 {
-    0 => 0.25,
-    1 => 0.5,
-    2 => 1.0,
-    3 => 2.0,
+    0 => 0.125,
+    1 => 0.25,
+    2 => 0.5,
+    3 => 1.0,
+    //3 => 2.0,
     _ => unreachable!(),
   };
-  let first_play_urgency = match rand::random::<u32>() % 4 {
-    0 => 0.0,
-    1 => 0.1,
-    2 => 0.2,
-    3 => 0.4,
+  let first_play_urgency = match rand::random::<u32>() % 5 {
+    0 => -0.2,
+    1 => 0.0,
+    2 => 0.1,
+    3 => 0.2,
+    4 => 0.4,
     _ => unreachable!(),
   };
   SearchParams {
