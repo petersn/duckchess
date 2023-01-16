@@ -933,10 +933,10 @@ pub fn test_shared_mem(shared_mem: Int32Array, my_value: i32) {
 #[wasm_bindgen]
 pub fn get_wasm_version() -> String {
   #[cfg(debug_assertions)]
-  return "v0.1.8-debug".to_string();
+  return "v0.1.9-debug".to_string();
 
   #[cfg(not(debug_assertions))]
-  return "v0.1.8".to_string();
+  return "v0.1.9".to_string();
 }
 
 /*

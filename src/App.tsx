@@ -7,7 +7,7 @@ import { ChessBoard, ChessPiece, PieceKind, BOARD_MAX_SIZE, Move } from './Chess
 import { BrowserRouter as Router, Route, Link, Routes, Navigate } from 'react-router-dom';
 import { BenchmarkApp } from './BenchmarkApp';
 
-const GUI_VERSION = 'v0.1.8';
+const GUI_VERSION = 'v0.1.9';
 
 // FIXME: This is hacky.
 // For cosmetic reasons I cap the visits I show, to hide the few visits over the limit we might do.

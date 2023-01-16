@@ -136,12 +136,13 @@ pub struct MctsNode {
   pub outgoing_edges:    HashMap<Move, EdgeEntry>,
   pub gc_state:          u32,
   pub propagated:        bool,
+  pub is_threefold:      bool,
 }
 
 impl MctsNode {
-  fn new(state: State, depth: u32, hash: u64, is_threefold_repetition: bool) -> Self {
+  fn new(state: State, depth: u32, hash: u64, is_threefold: bool) -> Self {
     //let hash = state.get_transposition_table_hash();
-    let effective_outcome = match is_threefold_repetition {
+    let effective_outcome = match is_threefold {
       true => Some(GameOutcome::Draw),
       false => state.get_outcome(),
     };
@@ -174,6 +175,7 @@ impl MctsNode {
       outgoing_edges: HashMap::new(),
       gc_state: 0,
       propagated: false,
+      is_threefold,
     }
   }
 
@@ -985,7 +987,11 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     let root_node = &self.nodes[self.root];
     self.root = match root_node.outgoing_edges.get(&m) {
       // If we already have a node for this move, then just make it the new root.
-      Some(edge) => edge.node,
+      Some(edge) => {
+        // First we add the parent to the threefold state.
+        self.root_repetition_state.add(root_node.hash);
+        edge.node
+      }
       // Otherwise, we create a new node.
       None => {
         let mut new_state = root_node.state.clone();
@@ -1007,6 +1013,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     if self.nodes.len() > GC_LEVEL {
       self.garbage_collect();
     }
+    self.potentially_dethreefold_root();
     //// FIXME: What do I do about pending paths?
     //assert!(self.pending_paths.is_empty());
   }
@@ -1047,6 +1054,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         if self.nodes.len() > GC_LEVEL {
           self.garbage_collect();
         }
+        self.potentially_dethreefold_root();
         return;
       }
     }
@@ -1054,6 +1062,26 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     self.transposition_table.clear();
     self.nodes.clear();
     self.root = self.add_child_and_adjust_scores(vec![], None, new_state.clone(), new_state.plies);
+  }
+
+  fn potentially_dethreefold_root(&mut self) {
+    // This is extremely hacky. Basically, we can hallucinate threefolds, if we reach a position
+    // via a transposition, where it has different threefold status via the two paths.
+    // This can result in a bad user experience if we move into a node, and immediately erroneously
+    // declare it drawn. Therefore, if we descend into a threefold position, we just recompute if
+    // it's threefoldy using our new self.root_repetition_state.
+    // This is just a hack, though! Right before we descend into this position it could already
+    // have been non-threefoldy along every possible path to it, but still be marked as threefoldy.
+    let root_node = &self.nodes[self.root];
+    if root_node.is_threefold {
+      // Simply recompute the root node.
+      let state = root_node.state.clone();
+      let plies = state.plies;
+      self.transposition_table.clear();
+      self.nodes.clear();
+      self.root = self.add_child_and_adjust_scores(vec![], None, state, plies);
+      crate::log(&format!("Dethreefolded root at depth {}!", plies));
+    }
   }
 
   pub fn print_tree_root(&self) {
