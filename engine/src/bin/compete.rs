@@ -16,7 +16,10 @@ const BATCH_SIZE: usize = 128;
 #[command(author, version, about, long_about = None)]
 struct Args {
   #[arg(short, long)]
-  playouts: u32,
+  playouts1: u32,
+
+  #[arg(short, long)]
+  playouts2: u32,
 
   #[arg(long)]
   model1_dir: String,
@@ -206,6 +209,10 @@ async fn main() {
           true => [&mut rx1, &mut rx2],
           false => [&mut rx2, &mut rx1],
         };
+        let playoutses = match engine1_is_white {
+          true => [args.playouts1, args.playouts2],
+          false => [args.playouts2, args.playouts1],
+        };
 
         // Make sure we fully flush here.
         for (mcts, rx) in mctses.iter_mut().zip(rxes.iter_mut()) {
@@ -230,12 +237,13 @@ async fn main() {
           };
           let mcts = &mut mctses[index];
           let rx = &mut rxes[index];
+          let playouts = playoutses[index];
 
           // Perform the actual tree search.
           // We early out only if we're not doing a full search, to properly compute our training target.
           let mut steps = 0;
-          for _ in 0..args.playouts {
-            if mcts.have_reached_visit_count_short_circuiting(args.playouts) {
+          for _ in 0..playouts {
+            if mcts.have_reached_visit_count_short_circuiting(playouts) {
               break;
             }
             steps += 1;
@@ -288,8 +296,8 @@ async fn main() {
             "steps_performed": steps_performed,
             "engine_white": white_engine_name,
             "engine_black": black_engine_name,
-            "playouts_white": args.playouts,
-            "playouts_black": args.playouts,
+            "playouts_white": playoutses[0],
+            "playouts_black": playoutses[1],
             "game_len_limit": GAME_LEN_LIMIT,
             "seed1": seed1,
             "seed2": seed2,
