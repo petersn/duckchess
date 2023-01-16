@@ -21,6 +21,6 @@ for path in sys.argv[1:]:
                 draws[game["engine_white"]] += 1
                 draws[game["engine_black"]] += 1
 
-print(wins)
-print(losses)
-print(draws)
+print("Wins:  ", wins)
+print("Losses:", losses)
+print("Draws: ", draws)
