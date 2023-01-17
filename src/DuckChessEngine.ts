@@ -2,7 +2,13 @@ import init, { GameTree, new_game_tree, parse_pgn4 } from "engine";
 import { PieceKind } from "./ChessBoard";
 import * as EngineWorkerModule from './EngineWorker';
 
-export type ModelName = 'medium-001-128x10' | 'large-001-256x20';
+export type ModelName = (
+  'medium-001-128x10' |
+  'large-001-256x20' |
+  'medium-002-128x10' |
+  'large-002-256x20' |
+  'tiny-001-32x6'
+);
 
 type BasicMessages = {
   type: 'setState';

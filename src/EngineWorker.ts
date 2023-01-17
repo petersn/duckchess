@@ -43,22 +43,44 @@ async function setModel(modelName: ModelName) {
     case 'large-001-256x20':
       path = '/models/run-016-step-200/model.json';
       break;
+    // case 'medium-002-128x10':
+    //   path = '/models/run-016-step-290-medium/model.json';
+    //   break;
+    case 'large-002-256x20':
+      path = '/models/run-016-step-290/model.json';
+      break;
+    // case 'tiny-001-32x6':
+    //   break;
     default:
+      postMessageWrapper({
+        type: 'error',
+        message: 'Unknown model name: ' + modelName,
+      });
       throw new Error('Unknown model name: ' + modelName);
   }
-  const model = await tf.loadLayersModel(
-    process.env.PUBLIC_URL + path,
-    {
-      onProgress: (progress) => {
-        console.log('Loading', modelName, 'progress', progress);
-        postMessageWrapper({
-          type: 'modelLoadProgress',
-          progress,
-          modelName,
-        });
+  let model;
+  try {
+    model = await tf.loadLayersModel(
+      process.env.PUBLIC_URL + path,
+      {
+        onProgress: (progress) => {
+          console.log('Loading', modelName, 'progress', progress);
+          postMessageWrapper({
+            type: 'modelLoadProgress',
+            progress,
+            modelName,
+          });
+        },
       },
-    },
-  );
+    );
+  } catch (e) {
+    console.error('Failed to load model', modelName, e);
+    postMessageWrapper({
+      type: 'error',
+      message: 'Failed to load model ' + modelName + ': ' + e,
+    });
+    return;
+  }
   console.log('Loaded model', modelName);
   modelRegistry.set(modelName, model);
 }

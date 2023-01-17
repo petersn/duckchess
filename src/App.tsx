@@ -54,6 +54,9 @@ function SettingsPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
   const [searchParams, setSearchParams] = React.useState(
     localStorage.getItem('duckChessSearchParams') || 'default'
   );
+  const [showAllModels, setShowAllModels] = React.useState(
+    localStorage.getItem('duckChessShowAllModels') === 'true'
+  );
 
   return <div style={{ width: 600 }}>
     <h1>Settings</h1>
@@ -74,7 +77,22 @@ function SettingsPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
       }}>
         <option value="default">Default</option>
         <option value="alpha=0.25:duckalpha=0.125:fpu=0.2">Deep</option>
-      </select><br/>
+      </select>
+
+      <span style={{ marginLeft: 20, opacity: 0.7, fontSize: '80%' }}>
+        Pick between default (search broadly) and deep (search deeply).
+      </span>
+    </div>
+
+    <div style={{ marginTop: 20 }}>
+      <label style={{ marginRight: 10 }}>Show all models:</label>
+      <input type="checkbox" checked={showAllModels} onChange={(e) => {
+        setShowAllModels(e.target.checked);
+        localStorage.setItem('duckChessShowAllModels', e.target.checked ? 'true' : 'false');
+      }}/>
+      <span style={{ marginLeft: 20, opacity: 0.7, fontSize: '80%' }}>
+        Check this to also show outdated (probably weaker) models in the model drop down menu.
+      </span>
     </div>
 
     <div style={{ marginTop: 20 }}>
@@ -223,6 +241,8 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
   //const [enginePlayer, setEnginePlayer] = React.useState<'white' | 'black' | null>(null);
   const [runEngine, setRunEngine] = React.useState<boolean>(true);
   const [nodeContextMenu, setNodeContextMenu] = React.useState<number | null>(null);
+
+  const showAllModels = localStorage.getItem('duckChessShowAllModels') === 'true';
 
   const setForceUpdateCounter = React.useState(0)[1];
   const forceUpdate = () => {
@@ -846,8 +866,12 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
           value={modelName}
           onChange={(e) => adjustModelName(e.target.value as ModelName)}
         >
-          <option value="medium-001-128x10">Medium</option>
-          <option value="large-001-256x20">Large</option>
+          <option value="medium-001-128x10">medium-001-128x10</option>
+          <option value="large-002-256x20">large-002-256x20</option>
+          {showAllModels && <>
+            {/*<option value="medium-001-128x10">medium-001-128x10</option>*/}
+            <option value="large-001-256x20">large-001-256x20</option>
+          </>}
         </select></label>
 
         <button onClick={() => {
