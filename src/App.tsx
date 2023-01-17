@@ -16,7 +16,7 @@ const VISIT_LIMIT = 50_000;
 const DEFAULT_PGN4 = ``;
 
 
-type ToolMode = 'analysis' | 'play100' | 'play1k' | 'play10k';
+type ToolMode = 'analysis' | 'play100' | 'play1k' | 'play3k';
 
 // FIXME: This is a mildly hacky way to get the router location...
 function getRouterPath(): string {
@@ -203,8 +203,8 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
       engine.setPlayMode({ player: enginePlayer, steps: 100 });
     } else if (toolMode === 'play1k') {
       engine.setPlayMode({ player: enginePlayer, steps: 1000 });
-    } else if (toolMode === 'play10k') {
-      engine.setPlayMode({ player: enginePlayer, steps: 10000 });
+    } else if (toolMode === 'play3k') {
+      engine.setPlayMode({ player: enginePlayer, steps: 3000 });
     } else {
       engine.setPlayMode(null);
       engine.setRunEngine(runEngine);
@@ -799,7 +799,7 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
           <option value="analysis">Analysis</option>
           <option value="play100">Play (100 steps)</option>
           <option value="play1k">Play (1k steps)</option>
-          <option value="play10k">Play (10k steps)</option>
+          <option value="play3k">Play (3k steps)</option>
         </select></label>
 
         <label>Model: <select
