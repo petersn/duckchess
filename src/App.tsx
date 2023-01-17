@@ -7,7 +7,7 @@ import { ChessBoard, ChessPiece, PieceKind, BOARD_MAX_SIZE, Move } from './Chess
 import { BrowserRouter as Router, Route, Link, Routes, Navigate } from 'react-router-dom';
 import { BenchmarkApp } from './BenchmarkApp';
 
-const GUI_VERSION = 'v0.1.9';
+const GUI_VERSION = 'v0.1.10';
 
 // FIXME: This is hacky.
 // For cosmetic reasons I cap the visits I show, to hide the few visits over the limit we might do.
@@ -41,6 +41,46 @@ function LimitationsPage(props: { isMobile: boolean }) {
       <li>Likewise, if the engine is overwhelmingly losing it will sometimes start to play sub-optimal moves, as MCTS barely distinguishes a 0% chance of winning from a 1% chance.</li>
     </ul>
     If you find bugs, please report them on <a href="https://github.com/petersn/duckchess/issues">GitHub</a>!
+    <div style={{ marginTop: 20, fontSize: '150%' }}>
+      <Link to={'/'}>
+        Back
+      </Link>
+    </div>
+  </div>;
+}
+
+function SettingsPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
+  // Get our search params from local storage.
+  const [searchParams, setSearchParams] = React.useState(
+    localStorage.getItem('duckChessSearchParams') || 'default'
+  );
+
+  return <div style={{ width: 600 }}>
+    <h1>Settings</h1>
+
+    <p>
+      My goal is to allow fine-adjustment of the engine here soon.
+      The deep search parameters promote searching variations deeply, rather than searching broadly (this is equivalent to lowering cpuct in lc0).
+      My testing seems to indicate that the deep search parameters outperform default by ~100 elo points, but the values seem so
+      absurd (they're about 10x lower than what lc0 settled on!) that I'm scared to deploy them as the default.
+    </p>
+
+    <div style={{ marginTop: 20 }}>
+      <label style={{ marginRight: 10 }}>Search params:</label>
+      <select value={searchParams} onChange={(e) => {
+        setSearchParams(e.target.value);
+        localStorage.setItem('duckChessSearchParams', e.target.value);
+        props.engine.reloadSearchParams();
+      }}>
+        <option value="default">Default</option>
+        <option value="alpha=0.25:duckalpha=0.125:fpu=0.2">Deep</option>
+      </select><br/>
+    </div>
+
+    <div style={{ marginTop: 20 }}>
+      (Coming soon, a contempt setting, to force the engine to avoid draws.)
+    </div>
+
     <div style={{ marginTop: 20, fontSize: '150%' }}>
       <Link to={'/'}>
         Back
@@ -854,10 +894,15 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
       Created by Peter Schmidt-Nielsen
       (<a href="https://twitter.com/ptrschmdtnlsn">Twitter</a>, <a href="https://peter.website">Website</a>)<br/>
       Engine + web interface: <a href="https://github.com/petersn/duckchess">github.com/petersn/duckchess</a><br/>
-      <span style={{ fontSize: '50%', opacity: 0.5 }}>{GUI_VERSION}-{get_wasm_version()} Piece SVGs: Cburnett (CC BY-SA 3), Duck SVG + all code: my creation (CC0)</span><br/>
+      <span style={{ fontSize: '50%', opacity: 0.5 }}>{GUI_VERSION}-{get_wasm_version()} Piece SVGs: Cburnett (CC BY-SA 3), Duck SVG + all code: my creation (CC0)</span>
+      <br/>
 
       <Link to={'/limitations'}>
         Click here for more info on limitations of the engine
+      </Link>
+      <br/>
+      <Link to={'/settings'}>
+        Click here for advanced settings
       </Link>
     </div>
   </>;
@@ -940,6 +985,7 @@ function App() {
         <Route path="/benchmark" element={navigation(<BenchmarkApp isMobile={isMobile} engine={engine} />)} />
         <Route path="/info" element={navigation(<InfoPage isMobile={isMobile} />)} />
         <Route path="/limitations" element={navigation(<LimitationsPage isMobile={isMobile} />)} />
+        <Route path="/settings" element={navigation(<SettingsPage isMobile={isMobile} engine={engine} />)} />
         <Route path="/" element={navigation(<Navigate to={"/analysis"} replace />)} />
       </Routes>
     </Router>

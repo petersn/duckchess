@@ -523,6 +523,18 @@ impl Engine {
     })
   }
 
+  pub fn set_search_params(&mut self, params: &str) -> bool {
+    let params: mcts::SearchParams = match params.parse() {
+      Ok(params) => params,
+      Err(e) => {
+        log(&format!("Failed to parse search params: {}", e));
+        return false;
+      }
+    };
+    self.mcts.set_search_params(params);
+    true
+  }
+
   pub fn apply_move(&mut self, m: JsValue, is_hidden: bool) -> bool {
     let m: Move = serde_wasm_bindgen::from_value(m).unwrap_or_else(|e| {
       log(&format!("Failed to deserialize move: {}", e));
@@ -933,10 +945,10 @@ pub fn test_shared_mem(shared_mem: Int32Array, my_value: i32) {
 #[wasm_bindgen]
 pub fn get_wasm_version() -> String {
   #[cfg(debug_assertions)]
-  return "v0.1.9-debug".to_string();
+  return "v0.1.10-debug".to_string();
 
   #[cfg(not(debug_assertions))]
-  return "v0.1.9".to_string();
+  return "v0.1.10".to_string();
 }
 
 /*

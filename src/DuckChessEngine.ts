@@ -19,7 +19,10 @@ export type MessageToEngineWorker = BasicMessages | {
 } | {
   type: 'setModel';
   modelName: ModelName;
-}
+} | {
+  type: 'setSearchParams';
+  searchParams: string;
+};
 
 export type MessageFromEngineWorker = {
   type: 'initted';
@@ -34,6 +37,9 @@ export type MessageFromEngineWorker = {
   type: 'backendFailure';
   message: string;
   requireWebGL: boolean;
+} | {
+  type: 'error';
+  message: string;
 };
 
 export type MessageToSearchWorker = BasicMessages | {
@@ -215,6 +221,11 @@ export class DuckChessEngine {
     this.engineWorker.postMessage({ type: 'setModel', modelName });
   }
 
+  reloadSearchParams() {
+    const searchParams = localStorage.getItem('duckChessSearchParams') || 'default';
+    this.engineWorker.postMessage({ type: 'setSearchParams', searchParams });
+  }
+
   runAlphaBetaBenchmark(callback: (results: AlphaBetaBenchmarkResults) => void) {
     //this.searchWorker.postMessage({ type: 'runAlphaBetaBenchmark' });
   }
@@ -265,6 +276,9 @@ export class DuckChessEngine {
         this.gameTree.apply_engine_output(engineOutput);
         this.maybeMakeEngineMove();
         this.forceUpdateCallback();
+        break;
+      case 'error':
+        window.alert(msg.message);
         break;
       case 'backendFailure':
         // If WebGL was required, then this is the attempt to init in the Web Worker.
@@ -321,5 +335,6 @@ export async function createDuckChessEngine(
   const engine = new DuckChessEngine(loadProgressCallback, forceUpdate);
   await engine.initPromise;
   engine.setModel(modelName);
+  engine.reloadSearchParams();
   return engine;
 }

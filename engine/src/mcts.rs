@@ -430,6 +430,10 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     this
   }
 
+  pub fn set_search_params(&mut self, search_params: SearchParams) {
+    self.search_params = search_params;
+  }
+
   pub fn get_state(&self) -> &State {
     &self.nodes[self.root].state
   }

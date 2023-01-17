@@ -194,6 +194,13 @@ export function handleMessage(msg: MessageToEngineWorker) {
     case 'setModel':
       setModel(msg.modelName);
       break;
+    case 'setSearchParams':
+      const success = engine.set_search_params(msg.searchParams);
+      if (!success) {
+        console.error('Failed to set search params!');
+        postMessageWrapper({ type: 'error', message: 'Failed to set search params!' });
+      }
+      break;
     //case 'applyMove':
     //  console.log('Applying move', msg.move, 'isHidden', msg.isHidden);
     //  engine.apply_move(msg.move, msg.isHidden);
