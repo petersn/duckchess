@@ -866,10 +866,10 @@ function AnalysisPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
           value={modelName}
           onChange={(e) => adjustModelName(e.target.value as ModelName)}
         >
-          <option value="medium-001-128x10">medium-001-128x10</option>
+          <option value="medium-002-128x10">medium-002-128x10</option>
           <option value="large-002-256x20">large-002-256x20</option>
           {showAllModels && <>
-            {/*<option value="medium-001-128x10">medium-001-128x10</option>*/}
+            <option value="medium-001-128x10">medium-001-128x10</option>
             <option value="large-001-256x20">large-001-256x20</option>
           </>}
         </select></label>

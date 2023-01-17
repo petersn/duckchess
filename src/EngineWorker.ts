@@ -43,9 +43,9 @@ async function setModel(modelName: ModelName) {
     case 'large-001-256x20':
       path = '/models/run-016-step-200/model.json';
       break;
-    // case 'medium-002-128x10':
-    //   path = '/models/run-016-step-290-medium/model.json';
-    //   break;
+    case 'medium-002-128x10':
+      path = '/models/run-016-step-290-medium/model.json';
+      break;
     case 'large-002-256x20':
       path = '/models/run-016-step-290/model.json';
       break;
