@@ -64,8 +64,8 @@ function SettingsPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
     <p>
       My goal is to allow fine-adjustment of the engine here soon.
       The deep search parameters promote searching variations deeply, rather than searching broadly (this is equivalent to lowering cpuct in lc0).
-      My testing seems to indicate that the deep search parameters outperform default by ~100 elo points, but the values seem so
-      absurd (they're about 10x lower than what lc0 settled on!) that I'm scared to deploy them as the default.
+      My testing seems to indicate that the deep search parameters outperform default by ~150 elo points, but the values seem so
+      absurd (they're about 5x lower than what lc0 settled on!) that I'm scared to deploy them as the default.
     </p>
 
     <div style={{ marginTop: 20 }}>
@@ -76,7 +76,7 @@ function SettingsPage(props: { isMobile: boolean, engine: DuckChessEngine }) {
         props.engine.reloadSearchParams();
       }}>
         <option value="default">Default</option>
-        <option value="alpha=0.25:duckalpha=0.125:fpu=0.2">Deep</option>
+        <option value="alpha=0.5:duckalpha=0.25:fpu=0.2">Deep</option>
       </select>
 
       <span style={{ marginLeft: 20, opacity: 0.7, fontSize: '80%' }}>

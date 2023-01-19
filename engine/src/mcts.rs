@@ -50,8 +50,8 @@ pub struct SearchParams {
 impl Default for SearchParams {
   fn default() -> Self {
     Self {
-      exploration_alpha:      0.5,
-      duck_exploration_alpha: 0.25,
+      exploration_alpha:      1.0,
+      duck_exploration_alpha: 0.5,
       first_play_urgency:     0.2,
     }
   }
