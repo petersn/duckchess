@@ -93,9 +93,8 @@ impl<Cookie> TensorFlowJsEngine<Cookie> {
     };
     // Get a &mut [f32] that points into results.wdl.
     let wdl = results.wdl.as_mut_slice();
-    let wdl: &mut [f32] = unsafe {
-      std::slice::from_raw_parts_mut(wdl.as_mut_ptr() as *mut f32, batch_length * 3)
-    };
+    let wdl: &mut [f32] =
+      unsafe { std::slice::from_raw_parts_mut(wdl.as_mut_ptr() as *mut f32, batch_length * 3) };
     policies.copy_from_slice(&policy_array[..]);
     wdl.copy_from_slice(&wdl_array[..]);
     //policy_array.copy_to(policies);

@@ -1,5 +1,6 @@
-use engine::rules::{Player, Move};
 use std::io::BufRead;
+
+use engine::rules::{Move, Player};
 
 fn main() {
   let mut e = engine::search::Engine::new(1234, 64 * 1024 * 1024);
@@ -25,7 +26,6 @@ fn main() {
     println!("Move {}: {:?}", i, move_);
     e.apply_move(move_).unwrap();
   }
-
 
   //state.pawns[Player::Black as usize].0 = 0x0000000000000000;
   //state.knights[Player::Black as usize].0 = 0x0000000000000000;

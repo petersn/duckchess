@@ -9,7 +9,7 @@ use crate::inference::{
 };
 use crate::rng::Rng;
 //use crate::inference::{ModelOutputs, POLICY_LEN};
-use crate::rules::{Move, State, RepetitionState, GameOutcome, Player};
+use crate::rules::{GameOutcome, Move, Player, RepetitionState, State};
 
 //const EXPLORATION_ALPHA: f32 = 1.0;
 //const DUCK_EXPLORATION_ALPHA: f32 = 0.5;
@@ -86,7 +86,9 @@ impl std::str::FromStr for SearchParams {
 }
 
 #[inline(always)]
-fn state_to_default_full_prec_model_outputs(outcome: Option<GameOutcome>) -> FullPrecisionModelOutputs {
+fn state_to_default_full_prec_model_outputs(
+  outcome: Option<GameOutcome>,
+) -> FullPrecisionModelOutputs {
   let mut value = Evaluation::EVEN_EVAL;
   let mut white_wdl = [0.0, 1.0, 0.0];
   match outcome {
@@ -113,30 +115,30 @@ fn state_to_default_full_prec_model_outputs(outcome: Option<GameOutcome>) -> Ful
 
 #[derive(Clone)]
 pub struct EdgeEntry {
-  node: NodeIndex,
+  node:             NodeIndex,
   causes_threefold: bool,
 }
 
 #[derive(Clone)]
 pub struct MctsNode {
-  pub depth:             u32,
-  pub state:             State,
-  pub hash:              u64,
-  pub moves:             Vec<Move>,
-  pub outputs:           ModelOutputs,
-  pub dirichlet_applied: bool,
-  pub needs_eval:        bool,
-  pub total_score:       f32,
-  pub total_white_wdl:         [f32; 3],
-  pub exact_score_and_move:    Option<(f32, Move)>,
-  pub visits:            u32,
-  pub tail_visits:       u32,
-  pub in_flight:         u32,
-  pub policy_explored:   f32,
-  pub outgoing_edges:    HashMap<Move, EdgeEntry>,
-  pub gc_state:          u32,
-  pub propagated:        bool,
-  pub is_threefold:      bool,
+  pub depth:                u32,
+  pub state:                State,
+  pub hash:                 u64,
+  pub moves:                Vec<Move>,
+  pub outputs:              ModelOutputs,
+  pub dirichlet_applied:    bool,
+  pub needs_eval:           bool,
+  pub total_score:          f32,
+  pub total_white_wdl:      [f32; 3],
+  pub exact_score_and_move: Option<(f32, Move)>,
+  pub visits:               u32,
+  pub tail_visits:          u32,
+  pub in_flight:            u32,
+  pub policy_explored:      f32,
+  pub outgoing_edges:       HashMap<Move, EdgeEntry>,
+  pub gc_state:             u32,
+  pub propagated:           bool,
+  pub is_threefold:         bool,
 }
 
 impl MctsNode {
@@ -182,9 +184,9 @@ impl MctsNode {
   fn get_subtree_value(&self) -> Evaluation {
     if let Some((exact_score, _)) = self.exact_score_and_move {
       return Evaluation {
-        expected_score: exact_score,
+        expected_score:     exact_score,
         perspective_player: self.state.turn,
-        is_exact: true,
+        is_exact:           true,
       };
     }
     // Implement so called "virtual losses" -- we pretend each in flight evaluation
@@ -192,7 +194,7 @@ impl MctsNode {
     Evaluation {
       expected_score:     self.total_score / (self.visits + self.in_flight) as f32,
       perspective_player: self.state.turn,
-      is_exact:        false,
+      is_exact:           false,
     }
   }
 
@@ -282,10 +284,13 @@ impl MctsNode {
     assert!(!self.outgoing_edges.contains_key(&m));
     // We now guarantee that this move is actually legal here.
     assert!(self.moves.contains(&m));
-    self.outgoing_edges.insert(m, EdgeEntry {
-      node: child_index,
-      causes_threefold,
-    });
+    self.outgoing_edges.insert(
+      m,
+      EdgeEntry {
+        node: child_index,
+        causes_threefold,
+      },
+    );
     // FIXME: I need to track the policy_explored more carefully, as evals might not be filled in yet!
     self.policy_explored = (self.policy_explored + self.posterior(m)).min(1.0);
   }
@@ -388,18 +393,18 @@ pub struct PendingPath {
 
 pub struct Mcts<'a, Infer: InferenceEngine<(usize, PendingPath)>> {
   // This ID is used to identify evaluation requests from this MCTS instance.
-  pub id:                  usize,
-  pub search_params:       SearchParams,
-  pub inference_engine:    &'a Infer,
-  pub in_flight_count:     usize,
-  pub rng:                 Rng,
-  pub root:                NodeIndex,
-  pub nodes:               SlotMap<NodeIndex, MctsNode>,
-  pub transposition_table: HashMap<(u64, u32, bool), NodeIndex>,
+  pub id:                    usize,
+  pub search_params:         SearchParams,
+  pub inference_engine:      &'a Infer,
+  pub in_flight_count:       usize,
+  pub rng:                   Rng,
+  pub root:                  NodeIndex,
+  pub nodes:                 SlotMap<NodeIndex, MctsNode>,
+  pub transposition_table:   HashMap<(u64, u32, bool), NodeIndex>,
   // Critically, this RepetitionState includes all states *previous*
   // to the root state, and not the root state itself.
-  pub root_repetition_state:  RepetitionState,
-  pub mark_state_counter:  u32,
+  pub root_repetition_state: RepetitionState,
+  pub mark_state_counter:    u32,
   //pending_paths:       SlotMap<PendingIndex, PendingPath>,
 }
 
@@ -520,7 +525,9 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         position.move_gen::<true>(move_gen_scratch);
         for m in move_gen_scratch {
           let mut state_after_move = position.clone();
-          state_after_move.apply_move::<false>(*m, None).expect("mate-in-1-check-position-apply-move");
+          state_after_move
+            .apply_move::<false>(*m, None)
+            .expect("mate-in-1-check-position-apply-move");
           if state_after_move.get_outcome() == sought_outcome {
             return true;
           }
@@ -546,7 +553,9 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         state_after_move.move_gen::<false>(&mut move_gen_scratch0);
         for duck_followup in &move_gen_scratch0 {
           let mut state_after_duck_followup = state_after_move.clone();
-          state_after_duck_followup.apply_move::<false>(*duck_followup, None).expect("mate-in-1-duck-followup-apply-move");
+          state_after_duck_followup
+            .apply_move::<false>(*duck_followup, None)
+            .expect("mate-in-1-duck-followup-apply-move");
           if !check_if_position_has_move_producing_outcome(
             &state_after_duck_followup,
             &mut move_gen_scratch1,
@@ -1037,9 +1046,9 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       node.gc_state = mark_state;
     }
     // Drop nodes, and references to freed nodes in the transposition table.
-    self.transposition_table.retain(|_, node_index| {
-      self.nodes[*node_index].gc_state == mark_state
-    });
+    self
+      .transposition_table
+      .retain(|_, node_index| self.nodes[*node_index].gc_state == mark_state);
     self.nodes.retain(|_, node| node.gc_state == mark_state);
   }
 

@@ -120,7 +120,10 @@ pub fn parse(mut s: &str) -> Result<Pgn4, String> {
       (Token::Other('P'), Token::DotDot) => {
         // Parse a pass.
         if moves.len() % 4 != 0 {
-          return Err(format!("Badly placed pass with moves.len() = {}", moves.len()));
+          return Err(format!(
+            "Badly placed pass with moves.len() = {}",
+            moves.len()
+          ));
         }
         i += 2;
         continue;

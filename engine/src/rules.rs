@@ -1101,9 +1101,7 @@ impl RepetitionState {
       let count = mapping.entry(*hash).or_insert(0);
       *count += 1;
     }
-    RepetitionState {
-      mapping,
-    }
+    RepetitionState { mapping }
   }
 
   pub fn add(&mut self, zobrist: u64) -> bool {

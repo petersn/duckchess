@@ -44,7 +44,7 @@ extern "C" {
 }
 
 pub struct TensorRT {
-  pointer: *mut TensorRTWrapper,
+  pointer:            *mut TensorRTWrapper,
   current_model_name: String,
 }
 
@@ -64,7 +64,7 @@ impl TensorRT {
   pub fn new(cuda_device: i32, max_batch_size: i32) -> TensorRT {
     unsafe {
       TensorRT {
-        pointer: TensorRTWrapper_new(cuda_device, max_batch_size),
+        pointer:            TensorRTWrapper_new(cuda_device, max_batch_size),
         current_model_name: "<no model>".to_string(),
       }
     }

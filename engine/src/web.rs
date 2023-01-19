@@ -2,18 +2,17 @@
 use std::collections::HashMap;
 
 use js_sys::{Array, Atomics, Int32Array, SharedArrayBuffer, Uint8Array};
-use wasm_bindgen::prelude::*;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use slotmap::SlotMap;
+use wasm_bindgen::prelude::*;
 
 use crate::inference::{FEATURES_SIZE, POLICY_LEN};
 use crate::inference_web::MAX_BATCH_SIZE;
 use crate::mcts::{PendingPath, SearchParams};
 use crate::{
-  inference, inference_web, mcts,
+  inference, inference_web, mcts, rules,
   rules::{Move, Player, State},
   search,
-  rules,
 };
 
 const MAX_STEPS_BEFORE_INFERENCE: usize = 40 * MAX_BATCH_SIZE;
@@ -27,14 +26,13 @@ extern "C" {
   pub fn log(s: &str);
 }
 
-
 slotmap::new_key_type! {
   pub struct GameNodeId;
 }
 
 #[derive(Clone, Copy, Serialize)]
 pub struct TreeEdge {
-  m: Move,
+  m:     Move,
   child: GameNodeId,
 }
 
@@ -42,30 +40,30 @@ pub struct TreeEdge {
 #[ts(export)]
 pub struct NodeEval {
   white_perspective_score: f32,
-  white_perspective_wdl: [f32; 3],
+  white_perspective_wdl:   [f32; 3],
   // +1 means white has mate in 1, +2 means mate in two, and so on.
   // Likewise, negative values indicate mates for black.
-  mate_score: Option<i32>,
-  top_moves: Vec<(Move, f32)>,
-  steps: u32,
+  mate_score:              Option<i32>,
+  top_moves:               Vec<(Move, f32)>,
+  steps:                   u32,
 }
 
 #[derive(Serialize, Deserialize)]
 #[wasm_bindgen]
 pub struct EngineOutput {
   js_friendly_board_hash: (u32, u32),
-  node_eval: NodeEval,
+  node_eval:              NodeEval,
 }
 
 #[derive(Serialize)]
 pub struct GameNode {
-  state: rules::State,
-  parent: Option<GameNodeId>,
-  legal_moves: Vec<Move>,
+  state:                     rules::State,
+  parent:                    Option<GameNodeId>,
+  legal_moves:               Vec<Move>,
   legal_duck_skipping_moves: Vec<Move>,
-  outgoing_edges: Vec<TreeEdge>,
-  evaluation: NodeEval,
-  past_occurrences: u32,
+  outgoing_edges:            Vec<TreeEdge>,
+  evaluation:                NodeEval,
+  past_occurrences:          u32,
 }
 
 impl GameNode {
@@ -86,10 +84,10 @@ impl GameNode {
     }
     let mut evaluation = NodeEval {
       white_perspective_score: 0.5,
-      white_perspective_wdl: [0.0; 3],
-      mate_score: None,
-      top_moves: vec![],
-      steps: 0,
+      white_perspective_wdl:   [0.0; 3],
+      mate_score:              None,
+      top_moves:               vec![],
+      steps:                   0,
     };
     if is_threefold {
       evaluation.white_perspective_wdl[1] = 1.0;
@@ -109,10 +107,10 @@ impl GameNode {
 
 #[wasm_bindgen]
 pub struct GameTree {
-  nodes: SlotMap<GameNodeId, GameNode>,
+  nodes:       SlotMap<GameNodeId, GameNode>,
   state_to_id: HashMap<u64, GameNodeId>,
-  cursor: GameNodeId,
-  root: GameNodeId,
+  cursor:      GameNodeId,
+  root:        GameNodeId,
 }
 
 fn split_u64_to_u32_pair(x: u64) -> (u32, u32) {
@@ -127,10 +125,10 @@ fn combine_u32_pair_to_u64(x: (u32, u32)) -> u64 {
 impl GameTree {
   pub fn new() -> Self {
     let mut gt = Self {
-      nodes: SlotMap::with_key(),
+      nodes:       SlotMap::with_key(),
       state_to_id: HashMap::new(),
-      cursor: GameNodeId::default(),
-      root: GameNodeId::default(),
+      cursor:      GameNodeId::default(),
+      root:        GameNodeId::default(),
     };
     gt.cursor = gt.new_node(rules::State::starting_state(), None);
     gt.root = gt.cursor;
@@ -244,7 +242,8 @@ impl GameTree {
     let mut current = id;
     while let Some(parent) = self.nodes[current].parent {
       let parent_node = &mut self.nodes[parent];
-      let our_index = parent_node.outgoing_edges.iter().position(|edge| edge.child == current).unwrap();
+      let our_index =
+        parent_node.outgoing_edges.iter().position(|edge| edge.child == current).unwrap();
       parent_node.outgoing_edges.swap(0, our_index);
       current = parent;
     }
@@ -263,10 +262,11 @@ impl GameTree {
   }
 
   pub fn apply_engine_output(&mut self, engine_output: JsValue) {
-    let engine_output: EngineOutput = serde_wasm_bindgen::from_value(engine_output).unwrap_or_else(|e| {
-      log(&format!("Failed to deserialize engine output: {}", e));
-      panic!("Failed to deserialize engine output: {}", e);
-    });
+    let engine_output: EngineOutput =
+      serde_wasm_bindgen::from_value(engine_output).unwrap_or_else(|e| {
+        log(&format!("Failed to deserialize engine output: {}", e));
+        panic!("Failed to deserialize engine output: {}", e);
+      });
     let board_hash = combine_u32_pair_to_u64(engine_output.js_friendly_board_hash);
     match self.state_to_id.get(&board_hash) {
       Some(id) => {
@@ -274,7 +274,7 @@ impl GameTree {
         if engine_output.node_eval.steps > tree_node_eval.steps {
           *tree_node_eval = engine_output.node_eval;
         }
-      },
+      }
       None => {
         log(&format!("No node for board hash {}", board_hash));
       }
@@ -335,7 +335,8 @@ impl GameTree {
     let additional_steps = steps as f32 - node.evaluation.steps as f32;
     if additional_steps > 0.0 && top_move_visits < second_move_visits + additional_steps {
       // We need more steps to be sure.
-      let remaining = (second_move_visits + additional_steps - top_move_visits).min(additional_steps);
+      let remaining =
+        (second_move_visits + additional_steps - top_move_visits).min(additional_steps);
       let progress = 1.0 - remaining / steps as f32;
       return JsValue::from_f64((base_progress + mult * progress) as f64);
     }
@@ -400,13 +401,12 @@ impl GameTree {
     let mut hashes = Vec::new();
     let mut here = node;
     while let Some(parent) = here.parent {
-      hashes.push(split_u64_to_u32_pair(here.state.get_transposition_table_hash()));
+      hashes.push(split_u64_to_u32_pair(
+        here.state.get_transposition_table_hash(),
+      ));
       here = &self.nodes[parent];
     }
-    serde_wasm_bindgen::to_value(&(
-      &node.state,
-      hashes,
-    )).unwrap_or_else(|e| {
+    serde_wasm_bindgen::to_value(&(&node.state, hashes)).unwrap_or_else(|e| {
       log(&format!("Failed to serialize hashes: {}", e));
       JsValue::NULL
     })
@@ -418,10 +418,10 @@ impl GameTree {
 
     #[derive(Serialize)]
     pub struct Info<'a> {
-      pub id: GameNodeId,
+      pub id:         GameNodeId,
       pub evaluation: &'a NodeEval,
-      pub edges: Vec<(Move, String, Info<'a>)>,
-      pub turn: &'static str,
+      pub edges:      Vec<(Move, String, Info<'a>)>,
+      pub turn:       &'static str,
     }
 
     // FIXME: I think the nested structs here can cause the serialization to overflow the WASM stack.
@@ -449,16 +449,11 @@ impl GameTree {
     let info = make_tree(&self.nodes, self.root);
     // We have to shorten the board hash for JavaScript.
     let board_hash = node.state.get_transposition_table_hash() & 0xffffffffffff;
-    serde_wasm_bindgen::to_value(&(
-      node,
-      info,
-      self.cursor,
-      self.find_pv_leaf(),
-      board_hash,
-    )).unwrap_or_else(|e| {
-      log(&format!("Failed to serialize state: {}", e));
-      panic!("Failed to serialize state: {}", e);
-    })
+    serde_wasm_bindgen::to_value(&(node, info, self.cursor, self.find_pv_leaf(), board_hash))
+      .unwrap_or_else(|e| {
+        log(&format!("Failed to serialize state: {}", e));
+        panic!("Failed to serialize state: {}", e);
+      })
   }
 }
 
@@ -492,11 +487,13 @@ impl Engine {
       log(&format!("Failed to deserialize state: {}", e));
       panic!("Failed to deserialize state: {}", e);
     });
-    let repetition_hashes: Vec<(u32, u32)> = serde_wasm_bindgen::from_value(repetition_hashes).unwrap_or_else(|e| {
-      log(&format!("Failed to deserialize past hashes: {}", e));
-      panic!("Failed to deserialize past hashes: {}", e);
-    });
-    let repetition_hashes: Vec<u64> = repetition_hashes.into_iter().map(combine_u32_pair_to_u64).collect();
+    let repetition_hashes: Vec<(u32, u32)> = serde_wasm_bindgen::from_value(repetition_hashes)
+      .unwrap_or_else(|e| {
+        log(&format!("Failed to deserialize past hashes: {}", e));
+        panic!("Failed to deserialize past hashes: {}", e);
+      });
+    let repetition_hashes: Vec<u64> =
+      repetition_hashes.into_iter().map(combine_u32_pair_to_u64).collect();
     self.mcts.reroot_tree(&new_state, &repetition_hashes);
     self.mcts.apply_noise_to_root();
   }
@@ -615,17 +612,21 @@ impl Engine {
 
   pub fn get_engine_output(&self) -> JsValue {
     //let (root_score, steps) = self.mcts.get_root_score();
-    let (white_perspective_score, white_perspective_wdl, top_moves, steps) = self.mcts.get_gui_evaluation();
+    let (white_perspective_score, white_perspective_wdl, top_moves, steps) =
+      self.mcts.get_gui_evaluation();
     serde_wasm_bindgen::to_value(&EngineOutput {
-      js_friendly_board_hash: split_u64_to_u32_pair(self.mcts.get_state().get_transposition_table_hash()),
-      node_eval: NodeEval {
+      js_friendly_board_hash: split_u64_to_u32_pair(
+        self.mcts.get_state().get_transposition_table_hash(),
+      ),
+      node_eval:              NodeEval {
         white_perspective_score,
         white_perspective_wdl,
         mate_score: None,
         top_moves,
         steps,
       },
-    }).unwrap_or_else(|e| {
+    })
+    .unwrap_or_else(|e| {
       log(&format!("Failed to serialize evaluation: {}", e));
       JsValue::NULL
     })
@@ -654,7 +655,11 @@ pub fn new_engine(seed: u64) -> Engine {
   Engine {
     inference_engine: tfjs_inference_engine,
     mcts:             mcts::Mcts::new(
-      0, seed, tfjs_inference_engine, SearchParams::default(), State::starting_state(),
+      0,
+      seed,
+      tfjs_inference_engine,
+      SearchParams::default(),
+      State::starting_state(),
     ),
     prefix_moves:     Vec::new(),
     //input_array: Box::new([0.0; MAX_BATCH_SIZE * FEATURES_SIZE]),
@@ -757,15 +762,18 @@ impl Pvs {
       (_, Some((m, _))) => (1_000_000, vec![(m, 1.0)]),
     };
     serde_wasm_bindgen::to_value(&EngineOutput {
-      js_friendly_board_hash: split_u64_to_u32_pair(self.engine.get_state().get_transposition_table_hash()),
-      node_eval: NodeEval {
+      js_friendly_board_hash: split_u64_to_u32_pair(
+        self.engine.get_state().get_transposition_table_hash(),
+      ),
+      node_eval:              NodeEval {
         white_perspective_score,
         white_perspective_wdl,
         mate_score,
         top_moves,
         steps,
       },
-    }).unwrap_or_else(|e| {
+    })
+    .unwrap_or_else(|e| {
       log(&format!("Failed to serialize evaluation: {}", e));
       JsValue::NULL
     })

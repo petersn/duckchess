@@ -106,7 +106,13 @@ async fn main() {
       loop {
         let model_name_start = inference_engine.get_current_model_name();
         let seed = rand::random::<u64>();
-        let mut mcts = Mcts::new(task_id, seed, inference_engine, search_params.clone(), State::starting_state());
+        let mut mcts = Mcts::new(
+          task_id,
+          seed,
+          inference_engine,
+          search_params.clone(),
+          State::starting_state(),
+        );
         // This array tracks the moves that actually occur in the game.
         let mut moves: Vec<engine::rules::Move> = vec![];
         // This array gives a few random example serialized states.

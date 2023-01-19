@@ -172,7 +172,7 @@ fn main() {
     println!("cargo:rustc-link-search=/usr/local/cuda/lib64");
     println!("cargo:rustc-link-lib=cuda");
     println!("cargo:rustc-link-lib=cudart");
-    println!("cargo:rustc-link-lib=nvinfer");  
+    println!("cargo:rustc-link-lib=nvinfer");
   }
 
   println!("cargo:rerun-if-changed=build.rs");

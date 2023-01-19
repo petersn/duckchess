@@ -9,14 +9,14 @@ pub struct Evaluation {
   /// Whose perspective the score is from.
   pub perspective_player: Player,
   /// Says if the score is certain (as in, it's the provably exact minimax value).
-  pub is_exact:        bool,
+  pub is_exact:           bool,
 }
 
 impl Evaluation {
   pub const EVEN_EVAL: Self = Self {
     expected_score:     0.5,
     perspective_player: Player::White,
-    is_exact:        false,
+    is_exact:           false,
   };
 
   /// If a state is terminal, return the evaluation of the state.
@@ -163,8 +163,8 @@ pub struct ModelOutputs {
 
 #[derive(Clone)]
 pub struct FullPrecisionModelOutputs {
-  pub policy: Box<[f32; POLICY_LEN]>,
-  pub value:  Evaluation,
+  pub policy:    Box<[f32; POLICY_LEN]>,
+  pub value:     Evaluation,
   pub white_wdl: [f32; 3],
 }
 
@@ -354,8 +354,8 @@ impl<'a, Cookie> InferenceResults<'a, Cookie> {
     //debug_assert!(-1.0 <= self.values[index] && self.values[index] <= 1.0);
     FullPrecisionModelOutputs {
       policy: make_perspective_policy(self.players[index], self.policies[index]),
-      value:  Evaluation {
-        expected_score,  //:     (self.values[index] + 1.0) / 2.0,
+      value: Evaluation {
+        expected_score, //:     (self.values[index] + 1.0) / 2.0,
         perspective_player: self.players[index],
         is_exact: false,
       },

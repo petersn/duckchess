@@ -121,10 +121,7 @@ impl<Cookie> inference::InferenceEngine<Cookie> for TensorRTEngine<Cookie> {
       &last_block.cookies,
       &last_block.players,
       &policies,
-      unsafe { std::slice::from_raw_parts(
-        out_wdl_ptr as *const [f32; 3],
-        block_len,
-      ) },
+      unsafe { std::slice::from_raw_parts(out_wdl_ptr as *const [f32; 3], block_len) },
     ));
     //let elapsed = final_start.elapsed();
     //println!("Use time: {:?}", elapsed);

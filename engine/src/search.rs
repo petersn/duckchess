@@ -1,7 +1,7 @@
 use crate::eval::basic_eval;
 use crate::nnue::{Nnue, NnueAdjustment};
 use crate::rng::Rng;
-use crate::rules::{get_square, iter_bits, GameOutcome, Move, State, RepetitionState};
+use crate::rules::{get_square, iter_bits, GameOutcome, Move, RepetitionState, State};
 
 // Represents an evaluation in a position from the perspective of the player to move.
 pub type IntEvaluation = i32;
@@ -202,10 +202,7 @@ impl Engine {
     pv
   }
 
-  pub fn mate_search(
-    &mut self,
-    depth: u16,
-  ) -> (IntEvaluation, Option<(Move, Move)>) {
+  pub fn mate_search(&mut self, depth: u16) -> (IntEvaluation, Option<(Move, Move)>) {
     //self.nodes_searched = 0;
     let start_state = self.state.clone();
     //self.mate_search_inner(depth, &start_state, EVAL_VERY_NEGATIVE, EVAL_VERY_POSITIVE)
@@ -358,7 +355,10 @@ impl Engine {
   ) -> (IntEvaluation, Option<Move>) {
     // FIXME: Comment this out.
     if (depth % 2 == 0) != state.is_duck_move {
-      println!("pvs: depth={} is_duck_move={} quiescence={}", depth, state.is_duck_move, QUIESCENCE);
+      println!(
+        "pvs: depth={} is_duck_move={} quiescence={}",
+        depth, state.is_duck_move, QUIESCENCE
+      );
       panic!("pvs: depth and is_duck_move mismatch");
     }
     debug_assert!((depth % 2 == 0) == state.is_duck_move);
@@ -494,7 +494,8 @@ impl Engine {
     // We now sort the moves.
     let mut nnue_policy_from_scores = [0i16; 64];
     let mut nnue_policy_to_scores = [0i16; 64];
-    if NNUE {//&& depth >= 0 { //&& tt_move == Move::INVALID {
+    if NNUE {
+      //&& depth >= 0 { //&& tt_move == Move::INVALID {
       nnue.evaluate_policy(
         state,
         &mut nnue_policy_from_scores,
