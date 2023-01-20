@@ -66,6 +66,7 @@ if __name__ == "__main__":
     for path in sys.argv[1:]:
         with open(path) as f:
             for line in f:
+                if not line.strip(): continue
                 games.append(json.loads(line))
     print("Games:", len(games))
 
