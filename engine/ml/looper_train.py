@@ -4,6 +4,8 @@ import random
 from tqdm import tqdm
 
 import model_pytorch_BIG as model_pytorch
+#print("\x1b[91m" + "!"*500, "Warning, still importing model_pytorch_MEDIUM!", "!"*500 + "\x1b[0m")
+#import model_pytorch_MEDIUM as model_pytorch
 
 import wandb
 
