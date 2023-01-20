@@ -21,6 +21,7 @@ fn main() {
     &inference_engine,
     SearchParams::default(),
     State::starting_state(),
+    false,
   );
 
   macro_rules! inference {

@@ -15,6 +15,8 @@ const SMALL_SEARCH_PLAYOUTS: u32 = 500;
 //const SMALL_SEARCH_PLAYOUTS: u32 = 100;
 const GAME_LEN_LIMIT: usize = 800;
 
+const ALPHA_BETA_SEARCH_DEPTH: u16 = 2;
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -112,6 +114,7 @@ async fn main() {
           inference_engine,
           search_params.clone(),
           State::starting_state(),
+          false,
         );
         // This array tracks the moves that actually occur in the game.
         let mut moves: Vec<engine::rules::Move> = vec![];
@@ -141,6 +144,33 @@ async fn main() {
           if do_full_search {
             mcts.apply_noise_to_root();
           }
+
+          // Start by performing a small exact tree search for mates.
+          let depth = match mcts.get_state().is_duck_move {
+            true => 2 * ALPHA_BETA_SEARCH_DEPTH,
+            false => 2 * ALPHA_BETA_SEARCH_DEPTH + 1,
+          };
+          let (alpha_beta_eval, alpha_beta_moves) = if mcts.get_state().get_outcome().is_some() {
+            (0, None)
+          } else {
+            engine::search::mate_search(
+              &mcts.get_state(),
+              depth,
+            )
+          };
+          if alpha_beta_eval > 0 && alpha_beta_moves.is_none() {
+            println!("\x1b[91mWEIRD BUG!!!!!!!!!!!!!!!!!!!!!!! State: {:?}\x1b[0m", mcts.get_state());
+          }
+          // If we have a winning move then just play it.
+          let mating_move = if alpha_beta_eval > 0 && alpha_beta_moves.is_some() {
+            let mating_move = alpha_beta_moves.unwrap().0;
+            // Assert that it's legal.
+            assert!(mcts.check_if_move_is_legal_from_root(mating_move));
+            Some(mating_move)
+          } else {
+            None
+          };
+
           // Perform the actual tree search.
           // We early out only if we're not doing a full search, to properly compute our training target.
           let mut steps = 0;
@@ -169,15 +199,16 @@ async fn main() {
           // for each player, then 5% of second moves for each player.
           let uniformly_random_move_prob = 0.10 - (0.05 * (move_number / 4) as f32);
           let pick_randomly = rand::random::<f32>() < uniformly_random_move_prob;
-          let game_move = match pick_randomly {
-            true => {
+          let game_move = match (mating_move, pick_randomly) {
+            (Some(m), _) => Some(m),
+            (None, true) => {
               use rand::seq::SliceRandom;
               let mut moves = vec![];
               mcts.get_state().move_gen::<false>(&mut moves);
               moves.choose(&mut rand::thread_rng()).map(|m| *m)
             }
             // We use temperature = 0.5 for training moves, and temperature = 0.25 for fast moves, to improve play strength.
-            false => match do_full_search {
+            (None, false) => match do_full_search {
               true => mcts.sample_move_by_visit_count(2),
               false => mcts.sample_move_by_visit_count(4),
             },
@@ -199,9 +230,10 @@ async fn main() {
               //println!("[{task_id}] Generated a move: {:?}", m);
               was_rand.push(pick_randomly);
               full_search.push(do_full_search);
-              train_dists.push(match do_full_search {
-                true => Some(mcts.get_train_distribution()),
-                false => None,
+              train_dists.push(match (mating_move, do_full_search) {
+                (Some(mating_move), _) => Some(vec![(mating_move, 1.0)]),
+                (None, true) => Some(mcts.get_train_distribution()),
+                (None, false) => None,
               });
               let (v, u) = mcts.get_root_score();
               root_values.push(v);

@@ -50,8 +50,11 @@ pub struct SearchParams {
 impl Default for SearchParams {
   fn default() -> Self {
     Self {
-      exploration_alpha:      1.0,
-      duck_exploration_alpha: 0.5,
+      //exploration_alpha:      1.0,
+      //duck_exploration_alpha: 0.5,
+      // For now I want to change one thing at a time, so I'm reverting these parameters for further self-play.
+      exploration_alpha:      0.5,
+      duck_exploration_alpha: 0.25,
       first_play_urgency:     0.2,
     }
   }
@@ -405,6 +408,7 @@ pub struct Mcts<'a, Infer: InferenceEngine<(usize, PendingPath)>> {
   // to the root state, and not the root state itself.
   pub root_repetition_state: RepetitionState,
   pub mark_state_counter:    u32,
+  pub care_about_threefold:  bool,
   //pending_paths:       SlotMap<PendingIndex, PendingPath>,
 }
 
@@ -417,6 +421,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     inference_engine: &'a Infer,
     search_params: SearchParams,
     state: State,
+    care_about_threefold: bool,
   ) -> Mcts<Infer> {
     let mut this = Self {
       id,
@@ -430,6 +435,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       //pending_paths: SlotMap::with_key(),
       root_repetition_state: RepetitionState::new(),
       mark_state_counter: 0,
+      care_about_threefold,
     };
     this.root = this.add_child_and_adjust_scores(vec![], None, state, 0);
     this
@@ -441,6 +447,10 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
 
   pub fn get_state(&self) -> &State {
     &self.nodes[self.root].state
+  }
+
+  pub fn check_if_move_is_legal_from_root(&self, m: Move) -> bool {
+    self.nodes[self.root].moves.contains(&m)
   }
 
   pub fn any_in_flight(&self) -> bool {
@@ -653,24 +663,28 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
   ) -> NodeIndex {
     let new_hash = state.get_transposition_table_hash();
     // We check if this path results in a threefold repetition.
-    let mut repetition_state = self.root_repetition_state.clone();
-    for node_index in &path {
-      let repetition_along_path = repetition_state.add(self.nodes[*node_index].hash);
-      // This is one of the trickiest details I have to figure out how I want to handle.
-      // Basically, due to transpositions a path can result in a threefold, but only
-      // some parents should consider there to be a new drawn move from it.
-      // For now, to avoid adding children that are erroneously marked as threefold,
-      // I simply don't mark a threefold if it occurs along the path.
-      // But there can still be nodes reached via non-threefoldy paths marked as threefoldy,
-      // because they were initially added to the tree when reached by another path.
-      // FIXME: Figure out what to do with this mess.
-      if repetition_along_path {
-        //crate::log(&format!("Found repetition along path at depth {}.", depth));
+    let threefold_repetition = if !self.care_about_threefold {
+      false
+    } else {
+      let mut repetition_state = self.root_repetition_state.clone();
+      for node_index in &path {
+        let repetition_along_path = repetition_state.add(self.nodes[*node_index].hash);
+        // This is one of the trickiest details I have to figure out how I want to handle.
+        // Basically, due to transpositions a path can result in a threefold, but only
+        // some parents should consider there to be a new drawn move from it.
+        // For now, to avoid adding children that are erroneously marked as threefold,
+        // I simply don't mark a threefold if it occurs along the path.
+        // But there can still be nodes reached via non-threefoldy paths marked as threefoldy,
+        // because they were initially added to the tree when reached by another path.
+        // FIXME: Figure out what to do with this mess.
+        if repetition_along_path {
+          //crate::log(&format!("Found repetition along path at depth {}.", depth));
+        }
+        //assert!(!repetition_along_path);
       }
-      //assert!(!repetition_along_path);
-    }
-    // Finally, check if adding the new state results in a threefold repetition.
-    let threefold_repetition = repetition_state.would_adding_cause_threefold(new_hash);
+      // Finally, check if adding the new state results in a threefold repetition.
+      repetition_state.would_adding_cause_threefold(new_hash)
+    };
     if threefold_repetition {
       //crate::log(&format!("Found threefold repetition at depth {}.", depth));
     }

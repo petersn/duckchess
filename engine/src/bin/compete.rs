@@ -188,6 +188,7 @@ async fn main() {
           inference_engine1,
           search_params1.clone(),
           State::starting_state(),
+          false,
         );
         let mcts2 = Mcts::new(
           2 * task_id + 1,
@@ -195,6 +196,7 @@ async fn main() {
           inference_engine2,
           search_params2.clone(),
           State::starting_state(),
+          false,
         );
         let (white_engine_name, black_engine_name) = match engine1_is_white {
           true => (model1_dir, model2_dir),

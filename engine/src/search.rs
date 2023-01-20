@@ -624,3 +624,71 @@ impl Engine {
     (score, best_move)
   }
 }
+
+// I don't need a struct here for these, separate them out.
+// FIXME: Deduplicate this from the above logic.
+
+pub fn mate_search(state: &State, depth: u16) -> (IntEvaluation, Option<(Move, Move)>) {
+  mate_search_inner(depth, state, -1000, 1000)
+}
+
+fn mate_search_inner(
+  depth: u16,
+  state: &State,
+  mut alpha: i32,
+  beta: i32,
+) -> (IntEvaluation, Option<(Move, Move)>) {
+  match (state.get_outcome(), state.turn) {
+    (Some(GameOutcome::Draw), _) => return (0, None),
+    (Some(GameOutcome::Win(a)), b) => return (if a == b { 1000 } else { -1000 }, None),
+    _ => {}
+  }
+  if depth == 0 {
+    // If we're at depth 0 then we should be in a duck move.
+    if !state.is_duck_move {
+      crate::log("mate_search_inner: depth=0 but not in duck move");
+    }
+    assert!(state.is_duck_move);
+    return (0, None);
+  }
+
+  // Search over all moves here.
+  let mut moves = vec![];
+  state.move_gen::<false>(&mut moves);
+  assert!(!moves.is_empty());
+  let mut best_score = -2000;
+  let mut best_pair = None;
+
+  for m in moves {
+    let mut new_state = state.clone();
+    new_state.apply_move::<false>(m, None).unwrap();
+    // We must match on is_duck_move, because we only negate scores when switching between players.
+    let (score, inner_moves) = match state.is_duck_move {
+      // Must negate in this case.
+      true => {
+        let (score, inner_moves) = mate_search_inner(depth - 1, &new_state, -beta, -alpha);
+        (-score, inner_moves)
+      }
+      false => mate_search_inner(depth - 1, &new_state, alpha, beta),
+    };
+    let move_pair = match inner_moves {
+      Some((a, _)) => (m, a),
+      None => (m, Move::INVALID),
+    };
+    if score >= beta {
+      return (score, Some(move_pair));
+    }
+    alpha = alpha.max(score);
+    if score > best_score {
+      best_score = score;
+      best_pair = Some(move_pair);
+    }
+  }
+  // We now make the best score slightly less extreme, to preference shorter mates.
+  if best_score > 0 {
+    best_score -= 1;
+  } else if best_score < 0 {
+    best_score += 1;
+  }
+  (best_score, best_pair)
+}
