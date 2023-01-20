@@ -122,6 +122,12 @@ async fn main() {
         let mut states = vec![];
         // This array says if the game move was uniformly random, or based on our tree search.
         let mut was_rand: Vec<bool> = vec![];
+        // This array says if our little alpha-beta search resulted in a move that was used.
+        let mut used_mate_move: Vec<bool> = vec![];
+        // This array says what the alpha-beta search evaluation was.
+        let mut mate_search_evals: Vec<i32> = vec![];
+        // Array of depths to which we ran the exhaustive alpha-beta search for mates, by position.
+        let mut alpha_beta_search_depths: Vec<u16> = vec![];
         // This array contains the training targets for the policy head.
         let mut train_dists: Vec<Option<Vec<(engine::rules::Move, f32)>>> = vec![];
         // This array contains the average value of the entire MCTS tree (rooted at the current state) at each move.
@@ -148,7 +154,7 @@ async fn main() {
           }
 
           // Start by performing a small exact tree search for mates.
-          let depth = match mcts.get_state().is_duck_move {
+          let alpha_beta_depth = match mcts.get_state().is_duck_move {
             true => 2 * ALPHA_BETA_SEARCH_DEPTH,
             false => 2 * ALPHA_BETA_SEARCH_DEPTH + 1,
           };
@@ -157,7 +163,7 @@ async fn main() {
           } else {
             engine::search::mate_search(
               &mcts.get_state(),
-              depth,
+              alpha_beta_depth,
             )
           };
           if alpha_beta_eval > 0 && alpha_beta_moves.is_none() {
@@ -231,6 +237,9 @@ async fn main() {
               }
               //println!("[{task_id}] Generated a move: {:?}", m);
               was_rand.push(pick_randomly);
+              used_mate_move.push(mating_move.is_some());
+              mate_search_evals.push(alpha_beta_eval);
+              alpha_beta_search_depths.push(alpha_beta_depth);
               full_search.push(do_full_search);
               train_dists.push(match (mating_move, do_full_search) {
                 (Some(mating_move), _) => Some(vec![(mating_move, 1.0)]),
@@ -279,6 +288,9 @@ async fn main() {
             "moves": moves,
             "states": states,
             "was_rand": was_rand,
+            "used_mate_move": used_mate_move,
+            "mate_search_eval": mate_search_evals,
+            "alpha_beta_search_depths": alpha_beta_search_depths,
             "train_dists": train_dists,
             "root_values": root_values,
             "root_visits": root_visits,
