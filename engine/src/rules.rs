@@ -363,6 +363,20 @@ impl State {
     }
   }
 
+  pub fn is_just_kings(&self) -> bool {
+    for i in [0, 1] {
+      if self.pawns[i].0 != 0
+        || self.knights[i].0 != 0
+        || self.bishops[i].0 != 0
+        || self.rooks[i].0 != 0
+        || self.queens[i].0 != 0
+      {
+        return false;
+      }
+    }
+    true
+  }
+
   pub fn get_occupied(&self) -> u64 {
     self.pawns[0].0
       | self.pawns[1].0

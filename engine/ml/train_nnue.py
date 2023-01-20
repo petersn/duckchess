@@ -143,7 +143,7 @@ def process_one_path(path: str):
     lines = open(path).readlines()
     for line in tqdm(lines):
         game = json.loads(line)
-        e = engine.Engine(0)
+        e = engine.Engine(0, False)
         value_for_white = {"1-0": +1, "0-1": -1, None: 0}[game["outcome"]]
         for move in game["moves"]:
             legal_moves = [json.loads(m) for m in e.get_moves()]

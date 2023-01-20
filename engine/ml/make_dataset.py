@@ -89,7 +89,7 @@ def process_game_path(path: str):
         game = json.loads(game)
         version = game["version"]
         value_for_white = {"1-0": +1, "0-1": -1, None: 0}[game["outcome"]]
-        e = engine.Engine(0)
+        e = engine.Engine(0, False)
         for i, move in enumerate(game["moves"]):
             white_to_move = {"white": True, "black": False}[json.loads(e.get_state())["turn"]]
             this_move_flip = 0 if white_to_move else 56

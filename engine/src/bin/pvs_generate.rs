@@ -28,7 +28,7 @@ fn work(depth: u16, output_dir: &str) {
   loop {
     let mut moves = vec![];
     let mut was_rand = vec![];
-    let mut engine = engine::search::Engine::new(rand::random(), 1024);
+    let mut engine = engine::search::Engine::new(rand::random(), 1024, false);
     //let start_time = std::time::Instant::now();
     for move_index in 0..300 {
       // Pick a uniformly random move with some probability.

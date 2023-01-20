@@ -25,7 +25,7 @@ for game_file in tqdm(sys.argv[1:]):
 for i, game in enumerate(tqdm(all_games)):
 #for i in [37151, 57647]:
     game = all_games[i]
-    e = engine.Engine(0)
+    e = engine.Engine(0, False)
     for move_index, move in enumerate(game["moves"]):
         # Find all of the legal moves.
         legal_moves = e.get_moves()

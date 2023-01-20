@@ -87,18 +87,19 @@ struct TTEntry {
 }
 
 pub struct Engine {
-  pub nodes_searched:  u64,
-  pub total_eval:      f32,
-  rng:                 Rng,
-  state:               State,
-  repetition_state:    RepetitionState,
-  is_repetition:       bool,
-  transposition_table: Vec<TTEntry>,
-  killer_moves:        [Move; KILLER_MOVE_COUNT],
+  pub nodes_searched:   u64,
+  pub total_eval:       f32,
+  rng:                  Rng,
+  state:                State,
+  repetition_state:     RepetitionState,
+  is_repetition:        bool,
+  transposition_table:  Vec<TTEntry>,
+  killer_moves:         [Move; KILLER_MOVE_COUNT],
+  care_about_threefold: bool,
 }
 
 impl Engine {
-  pub fn new(seed: u64, tt_size: usize) -> Self {
+  pub fn new(seed: u64, tt_size: usize, care_about_threefold: bool) -> Self {
     let state = State::starting_state();
     let mut transposition_table = Vec::with_capacity(tt_size);
     for _ in 0..tt_size {
@@ -119,6 +120,7 @@ impl Engine {
       is_repetition: false,
       transposition_table,
       killer_moves: [Move::INVALID; KILLER_MOVE_COUNT],
+      care_about_threefold,
     }
   }
 
@@ -136,7 +138,9 @@ impl Engine {
 
   pub fn apply_move(&mut self, m: Move) -> Result<NnueAdjustment, &'static str> {
     let adjustment = self.state.apply_move::<false>(m, None)?;
-    self.is_repetition |= self.repetition_state.add(self.state.get_transposition_table_hash());
+    if self.care_about_threefold {
+      self.is_repetition |= self.repetition_state.add(self.state.get_transposition_table_hash());
+    }
     Ok(adjustment)
   }
 

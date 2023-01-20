@@ -133,6 +133,8 @@ async fn main() {
         // This array tracks how many steps were actually performed to compute this move.
         let mut steps_performed: Vec<u32> = vec![];
 
+        let mut just_kings_count = 0;
+
         for move_number in 0..GAME_LEN_LIMIT {
           // Decide whether or not to perform a full search.
           let do_full_search = rand::random::<f32>() < PLAYOUT_CAP_RANDOMIZATION_P;
@@ -243,6 +245,15 @@ async fn main() {
               mcts.apply_move(game_move);
               mcts.get_state().sanity_check().unwrap();
             }
+          }
+
+          // If the game has been lone king vs lone king for three moves, then we're done.
+          if mcts.get_state().is_just_kings() {
+            just_kings_count += 1;
+          }
+          if just_kings_count >= 3 {
+            println!("\x1b[94mExiting early to just kings\x1b[0m");
+            break;
           }
         }
         let total_steps = steps_performed.iter().sum::<u32>();

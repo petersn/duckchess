@@ -3,7 +3,7 @@ use std::io::BufRead;
 use engine::rules::{Move, Player};
 
 fn main() {
-  let mut e = engine::search::Engine::new(1234, 64 * 1024 * 1024);
+  let mut e = engine::search::Engine::new(1234, 64 * 1024 * 1024, false);
   let start_time = std::time::Instant::now();
   let mut state = e.get_state_mut();
 

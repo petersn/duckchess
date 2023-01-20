@@ -90,7 +90,7 @@ if __name__ == "__main__":
 
     repetition_counts = collections.Counter()
 
-    e = engine.Engine(0)
+    e = engine.Engine(0, False)
     for i, move in enumerate(game["moves"]):
         #print(game["moves"][:i + 1])
         #print("vvvvvvvvvvvvvvvvvvvv")

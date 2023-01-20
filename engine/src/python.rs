@@ -14,9 +14,9 @@ struct Engine {
 #[pymethods]
 impl Engine {
   #[new]
-  fn new(seed: u64) -> Self {
+  fn new(seed: u64, care_about_threefold: bool) -> Self {
     Self {
-      engine: search::Engine::new(seed, 1024),
+      engine: search::Engine::new(seed, 1024, care_about_threefold),
     }
   }
 
