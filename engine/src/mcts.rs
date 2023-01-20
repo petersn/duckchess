@@ -214,6 +214,7 @@ impl MctsNode {
 
   fn total_action_score(
     &self,
+    alpha_multiplier: f32,
     search_params: &SearchParams,
     sqrt_policy_explored: f32,
     nodes: &SlotMap<NodeIndex, MctsNode>,
@@ -243,7 +244,7 @@ impl MctsNode {
         )
       }
     };
-    let alpha = match self.state.is_duck_move {
+    let alpha = alpha_multiplier * match self.state.is_duck_move {
       true => search_params.duck_exploration_alpha,
       false => search_params.exploration_alpha,
     };
@@ -253,6 +254,7 @@ impl MctsNode {
 
   fn select_action(
     &self,
+    alpha_multiplier: f32,
     search_params: &SearchParams,
     nodes: &SlotMap<NodeIndex, MctsNode>,
   ) -> Option<Move> {
@@ -267,7 +269,7 @@ impl MctsNode {
     let mut best_score = -std::f32::INFINITY;
     let mut best_move = None;
     for m in &self.moves {
-      let score = self.total_action_score(search_params, sqrt_policy_explored, nodes, *m);
+      let score = self.total_action_score(alpha_multiplier, search_params, sqrt_policy_explored, nodes, *m);
       //println!(
       //  "    score: {:?} for move: {:?}  (posterior: {})",
       //  score,
@@ -616,6 +618,14 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     let mut node = &self.nodes[self.root];
     let mut nodes = vec![self.root];
     loop {
+      // Use more exploration near the root of the tree.
+      let alpha_multiplier = match nodes.len() {
+        1 => 2.0,
+        2 => 1.75,
+        3 => 1.5,
+        4 => 1.25,
+        _ => 1.0,
+      };
       let m: Option<Move> = match best {
         // If we're picking the best PV, just take the most visited.
         true => node
@@ -624,7 +634,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
           .max_by_key(|(_, edge)| self.nodes[edge.node].visits)
           .map(|(m, _)| *m),
         // Otherwise select according to PUCT.
-        false => node.select_action(&self.search_params, &self.nodes),
+        false => node.select_action(alpha_multiplier, &self.search_params, &self.nodes),
       };
       match m {
         // None means we have no legal moves at the leaf (terminal).
