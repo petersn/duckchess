@@ -140,6 +140,7 @@ async fn main() {
         let mut steps_performed: Vec<u32> = vec![];
 
         let mut just_kings_count = 0;
+        let mut was_adjudicated_early = false;
 
         for move_number in 0..GAME_LEN_LIMIT {
           // Decide whether or not to perform a full search.
@@ -262,6 +263,7 @@ async fn main() {
           }
           if just_kings_count >= 3 {
             println!("\x1b[94mExiting early to just kings\x1b[0m");
+            was_adjudicated_early = true;
             break;
           }
         }
@@ -284,6 +286,7 @@ async fn main() {
             "model_start": model_name_start,
             "model_end": inference_engine.get_current_model_name(),
             "outcome": mcts.get_state().get_outcome().map(|o| o.to_str()),
+            "was_adjudicated_early": was_adjudicated_early,
             "final_state": mcts.get_state(),
             "moves": moves,
             "states": states,
