@@ -122,7 +122,11 @@ def check():
     games = collections.Counter()
     for path in glob.glob(prefix + "/eval-games/*.json"):
         for line in open(path):
-            game = json.loads(line)
+            try:
+                game = json.loads(line)
+            except:
+                print("\x1b[91mInvalid json in:\x1b[0m", path)
+                raise
             engines = tuple(sorted((process_name(game["engine_black"]), process_name(game["engine_white"]))))
             games[engines] += 1
 

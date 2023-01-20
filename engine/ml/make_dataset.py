@@ -68,7 +68,11 @@ def process_game_path(path: str):
     total_moves = 0
     for game in games:
         game_offsets.append(total_moves)
-        game = json.loads(game)
+        try:
+            game = json.loads(game)
+        except:
+            print("\x1b[91mInvalid json in:\x1b[0m", path)
+            raise
         version = game["version"]
         if version == "pvs-1":
             total_moves += sum(not was_rand for was_rand in game["was_rand"])
