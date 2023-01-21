@@ -1007,7 +1007,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       distribution.push((*m, effective_child_visits));
     }
     // Divide through.
-    let sum_visits = 1e-6 + distribution.iter().map(|(_, v)| v).sum::<f32>();
+    let sum_visits = 1e-9 + distribution.iter().map(|(_, v)| v).sum::<f32>();
     for (_, v) in &mut distribution {
       *v /= sum_visits;
     }
