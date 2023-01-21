@@ -47,6 +47,7 @@ async fn main() {
   let search_params: &'static SearchParams = Box::leak(Box::new(args.search_params));
 
   println!("Search params: {:?}", search_params);
+  println!("Alpha-beta depth: {}", ALPHA_BETA_SEARCH_DEPTH);
 
   let create_output_file = |output_dir: &str| {
     let output_path = format!(
