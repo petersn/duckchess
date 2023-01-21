@@ -60,10 +60,25 @@ def generate_games(prefix, model_number):
                     CUDA_VISIBLE_DEVICES=str(process_index),
                 ),
                 stdin=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 #, LD_LIBRARY_PATH="/usr/lib/python3/dist-packages/tensorflow/"),
             )
             for process_index in range(args.parallel_games_processes)
         ]
+        # Launch a thread to monitor stderr from each process.
+        def monitor_stderr(process_index, proc):
+            print("\x1b[94m===== Monitoring stderr from game process", process_index, "\x1b[0m")
+            for line in proc.stderr:
+                print(f"\x1b[91m[stderr {process_index}]:\xb1[0m", line.decode().strip())
+                # Append this line ./ERROR_LOGS
+                with open(f"./ERROR_LOGS/{process_index}.log", "ab") as f:
+                    f.write(line)
+            print("\x1b[94m===== Game process", process_index, "exited\x1b[0m")
+
+        for process_index, proc in enumerate(game_processes):
+            import threading
+            threading.Thread(target=monitor_stderr, args=(process_index, proc)).start()
+
         # If our process dies take the games generation down with us.
         def _(game_processes):
             def handler():

@@ -169,7 +169,7 @@ async fn main() {
             )
           };
           if alpha_beta_eval > 0 && alpha_beta_moves.is_none() {
-            println!("\x1b[91mWEIRD BUG!!!!!!!!!!!!!!!!!!!!!!! State: {:?}\x1b[0m", mcts.get_state());
+            eprintln!("\x1b[91mWEIRD BUG!!!!!!!!!!!!!!!!!!!!!!! State: {:?}\x1b[0m", mcts.get_state());
           }
           // If we have a winning move then just play it.
           let mating_move = if alpha_beta_eval > 0 && alpha_beta_moves.is_some() {
