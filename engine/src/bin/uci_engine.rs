@@ -1,4 +1,3 @@
-/*
 use std::{cell::RefCell, collections::HashMap, io::BufRead};
 
 use clap::Parser;
@@ -7,6 +6,7 @@ use engine::rules::State;
 use engine::{
   inference_desktop::TensorFlowEngine,
   mcts::{Mcts, SearchParams},
+  rules::Move,
 };
 
 const MAX_BATCH_SIZE: usize = 32;
@@ -42,14 +42,14 @@ fn main() {
   let make_new_engine = || {
     let seed: u64 = rand::random();
     let hash_mib = options.borrow()["Hash"].parse::<usize>().unwrap();
-    engine::search::Engine::new(seed, hash_mib * 1024 * 1024)
+    engine::search::Engine::new(seed, hash_mib * 1024 * 1024, true)
   };
   let mut engine = make_new_engine();
 
   let mut mcts_data = args.model.map(|model| {
     let inference_engine: &'static _ =
       Box::leak(Box::new(TensorFlowEngine::new(MAX_BATCH_SIZE, &model)));
-    let mcts = Mcts::new(0, 0, inference_engine, SearchParams::default());
+    let mcts = Mcts::new(0, 0, inference_engine, SearchParams::default(), State::starting_state(), true);
     (inference_engine, mcts)
   });
 
@@ -169,10 +169,10 @@ fn main() {
             use rand::seq::SliceRandom;
             moves.shuffle(&mut rng);
             let m1 = moves.first().copied();
-            let m2 = None;
+            let m2: Option<Move> = None;
             (12345, (m1, m2))
           }
-          (false, None) => engine.run(depth, args.nnue),
+          (false, None) => unimplemented!("must enable MCTS, this path isn't implemented yet"), //engine.run(depth, args.nnue),
           (false, Some((ref inference_engine, ref mut mcts))) => {
             let mut steps = args.visits;
             while steps > 0 {
@@ -186,7 +186,7 @@ fn main() {
               }
               inference!(inference_engine, mcts);
             }
-            (0, (mcts.sample_move_by_visit_count(2), None))
+            (0, (mcts.sample_move_by_visit_count(2.0, true).0, None))
           }
         };
         match m1 {
@@ -203,9 +203,4 @@ fn main() {
       _ => eprintln!("Unknown command: {}", line),
     }
   }
-}
-*/
-
-fn main() {
-  println!("Hello, world!");
 }

@@ -221,6 +221,7 @@ impl MctsNode {
     m: Move,
   ) -> f32 {
     // FIXME: Implement sticky mates here.
+    // FIXME: Should I set FPU to zero at the root, like KataGo does?
     let effective_visits = self.visits + self.in_flight;
     let (u, q) = match self.outgoing_edges.get(&m) {
       None => (

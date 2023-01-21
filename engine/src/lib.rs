@@ -22,8 +22,8 @@ pub mod python;
 #[cfg(target_arch = "wasm32")]
 pub mod inference_web;
 
-//#[cfg(not(target_arch = "wasm32"))]
-//pub mod inference_desktop;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod inference_desktop;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod inference_tensorrt;
 #[cfg(not(target_arch = "wasm32"))]

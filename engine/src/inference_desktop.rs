@@ -13,7 +13,7 @@ pub struct Model {
   bundle:    SavedModelBundle,
   input_op:  Operation,
   policy_op: Operation,
-  value_op:  Operation,
+  wdl_op:  Operation,
 }
 
 pub struct TensorFlowEngine<Cookie> {
@@ -62,9 +62,9 @@ fn load_model(model_dir: &str) -> Result<Model, String> {
   let policy_info = signature
     .get_output("out_policy")
     .map_err(|e| format!("Failed to get policy info: {}", e))?;
-  let value_info = signature
-    .get_output("out_value")
-    .map_err(|e| format!("Failed to get value info: {}", e))?;
+  let wdl_info = signature
+    .get_output("out_wdl")
+    .map_err(|e| format!("Failed to get wdl info: {}", e))?;
   // Get input/output ops from graph.
   let input_op = graph
     .operation_by_name_required(&input_info.name().name)
@@ -72,14 +72,14 @@ fn load_model(model_dir: &str) -> Result<Model, String> {
   let policy_op = graph
     .operation_by_name_required(&policy_info.name().name)
     .map_err(|e| format!("Failed to get policy op: {}", e))?;
-  let value_op = graph
-    .operation_by_name_required(&value_info.name().name)
-    .map_err(|e| format!("Failed to get value op: {}", e))?;
+  let wdl_op = graph
+    .operation_by_name_required(&wdl_info.name().name)
+    .map_err(|e| format!("Failed to get wdl op: {}", e))?;
   Ok(Model {
     bundle,
     input_op,
     policy_op,
-    value_op,
+    wdl_op,
   })
 }
 
@@ -170,14 +170,18 @@ impl<Cookie> inference::InferenceEngine<Cookie> for TensorFlowEngine<Cookie> {
     // Configure inputs and outputs.
     let mut session_run_args = SessionRunArgs::new();
     session_run_args.add_feed(&model.input_op, 0, &input_tensor);
-    let policy_ft = session_run_args.request_fetch(&model.policy_op, 0);
-    let value_ft = session_run_args.request_fetch(&model.value_op, 1);
+    let policy_ft = session_run_args.request_fetch(&model.policy_op, 1);
+    let wdl_ft = session_run_args.request_fetch(&model.wdl_op, 2);
     // Run the actual network.
     model.bundle.session.run(&mut session_run_args).expect("Can't run session");
     self.eval_count.fetch_add(block_len, std::sync::atomic::Ordering::Relaxed);
     // Fetch outputs.
     let policy_output = session_run_args.fetch::<f32>(policy_ft).expect("Can't fetch output");
-    let value_output = session_run_args.fetch::<f32>(value_ft).expect("Can't fetch output");
+    let wdl_output = session_run_args.fetch::<f32>(wdl_ft).expect("Can't fetch output");
+    println!("Input shape: {:?}", input_tensor.shape());
+    println!("Policy output shape: {:?}", policy_output.shape());
+    println!("WDL output shape: {:?}", wdl_output.shape());
+    println!("Block len: {}", block_len);
     let mut policies: Vec<&[f32; POLICY_LEN]> = vec![];
     for i in 0..block_len {
       let range = i * POLICY_LEN..(i + 1) * POLICY_LEN;
@@ -192,7 +196,7 @@ impl<Cookie> inference::InferenceEngine<Cookie> for TensorFlowEngine<Cookie> {
       &last_block.cookies,
       &last_block.players,
       &policies,
-      &value_output[..],
+      unsafe { std::slice::from_raw_parts(wdl_output.as_ptr() as *const [f32; 3], block_len) },
     ));
     block_len
   }
