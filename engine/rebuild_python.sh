@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 set -x
 
 RUN_DIR=$(cat CURRENT_RUN)

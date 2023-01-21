@@ -999,7 +999,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         let hangs_mate = does_state_hang_mate!(&self.nodes[edge.node].state, root_is_duck_move);
         // Reduce visits for mate-hanging moves.
         if hangs_mate {
-          println!("train hanging mate: {}", m);
+          //println!("train hanging mate: {}", m);
           effective_child_visits *= 0.01;
         }
       }
@@ -1037,7 +1037,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         let hangs_mate = does_state_hang_mate!(&self.nodes[edge.node].state, root_is_duck_move);
         // Reduce visits for mate-hanging moves.
         if hangs_mate {
-          println!("sample hanging mate: {}", m);
+          //println!("sample hanging mate: {}", m);
           effective_child_visits *= 0.01;
         }
       }

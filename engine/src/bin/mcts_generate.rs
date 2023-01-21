@@ -207,7 +207,19 @@ async fn main() {
 
           // We pick a uniformly random move for 10% of opening moves
           // for each player, then 5% of second moves for each player.
-          let uniformly_random_move_prob = 0.10 - (0.05 * (move_number / 4) as f32);
+          //let uniformly_random_move_prob = 0.10 - (0.05 * (move_number / 4) as f32);
+          // Adjustment: I found that random moves in the opening were hanging mates, which seems a little much.
+          // So I'll just not randomize via uniform randomness after the first four plies.
+          // However, in place of that I'll lower the temperatures for the first sixteen plies.
+          let uniformly_random_move_prob = match move_number < 4 {
+            true => 0.10,
+            false => 0.0,
+          };
+          let (full_search_beta, fast_search_beta) = match move_number < 16 {
+            true => (1.0, 1.5),
+            false => (2.0, 4.0),
+          };
+
           let pick_randomly = rand::random::<f32>() < uniformly_random_move_prob;
           let game_move = match (mating_move, pick_randomly) {
             (Some(m), _) => Some(m),
@@ -219,8 +231,8 @@ async fn main() {
             }
             // We use temperature = 0.5 for training moves, and temperature = 0.25 for fast moves, to improve play strength.
             (None, false) => match do_full_search {
-              true => mcts.sample_move_by_visit_count(2.0, true),
-              false => mcts.sample_move_by_visit_count(4.0, true),
+              true => mcts.sample_move_by_visit_count(full_search_beta, true),
+              false => mcts.sample_move_by_visit_count(fast_search_beta, true),
             },
           };
 

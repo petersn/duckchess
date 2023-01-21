@@ -1,11 +1,14 @@
 #!/bin/bash
+set -e
 set -x
 
 RUN_DIR=$(cat CURRENT_RUN)
 
-./rebuild_mcts_compete.sh
+./rebuild_mcts_generate.sh
 ./rebuild_compete.sh
 ./rebuild_python.sh
+
+echo ===== All successful =====
 
 #cargo build --release --bin mcts_generate
 #cp target/release/mcts_generate $RUN_DIR
