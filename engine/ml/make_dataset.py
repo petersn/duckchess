@@ -90,6 +90,7 @@ def process_game_path(path: str):
     mcts_root_value_array = np.zeros((total_moves, 1), dtype=np.float32)
     entry = 0
     for game_index, game in enumerate(games):
+        assert entry == game_offsets[game_index], f"Bad entry value {entry} vs {game_offsets[game_index]} for game {game_index} in {path}"
         game = json.loads(game)
         version = game["version"]
         value_for_white = {"1-0": +1, "0-1": -1, None: 0}[game["outcome"]]
@@ -130,7 +131,13 @@ def process_game_path(path: str):
                     raise RuntimeError
 
             # Don't train on random moves, or fast search moves.
-            if (version.startswith("pvs") and game["was_rand"][i]) or (version.startswith("mcts") and not game["full_search"][i]):
+            if version.startswith("pvs"):
+                skip_sample = game["was_rand"][i]
+            elif version.startswith("mcts"):
+                skip_sample = game["train_dists"][i] is None #not game["full_search"][i]
+            else:
+                raise RuntimeError("Unknown game version: " + str(version))
+            if skip_sample:
                 #print("Applying move", move_str)
                 r = e.apply_move(move_str)
                 if r is not None:
@@ -192,7 +199,7 @@ def process_game_path(path: str):
             #state = json.loads(e.get_state())
             #show_game.render_state(state)
             #input("> ")
-    assert entry == total_moves, f"entry = {entry} total_moves = {total_moves}"
+    assert entry == total_moves, f"entry = {entry} total_moves = {total_moves} file: {path}"
     dataset = Dataset(
         game_offsets=game_offsets,
         features=features_array,

@@ -127,10 +127,15 @@ async fn main() {
         let mut used_mate_move: Vec<bool> = vec![];
         // This array says what the alpha-beta search evaluation was.
         let mut mate_search_evals: Vec<i32> = vec![];
+        // This array tracks pairs (bad_move, non_bad_move) of whether in move sampling we considered any
+        // moves that hang mate in 1, and if we considered any moves that don't hang mate in 1.
+        let mut bad_non_bad_moves: Vec<(bool, bool)> = vec![];
         // Array of depths to which we ran the exhaustive alpha-beta search for mates, by position.
         let mut alpha_beta_search_depths: Vec<u16> = vec![];
         // This array contains the training targets for the policy head.
         let mut train_dists: Vec<Option<Vec<(engine::rules::Move, f32)>>> = vec![];
+        // We also store all of the visit distributions, just for debugging for now.
+        let mut visit_dists: Vec<Vec<(engine::rules::Move, i32)>> = vec![];
         // This array contains the average value of the entire MCTS tree (rooted at the current state) at each move.
         let mut root_values: Vec<f32> = vec![];
         // This array contains the size of the entire MCTS tree (rooted at the current state) at each move.
@@ -221,13 +226,13 @@ async fn main() {
           };
 
           let pick_randomly = rand::random::<f32>() < uniformly_random_move_prob;
-          let game_move = match (mating_move, pick_randomly) {
-            (Some(m), _) => Some(m),
+          let (game_move, bad_move, non_bad_move) = match (mating_move, pick_randomly) {
+            (Some(m), _) => (Some(m), false, true),
             (None, true) => {
               use rand::seq::SliceRandom;
               let mut moves = vec![];
               mcts.get_state().move_gen::<false>(&mut moves);
-              moves.choose(&mut rand::thread_rng()).map(|m| *m)
+              (moves.choose(&mut rand::thread_rng()).map(|m| *m), false, false)
             }
             // We use temperature = 0.5 for training moves, and temperature = 0.25 for fast moves, to improve play strength.
             (None, false) => match do_full_search {
@@ -253,6 +258,7 @@ async fn main() {
               was_rand.push(pick_randomly);
               used_mate_move.push(mating_move.is_some());
               mate_search_evals.push(alpha_beta_eval);
+              bad_non_bad_moves.push((bad_move, non_bad_move));
               alpha_beta_search_depths.push(alpha_beta_depth);
               full_search.push(do_full_search);
               train_dists.push(match (mating_move, do_full_search) {
@@ -260,6 +266,7 @@ async fn main() {
                 (None, true) => Some(mcts.get_train_distribution(true)),
                 (None, false) => None,
               });
+              visit_dists.push(mcts.get_visit_distribution());
               let (v, u) = mcts.get_root_score();
               root_values.push(v);
               root_visits.push(u);
@@ -306,8 +313,10 @@ async fn main() {
             "was_rand": was_rand,
             "used_mate_move": used_mate_move,
             "mate_search_eval": mate_search_evals,
+            "bad_non_bad_moves": bad_non_bad_moves,
             "alpha_beta_search_depths": alpha_beta_search_depths,
             "train_dists": train_dists,
+            "visit_dists": visit_dists,
             "root_values": root_values,
             "root_visits": root_visits,
             "full_search": full_search,

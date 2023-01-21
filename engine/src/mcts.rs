@@ -983,6 +983,19 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     None
   }
 
+  pub fn find_non_mate_hanging_move(&self) -> Option<Move> {
+    let root_node = &self.nodes[self.root];
+    let root_is_duck_move = root_node.state.is_duck_move;
+    for m in &root_node.moves {
+      let mut child_state = root_node.state.clone();
+      child_state.apply_move::<false>(*m, None).unwrap();
+      if !does_state_hang_mate!(&child_state, root_is_duck_move) {
+        return Some(*m);
+      }
+    }
+    None
+  }
+
   pub fn get_train_distribution(&self, dont_hang_mate: bool) -> Vec<(Move, f32)> {
     // Check if we have any immediately winning children.
     if let Some(m) = self.get_immediately_winning_move() {
@@ -990,6 +1003,8 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     }
 
     let root_is_duck_move = self.nodes[self.root].state.is_duck_move;
+    let mut bad_move = false;
+    let mut non_bad_move = false;
 
     let mut distribution = Vec::new();
     for (m, edge) in &self.nodes[self.root].outgoing_edges {
@@ -1000,12 +1015,23 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         // Reduce visits for mate-hanging moves.
         if hangs_mate {
           //println!("train hanging mate: {}", m);
-          effective_child_visits *= 0.01;
+          effective_child_visits *= 1e-9;
+          bad_move = true;
+        } else {
+          non_bad_move = true;
         }
       }
 
       distribution.push((*m, effective_child_visits));
     }
+
+    if dont_hang_mate && !non_bad_move && bad_move {
+      if let Some(m) = self.find_non_mate_hanging_move() {
+        eprintln!("\x1b[91mWARNING: No non-bad moves were explored in get_train_distribution, when one exists!! {:?} {:?}\x1b[0m", self.nodes[self.root].state, distribution);
+        return vec![(m, 1.0)];
+      } 
+    }
+
     // Divide through.
     let sum_visits = 1e-9 + distribution.iter().map(|(_, v)| v).sum::<f32>();
     for (_, v) in &mut distribution {
@@ -1015,20 +1041,29 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     distribution
   }
 
-  pub fn sample_move_by_visit_count(&self, beta: f32, dont_hang_mate: bool) -> Option<Move> {
+  pub fn get_visit_distribution(&self) -> Vec<(Move, i32)> {
+    let mut distribution = Vec::new();
+    for (m, edge) in &self.nodes[self.root].outgoing_edges {
+      distribution.push((*m, self.nodes[edge.node].visits as i32));
+    }
+    distribution
+  }
+
+  pub fn sample_move_by_visit_count(&self, beta: f32, dont_hang_mate: bool) -> (Option<Move>, bool, bool) {
     //let sum_child_visits = self.get_sum_child_visits(self.root);
     // Naively we could use node.visits - 1, but due to transpositions
     // that might not actually be the right value.
 
     // Check if we have any immediately winning children.
     if let Some(m) = self.get_immediately_winning_move() {
-      return Some(m);
+      return (Some(m), false, true);
     }
 
     let root_is_duck_move = self.nodes[self.root].state.is_duck_move;
 
     let mut temperature_sum_child_visits: f32 = 0.0;
     let mut distribution = Vec::new();
+    let mut bad_move = false;
     let mut non_bad_move = false;
     for (m, edge) in &self.nodes[self.root].outgoing_edges {
       let mut effective_child_visits = (self.nodes[edge.node].visits as f32).powf(beta);
@@ -1039,7 +1074,8 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         // Reduce visits for mate-hanging moves.
         if hangs_mate {
           //println!("sample hanging mate: {}", m);
-          effective_child_visits *= 0.01;
+          effective_child_visits *= 1e-9;
+          bad_move = true;
         } else {
           non_bad_move = true;
         }
@@ -1047,19 +1083,22 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       distribution.push((effective_child_visits, *m));
       temperature_sum_child_visits += effective_child_visits;
     }
-    if dont_hang_mate && !non_bad_move {
-      //println!("\x1b[91mWARNING: No non-bad moves were explored!\x1b[0m");
+    if dont_hang_mate && !non_bad_move && bad_move {
+      if let Some(m) = self.find_non_mate_hanging_move() {
+        eprintln!("\x1b[91mWARNING: No non-bad moves were explored in sample_move_by_visit_count, when one exists!! {:?} {:?}\x1b[0m", self.nodes[self.root].state, distribution);
+        return (Some(m), true, false);
+      }
     }
     let mut random_num: f32 = self.rng.generate_float() * temperature_sum_child_visits;
     for (effective_visits, m) in &distribution {
       random_num -= *effective_visits;
       if random_num <= 0.0 {
-        return Some(*m);
+        return (Some(*m), bad_move, non_bad_move)
       }
     }
     match distribution.last() {
-      Some((_, m)) => Some(*m),
-      None => None,
+      Some((_, m)) => (Some(*m), bad_move, non_bad_move),
+      None => (None, bad_move, non_bad_move),
     }
     /*
     let temperature_sum_child_visits: i64 = self.nodes[self.root]

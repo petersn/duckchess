@@ -120,12 +120,13 @@ if __name__ == "__main__":
         #print("AFTER MOVE:")
         #print(state)
         render_state(state)
-        #info_line = "[%3i] " % i + move_squares[move["from"]] + move_squares[move["to"]] + " value=%.2f" % game["root_values"][i]
+        info_line = "[%3i] " % i + move_squares[move["from"]] + move_squares[move["to"]] + " value=%.2f" % game["root_values"][i]
         ##info_line = f" {game['full_search'][i]}"
         #if game["full_search"][i]:
-        #    for move, score in sorted(game["train_dists"][i], key=lambda x: -x[1]):
-        #        info_line += " \x1b[91m" + move_squares[move["from"]] + move_squares[move["to"]] + "\x1b[0m: %.0f%%" % round(100 * score)
-        info_line = "x"
+        if True:
+            for move, visits in sorted(game["visit_dists"][i], key=lambda x: -x[1]):
+                info_line += " \x1b[91m" + move_squares[move["from"]] + move_squares[move["to"]] + "\x1b[0m: %i" % visits
+        #info_line = "x"
         if i >= 301 or True:
             input(info_line + " > ")
         else:
