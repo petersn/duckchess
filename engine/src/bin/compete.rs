@@ -262,7 +262,7 @@ async fn main() {
             }
           }
           // We allow the engine to hang mate here, to increase differences.
-          let game_move = mcts.sample_move_by_visit_count(1, false);
+          let game_move = mcts.sample_move_by_visit_count(1.0, false);
           match game_move {
             None => break,
             Some(game_move) => {

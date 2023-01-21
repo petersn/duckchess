@@ -219,8 +219,8 @@ async fn main() {
             }
             // We use temperature = 0.5 for training moves, and temperature = 0.25 for fast moves, to improve play strength.
             (None, false) => match do_full_search {
-              true => mcts.sample_move_by_visit_count(2, true),
-              false => mcts.sample_move_by_visit_count(4, true),
+              true => mcts.sample_move_by_visit_count(2.0, true),
+              false => mcts.sample_move_by_visit_count(4.0, true),
             },
           };
 

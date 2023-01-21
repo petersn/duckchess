@@ -396,6 +396,27 @@ pub struct PendingPath {
   path: Vec<NodeIndex>,
 }
 
+macro_rules! does_state_hang_mate(
+  ($child_state:expr, $parent_is_duck_move:expr) => {
+    match $parent_is_duck_move {
+      // If the root is a duck move, then we want to search to depth 1, because the
+      // child will be the other player's regular move, so depth 1 finds king captures.
+      // Finally, check if the eval is greater than 0, indicating that they have a mate
+      // from the child position (which is the other player's move).
+      true => crate::search::mate_search(
+        $child_state, 1,
+      ).0 > 0,
+      // If the root is a regular move, then we search to depth 2, because we
+      // first need to search over all of our duck moves, then their responses.
+      // We check if the eval is less than 0, indicating that the position after
+      // the regular move is winning for the other player.
+      false => crate::search::mate_search(
+        $child_state, 2,
+      ).0 < 0,
+    }
+  }
+);
+
 pub struct Mcts<'a, Infer: InferenceEngine<(usize, PendingPath)>> {
   // This ID is used to identify evaluation requests from this MCTS instance.
   pub id:                    usize,
@@ -975,25 +996,10 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       let mut effective_child_visits = self.nodes[edge.node].visits as f32;
 
       if dont_hang_mate {
-        let hangs_mate = match root_is_duck_move {
-          // If the root is a duck move, then we want to search to depth 1, because the
-          // child will be the other player's regular move, so depth 1 finds king captures.
-          // Finally, check if the eval is greater than 0, indicating that they have a mate
-          // from the child position (which is the other player's move).
-          true => crate::search::mate_search(
-            &self.nodes[edge.node].state, 1,
-          ).0 > 0,
-          // If the root is a regular move, then we search to depth 2, because we
-          // first need to search over all of our duck moves, then their responses.
-          // We check if the eval is less than 0, indicating that the position after
-          // the regular move is winning for the other player.
-          false => crate::search::mate_search(
-            &self.nodes[edge.node].state, 2,
-          ).0 < 0,
-        };
+        let hangs_mate = does_state_hang_mate!(&self.nodes[edge.node].state, root_is_duck_move);
         // Reduce visits for mate-hanging moves.
         if hangs_mate {
-          println!("Hanging mate: {}", m);
+          println!("train hanging mate: {}", m);
           effective_child_visits *= 0.01;
         }
       }
@@ -1009,7 +1015,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     distribution
   }
 
-  pub fn sample_move_by_visit_count(&self, beta: u32, dont_hang_mate: bool) -> Option<Move> {
+  pub fn sample_move_by_visit_count(&self, beta: f32, dont_hang_mate: bool) -> Option<Move> {
     //let sum_child_visits = self.get_sum_child_visits(self.root);
     // Naively we could use node.visits - 1, but due to transpositions
     // that might not actually be the right value.
@@ -1019,8 +1025,37 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       return Some(m);
     }
 
-    // FIXME: I want to not hang mate here either!
+    let root_is_duck_move = self.nodes[self.root].state.is_duck_move;
 
+    let mut temperature_sum_child_visits: f32 = 0.0;
+    let mut distribution = Vec::new();
+    for (m, edge) in &self.nodes[self.root].outgoing_edges {
+      let mut effective_child_visits = (self.nodes[edge.node].visits as f32).powf(beta);
+      //effective_child_visits = effective_child_visits.powf(beta);
+      // Check if the move hangs a mate.
+      if dont_hang_mate {
+        let hangs_mate = does_state_hang_mate!(&self.nodes[edge.node].state, root_is_duck_move);
+        // Reduce visits for mate-hanging moves.
+        if hangs_mate {
+          println!("sample hanging mate: {}", m);
+          effective_child_visits *= 0.01;
+        }
+      }
+      distribution.push((effective_child_visits, *m));
+      temperature_sum_child_visits += effective_child_visits;
+    }
+    let mut random_num: f32 = self.rng.generate_float() * temperature_sum_child_visits;
+    for (effective_visits, m) in &distribution {
+      random_num -= *effective_visits;
+      if random_num <= 0.0 {
+        return Some(*m);
+      }
+    }
+    match distribution.last() {
+      Some((_, m)) => Some(*m),
+      None => None,
+    }
+    /*
     let temperature_sum_child_visits: i64 = self.nodes[self.root]
       .outgoing_edges
       .values()
@@ -1044,6 +1079,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       }
     }
     panic!("Failed to sample move by visit count");
+    */
   }
 
   pub fn apply_noise_to_root(&mut self) {
