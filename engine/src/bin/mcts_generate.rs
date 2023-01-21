@@ -219,8 +219,8 @@ async fn main() {
             }
             // We use temperature = 0.5 for training moves, and temperature = 0.25 for fast moves, to improve play strength.
             (None, false) => match do_full_search {
-              true => mcts.sample_move_by_visit_count(2),
-              false => mcts.sample_move_by_visit_count(4),
+              true => mcts.sample_move_by_visit_count(2, true),
+              false => mcts.sample_move_by_visit_count(4, true),
             },
           };
 
@@ -245,7 +245,7 @@ async fn main() {
               full_search.push(do_full_search);
               train_dists.push(match (mating_move, do_full_search) {
                 (Some(mating_move), _) => Some(vec![(mating_move, 1.0)]),
-                (None, true) => Some(mcts.get_train_distribution()),
+                (None, true) => Some(mcts.get_train_distribution(true)),
                 (None, false) => None,
               });
               let (v, u) = mcts.get_root_score();
