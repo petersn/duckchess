@@ -1029,6 +1029,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
 
     let mut temperature_sum_child_visits: f32 = 0.0;
     let mut distribution = Vec::new();
+    let mut non_bad_move = false;
     for (m, edge) in &self.nodes[self.root].outgoing_edges {
       let mut effective_child_visits = (self.nodes[edge.node].visits as f32).powf(beta);
       //effective_child_visits = effective_child_visits.powf(beta);
@@ -1039,10 +1040,15 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         if hangs_mate {
           //println!("sample hanging mate: {}", m);
           effective_child_visits *= 0.01;
+        } else {
+          non_bad_move = true;
         }
       }
       distribution.push((effective_child_visits, *m));
       temperature_sum_child_visits += effective_child_visits;
+    }
+    if dont_hang_mate && !non_bad_move {
+      //println!("\x1b[91mWARNING: No non-bad moves were explored!\x1b[0m");
     }
     let mut random_num: f32 = self.rng.generate_float() * temperature_sum_child_visits;
     for (effective_visits, m) in &distribution {
