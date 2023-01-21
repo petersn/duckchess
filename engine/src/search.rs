@@ -222,6 +222,13 @@ impl Engine {
     //mut alpha: IntEvaluation,
     //beta: IntEvaluation,
   ) -> (IntEvaluation, Option<(Move, Move)>) {
+    fn make_less_extreme(score: i32) -> i32 {
+      match score.cmp(&0) {
+        std::cmp::Ordering::Less => score + 1,
+        std::cmp::Ordering::Equal => score,
+        std::cmp::Ordering::Greater => score - 1,
+      }
+    }
     //println!("mate_search_inner: depth={}", depth);
     match (state.get_outcome(), state.turn) {
       (Some(GameOutcome::Draw), _) => return (0, None),
@@ -262,7 +269,7 @@ impl Engine {
         None => (m, Move::INVALID),
       };
       if score >= beta {
-        return (score, Some(move_pair));
+        return (make_less_extreme(score), Some(move_pair));
       }
       alpha = alpha.max(score);
       if score > best_score {
@@ -271,12 +278,7 @@ impl Engine {
       }
     }
     // We now make the best score slightly less extreme, to preference shorter mates.
-    if best_score > 0 {
-      best_score -= 1;
-    } else if best_score < 0 {
-      best_score += 1;
-    }
-    (best_score, best_pair)
+    (make_less_extreme(best_score), best_pair)
 
     /*
     for m in moves {
@@ -642,6 +644,14 @@ fn mate_search_inner(
   mut alpha: i32,
   beta: i32,
 ) -> (IntEvaluation, Option<(Move, Move)>) {
+  fn make_less_extreme(score: i32) -> i32 {
+    match score.cmp(&0) {
+      std::cmp::Ordering::Less => score + 1,
+      std::cmp::Ordering::Equal => score,
+      std::cmp::Ordering::Greater => score - 1,
+    }
+  }
+
   match (state.get_outcome(), state.turn) {
     (Some(GameOutcome::Draw), _) => return (0, None),
     (Some(GameOutcome::Win(a)), b) => return (if a == b { 1000 } else { -1000 }, None),
@@ -680,7 +690,7 @@ fn mate_search_inner(
       None => (m, Move::INVALID),
     };
     if score >= beta {
-      return (score, Some(move_pair));
+      return (make_less_extreme(score), Some(move_pair));
     }
     alpha = alpha.max(score);
     if score > best_score {
@@ -688,11 +698,6 @@ fn mate_search_inner(
       best_pair = Some(move_pair);
     }
   }
-  // We now make the best score slightly less extreme, to preference shorter mates.
-  if best_score > 0 {
-    best_score -= 1;
-  } else if best_score < 0 {
-    best_score += 1;
-  }
-  (best_score, best_pair)
+
+  (make_less_extreme(best_score), best_pair)
 }
