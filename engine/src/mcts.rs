@@ -644,12 +644,12 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       let alpha_multiplier = match nodes.len() {
         // FIXME: Figurate out what to do here.
         // For now, disable this, to test just one thing at a time.
-        _ => 1.0,
-        //1 => 2.0,
-        //2 => 1.75,
-        //3 => 1.5,
-        //4 => 1.25,
         //_ => 1.0,
+        1 => 2.0,
+        2 => 1.75,
+        3 => 1.5,
+        4 => 1.25,
+        _ => 1.0,
       };
       let m: Option<Move> = match best {
         // If we're picking the best PV, just take the most visited.
@@ -1029,13 +1029,13 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       distribution.push((*m, effective_child_visits));
     }
 
-    // FIXME: Re-enable this once I'm sure it's okay.
-    // if dont_hang_mate && !non_bad_move && bad_move {
-    //   if let Some(m) = self.find_non_mate_hanging_move() {
-    //     eprintln!("\x1b[91mWARNING: No non-bad moves were explored in get_train_distribution, when one exists!! {:?} {:?}\x1b[0m", self.nodes[self.root].state, distribution);
-    //     return vec![(m, 1.0)];
-    //   }
-    // }
+    // // FIXME: Re-enable this once I'm sure it's okay.
+    if dont_hang_mate && !non_bad_move && bad_move {
+      if let Some(m) = self.find_non_mate_hanging_move() {
+        eprintln!("\x1b[91mWARNING: No non-bad moves were explored in get_train_distribution, when one exists!! {:?} {:?}\x1b[0m", self.nodes[self.root].state, distribution);
+        return vec![(m, 1.0)];
+      }
+    }
 
     // Divide through.
     let sum_visits = 1e-9 + distribution.iter().map(|(_, v)| v).sum::<f32>();
@@ -1088,13 +1088,13 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       distribution.push((effective_child_visits, *m));
       temperature_sum_child_visits += effective_child_visits;
     }
-    // FIXME: Re-enable this once I'm sure it's okay.
-    // if dont_hang_mate && !non_bad_move && bad_move {
-    //   if let Some(m) = self.find_non_mate_hanging_move() {
-    //     eprintln!("\x1b[91mWARNING: No non-bad moves were explored in sample_move_by_visit_count, when one exists!! {:?} {:?}\x1b[0m", self.nodes[self.root].state, distribution);
-    //     return (Some(m), true, false);
-    //   }
-    // }
+    // // FIXME: Re-enable this once I'm sure it's okay.
+    if dont_hang_mate && !non_bad_move && bad_move {
+      if let Some(m) = self.find_non_mate_hanging_move() {
+        eprintln!("\x1b[91mWARNING: No non-bad moves were explored in sample_move_by_visit_count, when one exists!! {:?} {:?}\x1b[0m", self.nodes[self.root].state, distribution);
+        return (Some(m), true, false);
+      }
+    }
     let mut random_num: f32 = self.rng.generate_float() * temperature_sum_child_visits;
     for (effective_visits, m) in &distribution {
       random_num -= *effective_visits;

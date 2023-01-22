@@ -220,7 +220,7 @@ async fn main() {
           // So I'll just not randomize via uniform randomness after the first four plies.
           // However, in place of that I'll lower the temperatures for the first sixteen plies.
           let uniformly_random_move_prob = match move_number < 4 {
-            true => 0.10,
+            true => 0.05,
             false => 0.0,
           };
           let (full_search_beta, fast_search_beta) = if move_number < 8 {
