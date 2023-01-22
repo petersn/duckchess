@@ -280,15 +280,17 @@ async fn main() {
             }
           }
 
-          // If the game has been lone king vs lone king for three moves, then we're done.
-          if mcts.get_state().is_just_kings() {
-            just_kings_count += 1;
-          }
-          if just_kings_count >= 3 {
-            println!("\x1b[94mExiting early to just kings\x1b[0m");
-            was_adjudicated_early = true;
-            break;
-          }
+          // EDIT: Don't adjudicate for lone king vs lone king anymore.
+          // TODO: re-examine any situations where I can adjudicate early.
+          // // If the game has been lone king vs lone king for three moves, then we're done.
+          // if mcts.get_state().is_just_kings() {
+          //   just_kings_count += 1;
+          // }
+          // if just_kings_count >= 3 {
+          //   println!("\x1b[94mExiting early to just kings\x1b[0m");
+          //   was_adjudicated_early = true;
+          //   break;
+          // }
         }
         let total_steps = steps_performed.iter().sum::<u32>();
         println!(
