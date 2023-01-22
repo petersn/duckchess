@@ -670,6 +670,8 @@ fn mate_search_inner(
   let mut moves = vec![];
   state.move_gen::<false>(&mut moves);
   if moves.is_empty() {
+    // This is a win by stalemate.
+    return (1000, None);
     eprintln!("mate_search_inner: no moves state: {:?} depth: {} alpha: {} beta: {} outcome: {:?}", state, depth, alpha, beta, state.get_outcome());
   }
   assert!(!moves.is_empty());
