@@ -669,6 +669,9 @@ fn mate_search_inner(
   // Search over all moves here.
   let mut moves = vec![];
   state.move_gen::<false>(&mut moves);
+  if moves.is_empty() {
+    eprintln!("mate_search_inner: no moves state: {:?} depth: {} alpha: {} beta: {} outcome: {:?}", state, depth, alpha, beta, state.get_outcome());
+  }
   assert!(!moves.is_empty());
   let mut best_score = -2000;
   let mut best_pair = None;
