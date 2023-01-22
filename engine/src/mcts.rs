@@ -642,11 +642,14 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     loop {
       // Use more exploration near the root of the tree.
       let alpha_multiplier = match nodes.len() {
-        1 => 2.0,
-        2 => 1.75,
-        3 => 1.5,
-        4 => 1.25,
+        // FIXME: Figurate out what to do here.
+        // For now, disable this, to test just one thing at a time.
         _ => 1.0,
+        //1 => 2.0,
+        //2 => 1.75,
+        //3 => 1.5,
+        //4 => 1.25,
+        //_ => 1.0,
       };
       let m: Option<Move> = match best {
         // If we're picking the best PV, just take the most visited.
