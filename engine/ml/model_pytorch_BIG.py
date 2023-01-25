@@ -28,8 +28,8 @@ class Flatten(torch.nn.Module):
 class Network(torch.nn.Module):
     def __init__(
         self,
-        blocks=10,#20,
-        feature_count=128,#384,
+        blocks=20,
+        feature_count=384,
         input_channels=37,
         policy_channels=64,
     ):
@@ -48,12 +48,12 @@ class Network(torch.nn.Module):
             torch.nn.Conv2d(feature_count, 8, kernel_size=3, padding="same"),
             Flatten(),
             torch.nn.ReLU(),
-            torch.nn.Linear(8 * 8 * 8, 32),
+            torch.nn.Linear(8 * 8 * 8, 64),
             torch.nn.ReLU(),
             #torch.nn.Tanh(),
         )
-        self.wdl_head = torch.nn.Linear(32, 3)
-        self.mcts_value_prediction_head = torch.nn.Linear(32, 1)
+        self.wdl_head = torch.nn.Linear(64, 3)
+        self.mcts_value_prediction_head = torch.nn.Linear(64, 1)
 
     def forward(self, x):
         deep_embedding = self.conv_tower(x)
