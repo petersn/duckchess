@@ -1034,17 +1034,17 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
 
     // // FIXME: Re-enable this once I'm sure it's okay.
     if dont_hang_mate && !non_bad_move && bad_move {
-      if let Some(m) = self.find_non_mate_hanging_move() {
+      if let Some(non_mate_hanging_move) = self.find_non_mate_hanging_move() {
         let root_node = &self.nodes[self.root];
         let mut s = String::new();
         for m in &root_node.moves {
           s.push_str(&format!("{} -> {:?}, ", m, root_node.posterior(*m)));
         }
         eprintln!(
-          "\x1b[91mWARNING: No non-bad moves were explored in get_train_distribution, when one exists!! {:?} {:?} posterior=[{}]\x1b[0m",
-          self.nodes[self.root].state, distribution, s,
+          "\x1b[91mWARNING: No non-bad moves were explored in get_train_distribution, when {} exists!! {:?} {:?} posterior=[{}]\x1b[0m",
+          non_mate_hanging_move, self.nodes[self.root].state, distribution, s,
         );
-        return vec![(m, 1.0)];
+        return vec![(non_mate_hanging_move, 1.0)];
       }
     }
 
@@ -1101,17 +1101,17 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     }
     // // FIXME: Re-enable this once I'm sure it's okay.
     if dont_hang_mate && !non_bad_move && bad_move {
-      if let Some(m) = self.find_non_mate_hanging_move() {
+      if let Some(non_mate_hanging_move) = self.find_non_mate_hanging_move() {
         let root_node = &self.nodes[self.root];
         let mut s = String::new();
         for m in &root_node.moves {
           s.push_str(&format!("{} -> {:?}, ", m, root_node.posterior(*m)));
         }
         eprintln!(
-          "\x1b[91mWARNING: No non-bad moves were explored in sample_move_by_visit_count, when one exists!! {:?} {:?} posterior=[{}]\x1b[0m",
-          self.nodes[self.root].state, distribution, s,
+          "\x1b[91mWARNING: No non-bad moves were explored in sample_move_by_visit_count, when {} exists!! {:?} {:?} posterior=[{}]\x1b[0m",
+          non_mate_hanging_move, self.nodes[self.root].state, distribution, s,
         );
-        return (Some(m), true, false);
+        return (Some(non_mate_hanging_move), true, false);
       }
     }
     let mut random_num: f32 = self.rng.generate_float() * temperature_sum_child_visits;
