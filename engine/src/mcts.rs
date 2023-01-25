@@ -110,6 +110,7 @@ fn state_to_default_full_prec_model_outputs(
     }
   }
   FullPrecisionModelOutputs {
+    //state_hash: 0,
     policy: Box::new([1.0; POLICY_LEN]),
     value,
     white_wdl,
@@ -805,6 +806,8 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       return;
     }
     let node = &mut self.nodes[*node_index];
+    assert!(node.needs_eval);
+    //assert!(node.hash == model_outputs.state_hash);
     node.needs_eval = false;
     node.outputs = ModelOutputs::quantize_from(model_outputs, &node.moves);
     //crate::log(&format!("Outputs: {:?}", node.outputs.value));
@@ -1032,7 +1035,15 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     // // FIXME: Re-enable this once I'm sure it's okay.
     if dont_hang_mate && !non_bad_move && bad_move {
       if let Some(m) = self.find_non_mate_hanging_move() {
-        eprintln!("\x1b[91mWARNING: No non-bad moves were explored in get_train_distribution, when one exists!! {:?} {:?}\x1b[0m", self.nodes[self.root].state, distribution);
+        let root_node = &self.nodes[self.root];
+        let mut s = String::new();
+        for m in &root_node.moves {
+          s.push_str(&format!("{} -> {:?}, ", m, root_node.posterior(*m)));
+        }
+        eprintln!(
+          "\x1b[91mWARNING: No non-bad moves were explored in get_train_distribution, when one exists!! {:?} {:?} posterior=[{}]\x1b[0m",
+          self.nodes[self.root].state, distribution, s,
+        );
         return vec![(m, 1.0)];
       }
     }
@@ -1091,7 +1102,15 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     // // FIXME: Re-enable this once I'm sure it's okay.
     if dont_hang_mate && !non_bad_move && bad_move {
       if let Some(m) = self.find_non_mate_hanging_move() {
-        eprintln!("\x1b[91mWARNING: No non-bad moves were explored in sample_move_by_visit_count, when one exists!! {:?} {:?}\x1b[0m", self.nodes[self.root].state, distribution);
+        let root_node = &self.nodes[self.root];
+        let mut s = String::new();
+        for m in &root_node.moves {
+          s.push_str(&format!("{} -> {:?}, ", m, root_node.posterior(*m)));
+        }
+        eprintln!(
+          "\x1b[91mWARNING: No non-bad moves were explored in sample_move_by_visit_count, when one exists!! {:?} {:?} posterior=[{}]\x1b[0m",
+          self.nodes[self.root].state, distribution, s,
+        );
         return (Some(m), true, false);
       }
     }

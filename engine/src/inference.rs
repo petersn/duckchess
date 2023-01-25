@@ -163,9 +163,10 @@ pub struct ModelOutputs {
 
 #[derive(Clone)]
 pub struct FullPrecisionModelOutputs {
-  pub policy:    Box<[f32; POLICY_LEN]>,
-  pub value:     Evaluation,
-  pub white_wdl: [f32; 3],
+  pub policy:     Box<[f32; POLICY_LEN]>,
+  pub value:      Evaluation,
+  pub white_wdl:  [f32; 3],
+  //pub state_hash: u64,
 }
 
 impl ModelOutputs {
@@ -239,6 +240,7 @@ impl ModelOutputs {
 
 pub struct InputBlock<Cookie> {
   pub cookies: Vec<Cookie>,
+  //pub hashes:  Vec<u64>,
   pub players: Vec<Player>,
   pub data:    Vec<f32>,
 }
@@ -257,6 +259,7 @@ pub fn add_to_input_blocks<Cookie>(
   if do_create_new_block {
     input_blocks.push_back(InputBlock {
       cookies: vec![],
+      //hashes:  vec![],
       players: vec![],
       data:    vec![0.0; batch_size * FEATURES_SIZE],
     })
@@ -268,16 +271,15 @@ pub fn add_to_input_blocks<Cookie>(
   //let rr = r.try_into().unwrap();
   featurize_state(state, (&mut block.data[range]).try_into().unwrap());
   block.cookies.push(cookie);
+  //block.hashes.push(state.get_transposition_table_hash());
   block.players.push(state.turn);
   // Return if there's at least one full block
   input_blocks.front().map(|b| b.cookies.len() >= batch_size).unwrap_or(false)
 }
 
 fn make_perspective_policy(player: Player, policy: &[f32; POLICY_LEN]) -> Box<[f32; POLICY_LEN]> {
-  //println!("Making perspective policy for player {:?}", player);
   // Check normalization.
-  let sum: f32 = policy.iter().sum();
-  debug_assert!((sum - 1.0).abs() < 1e-3);
+  debug_assert!((policy.iter().sum::<f32>() - 1.0).abs() < 1e-3);
   let mut result = Box::new([0.0; POLICY_LEN]);
   for from in 0..64 {
     for to in 0..64 {
@@ -293,8 +295,7 @@ fn make_perspective_policy(player: Player, policy: &[f32; POLICY_LEN]) -> Box<[f
     }
   }
   // Check that the result is also normalized.
-  let sum: f32 = result.iter().sum();
-  debug_assert!((sum - 1.0).abs() < 1e-3);
+  debug_assert!((result.iter().sum::<f32>() - 1.0).abs() < 1e-3);
   result
 }
 
@@ -317,6 +318,7 @@ fn wdl_logits_softmax(wdl_logits: &[f32; 3]) -> [f32; 3] {
 pub struct InferenceResults<'a, Cookie> {
   pub length:     usize,
   pub cookies:    &'a [Cookie],
+  //pub hashes:     &'a [u64],
   pub players:    &'a [Player],
   pub policies:   &'a [&'a [f32; POLICY_LEN]],
   pub wdl_logits: &'a [[f32; 3]],
@@ -325,16 +327,19 @@ pub struct InferenceResults<'a, Cookie> {
 impl<'a, Cookie> InferenceResults<'a, Cookie> {
   pub fn new(
     cookies: &'a [Cookie],
+    //hashes: &'a [u64],
     players: &'a [Player],
     policies: &'a [&'a [f32; POLICY_LEN]],
     wdl_logits: &'a [[f32; 3]],
   ) -> InferenceResults<'a, Cookie> {
-    assert_eq!(cookies.len(), policies.len());
+    //assert_eq!(cookies.len(), hashes.len());
     assert_eq!(cookies.len(), players.len());
+    assert_eq!(cookies.len(), policies.len());
     assert_eq!(cookies.len(), wdl_logits.len());
     InferenceResults {
       length: cookies.len(),
       cookies,
+      //hashes,
       players,
       policies,
       wdl_logits,
@@ -360,6 +365,7 @@ impl<'a, Cookie> InferenceResults<'a, Cookie> {
         is_exact: false,
       },
       white_wdl,
+      //state_hash: self.hashes[index],
     }
   }
 }

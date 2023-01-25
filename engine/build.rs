@@ -162,6 +162,7 @@ fn main() {
     cc::Build::new()
       .cpp(true)
       .file("cpp/tensorrt_wrapper.cpp")
+      .flag("-O3")
       .flag("-I/usr/local/cuda/include")
       .flag("-L/usr/local/cuda/lib64")
       .flag("-lcuda")
