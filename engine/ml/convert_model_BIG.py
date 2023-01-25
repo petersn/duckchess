@@ -36,9 +36,9 @@ if __name__ == "__main__":
     # FIXME: This little hacky fixup is absurdly brittle!
     # Move the two conv2d_42 layers forward by one.
     if args.big:
-       i = [w.name.startswith("conv2d_42/") for w in weights_list].index(True)
-       print("First conv2d_42 index:", i)
-       weights_list[i : i + 2], weights_list[i + 2 : i + 4] = weights_list[i + 2 : i + 4], weights_list[i : i + 2]
+        i = [w.name.startswith("conv2d_42/") for w in weights_list].index(True)
+        print("First conv2d_42 index:", i)
+        weights_list[i : i + 2], weights_list[i + 2 : i + 4] = weights_list[i + 2 : i + 4], weights_list[i : i + 2]
     if args.medium:
         i = [w.name.startswith("conv2d_22/") for w in weights_list].index(True)
         print("First conv2d_22 index:", i)
