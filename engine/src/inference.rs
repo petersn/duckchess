@@ -279,7 +279,7 @@ pub fn add_to_input_blocks<Cookie>(
 
 fn make_perspective_policy(player: Player, policy: &[f32; POLICY_LEN]) -> Box<[f32; POLICY_LEN]> {
   // Check normalization.
-  debug_assert!((policy.iter().sum::<f32>() - 1.0).abs() < 1e-3);
+  assert!((policy.iter().sum::<f32>() - 1.0).abs() < 1e-3);
   let mut result = Box::new([0.0; POLICY_LEN]);
   for from in 0..64 {
     for to in 0..64 {
