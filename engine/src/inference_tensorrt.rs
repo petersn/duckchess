@@ -119,7 +119,7 @@ impl<Cookie> inference::InferenceEngine<Cookie> for TensorRTEngine<Cookie> {
     }
     use_outputs(InferenceResults::new(
       &last_block.cookies,
-      //&last_block.hashes,
+      &last_block.hashes,
       &last_block.players,
       &policies,
       unsafe { std::slice::from_raw_parts(slot.out_wdl as *const [f32; 3], block_len) },

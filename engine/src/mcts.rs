@@ -110,7 +110,7 @@ fn state_to_default_full_prec_model_outputs(
     }
   }
   FullPrecisionModelOutputs {
-    //state_hash: 0,
+    state_hash: 0,
     policy: Box::new([1.0; POLICY_LEN]),
     value,
     white_wdl,
@@ -806,8 +806,8 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       return;
     }
     let node = &mut self.nodes[*node_index];
+    assert!(node.hash == model_outputs.state_hash);
     assert!(node.needs_eval);
-    //assert!(node.hash == model_outputs.state_hash);
     node.needs_eval = false;
     node.outputs = ModelOutputs::quantize_from(model_outputs, &node.moves);
     //crate::log(&format!("Outputs: {:?}", node.outputs.value));

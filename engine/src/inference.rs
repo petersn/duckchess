@@ -166,7 +166,7 @@ pub struct FullPrecisionModelOutputs {
   pub policy:     Box<[f32; POLICY_LEN]>,
   pub value:      Evaluation,
   pub white_wdl:  [f32; 3],
-  //pub state_hash: u64,
+  pub state_hash: u64,
 }
 
 impl ModelOutputs {
@@ -240,7 +240,7 @@ impl ModelOutputs {
 
 pub struct InputBlock<Cookie> {
   pub cookies: Vec<Cookie>,
-  //pub hashes:  Vec<u64>,
+  pub hashes:  Vec<u64>,
   pub players: Vec<Player>,
   pub data:    Vec<f32>,
 }
@@ -259,7 +259,7 @@ pub fn add_to_input_blocks<Cookie>(
   if do_create_new_block {
     input_blocks.push_back(InputBlock {
       cookies: vec![],
-      //hashes:  vec![],
+      hashes:  vec![],
       players: vec![],
       data:    vec![0.0; batch_size * FEATURES_SIZE],
     })
@@ -271,7 +271,7 @@ pub fn add_to_input_blocks<Cookie>(
   //let rr = r.try_into().unwrap();
   featurize_state(state, (&mut block.data[range]).try_into().unwrap());
   block.cookies.push(cookie);
-  //block.hashes.push(state.get_transposition_table_hash());
+  block.hashes.push(state.get_transposition_table_hash());
   block.players.push(state.turn);
   // Return if there's at least one full block
   input_blocks.front().map(|b| b.cookies.len() >= batch_size).unwrap_or(false)
@@ -318,7 +318,7 @@ fn wdl_logits_softmax(wdl_logits: &[f32; 3]) -> [f32; 3] {
 pub struct InferenceResults<'a, Cookie> {
   pub length:     usize,
   pub cookies:    &'a [Cookie],
-  //pub hashes:     &'a [u64],
+  pub hashes:     &'a [u64],
   pub players:    &'a [Player],
   pub policies:   &'a [&'a [f32; POLICY_LEN]],
   pub wdl_logits: &'a [[f32; 3]],
@@ -327,7 +327,7 @@ pub struct InferenceResults<'a, Cookie> {
 impl<'a, Cookie> InferenceResults<'a, Cookie> {
   pub fn new(
     cookies: &'a [Cookie],
-    //hashes: &'a [u64],
+    hashes: &'a [u64],
     players: &'a [Player],
     policies: &'a [&'a [f32; POLICY_LEN]],
     wdl_logits: &'a [[f32; 3]],
@@ -339,7 +339,7 @@ impl<'a, Cookie> InferenceResults<'a, Cookie> {
     InferenceResults {
       length: cookies.len(),
       cookies,
-      //hashes,
+      hashes,
       players,
       policies,
       wdl_logits,
@@ -365,7 +365,7 @@ impl<'a, Cookie> InferenceResults<'a, Cookie> {
         is_exact: false,
       },
       white_wdl,
-      //state_hash: self.hashes[index],
+      state_hash: self.hashes[index],
     }
   }
 }
