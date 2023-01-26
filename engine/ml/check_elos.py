@@ -26,8 +26,8 @@ def generate_games(output_dir, model_a, model_b, game_count):
         [
             #"cargo", "run", "--bin", "compete", "--release", "--", "--playouts", "400",
             prefix + "/compete",
-            "--playouts1", "100",
-            "--playouts2", "100",
+            "--playouts1", "40",
+            "--playouts2", "40",
             # FIXME: This is unspeakably hacky also.
             "--model1-dir", hacky_fixup(model_a),
             "--model2-dir", hacky_fixup(model_b),
@@ -155,7 +155,7 @@ def check():
         print("   \x1b[95m>", a, "vs", b, "=", games[a, b], "games\x1b[0m")
         if games[a, b] < GAME_TARGET:
             print("Not enough games for", a, "vs", b)
-            new_games = max(450, GAME_TARGET - games[a, b])
+            new_games = max(500, GAME_TARGET - games[a, b])
             generate_games(prefix + "/eval-games/", a, b, new_games)
             try:
                 regenerate_report(steps, games)
