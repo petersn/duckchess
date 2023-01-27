@@ -29,7 +29,7 @@ class Network(torch.nn.Module):
     def __init__(
         self,
         blocks=20,
-        feature_count=256,
+        feature_count=384,
         input_channels=37,
         policy_channels=64,
     ):
