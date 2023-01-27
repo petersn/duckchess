@@ -8,7 +8,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::inference::{FEATURES_SIZE, POLICY_LEN};
 use crate::inference_web::MAX_BATCH_SIZE;
-use crate::mcts::{PendingPath, SearchParams};
+use crate::mcts::{PendingPath, SearchParams, NodeIndex};
 use crate::{
   inference, inference_web, mcts, rules,
   rules::{Move, Player, State},
@@ -660,6 +660,7 @@ pub fn new_engine(seed: u64) -> Engine {
       tfjs_inference_engine,
       SearchParams::default(),
       State::starting_state(),
+      true,
     ),
     prefix_moves:     Vec::new(),
     //input_array: Box::new([0.0; MAX_BATCH_SIZE * FEATURES_SIZE]),
@@ -787,7 +788,7 @@ impl Pvs {
 #[wasm_bindgen]
 pub fn new_pvs(seed: u64) -> Pvs {
   Pvs {
-    engine: search::Engine::new(seed, WEB_TRANSPOSITION_TABLE_SIZE),
+    engine: search::Engine::new(seed, WEB_TRANSPOSITION_TABLE_SIZE, true),
   }
 }
 

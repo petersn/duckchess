@@ -172,22 +172,46 @@ pub fn parse(mut s: &str) -> Result<Pgn4, String> {
     }
 
     // We now try to parse one ply.
-    let departure_square = parse_square!();
-    expect_one_of!('-', 'x');
-    let arrival_square = parse_square!();
-    optional_char!('+', '#');
-    // Allow an optional promotion, so long as it's to a queen.
-    if optional_char!('=') {
-      if optional_char!('R', 'B', 'N') {
-        return Err("Sorry, under-promotion isn't supported right now".to_string());
+    // First, check for castling.
+    if optional_char!('O') {
+      expect_one_of!('-');
+      expect_one_of!('O');
+      let long_castle = if optional_char!('-') {
+        expect_one_of!('O');
+        true
+      } else {
+        false
+      };
+      // We check whose turn it is.
+      let (departure_square, arrival_square) = match (moves.len() % 4, long_castle) {
+        (0, true) => ((4, 0), (2, 0)),
+        (0, false) => ((4, 0), (6, 0)),
+        (2, true) => ((4, 7), (2, 7)),
+        (2, false) => ((4, 7), (6, 7)),
+        _ => return Err("Badly placed castling".to_string()),
+      };
+      moves.push(Pgn4Move {
+        from: to_index(departure_square),
+        to:   to_index(arrival_square),
+      });
+    } else {
+      let departure_square = parse_square!();
+      expect_one_of!('-', 'x');
+      let arrival_square = parse_square!();
+      optional_char!('+', '#');
+      // Allow an optional promotion, so long as it's to a queen.
+      if optional_char!('=') {
+        if optional_char!('R', 'B', 'N') {
+          return Err("Sorry, under-promotion isn't supported right now".to_string());
+        }
+        expect_one_of!('Q');
       }
-      expect_one_of!('Q');
+      //println!("{:?}-{:?}", departure_square, arrival_square);
+      moves.push(Pgn4Move {
+        from: to_index(departure_square),
+        to:   to_index(arrival_square),
+      });
     }
-    //println!("{:?}-{:?}", departure_square, arrival_square);
-    moves.push(Pgn4Move {
-      from: to_index(departure_square),
-      to:   to_index(arrival_square),
-    });
     // Now we must have a duck move.
     expect_one_of!('Θ');
     // The departure square is optional.

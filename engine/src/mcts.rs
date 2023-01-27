@@ -393,9 +393,9 @@ impl MctsNode {
 //  pub struct PendingIndex;
 //}
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct PendingPath {
-  path: Vec<NodeIndex>,
+  pub path: Vec<NodeIndex>,
 }
 
 macro_rules! does_state_hang_mate(
@@ -806,8 +806,34 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       return;
     }
     let node = &mut self.nodes[*node_index];
+
+    if node.hash != model_outputs.state_hash {
+      crate::log(&format!(
+        "WARNING: Got inference result for wrong state: {:?} != {:?}",
+        node.hash, model_outputs.state_hash,
+      ));
+    }
     assert!(node.hash == model_outputs.state_hash);
-    assert!(node.needs_eval);
+
+    // FIXME: A node *can* get visited multiple times!
+    // This happens if the in-flight penalty wasn't enough to dissaude further visits.
+    // As an optimization we could just double the effect of the first visit, but jeez,
+    // I don't want to add more complexity to this core part of the code right now.
+    // Therefore, I've commented out the following check, because it has false positives.
+    // if !node.needs_eval {
+    //   crate::log(&format!(
+    //     "WARNING: Got inference result for node that doesn't need eval: {:?} ever_needed_eval: {} is_threefold: {} outcome: {:?} state: {:?} path: {:?} root: {:?}",
+    //     node.hash,
+    //     node.ever_needed_eval,
+    //     node.is_threefold,
+    //     node.state.get_outcome(),
+    //     node.state,
+    //     pending_path,
+    //     self.root,
+    //   ));
+    // }
+    // assert!(node.needs_eval);
+
     node.needs_eval = false;
     node.outputs = ModelOutputs::quantize_from(model_outputs, &node.moves);
     //crate::log(&format!("Outputs: {:?}", node.outputs.value));

@@ -14,6 +14,7 @@ pub const MAX_BATCH_SIZE: usize = 16;
 
 struct PendingResults<Cookie> {
   cookies:  Vec<Cookie>,
+  hashes:   Vec<u64>,
   players:  Vec<Player>,
   policies: Vec<[f32; POLICY_LEN]>,
   wdl:      Vec<[f32; 3]>,
@@ -22,6 +23,7 @@ struct PendingResults<Cookie> {
 struct Inner<Cookie> {
   input_blocks:    VecDeque<InputBlock<Cookie>>,
   pending_cookies: Option<Vec<Cookie>>,
+  pending_hashes:  Option<Vec<u64>>,
   pending_players: Option<Vec<Player>>,
   pending_results: Option<PendingResults<Cookie>>,
 }
@@ -36,6 +38,7 @@ impl<Cookie> TensorFlowJsEngine<Cookie> {
       inner: RefCell::new(Inner {
         input_blocks:    VecDeque::new(),
         pending_cookies: None,
+        pending_hashes:  None,
         pending_players: None,
         pending_results: None,
       }),
@@ -69,6 +72,7 @@ impl<Cookie> TensorFlowJsEngine<Cookie> {
     }
     assert!(inner.pending_cookies.is_none());
     inner.pending_cookies = Some(block.cookies);
+    inner.pending_hashes = Some(block.hashes);
     inner.pending_players = Some(block.players);
     batch_length
   }
@@ -77,11 +81,13 @@ impl<Cookie> TensorFlowJsEngine<Cookie> {
   pub fn give_answers(&self, policy_array: &[f32], wdl_array: &[f32]) {
     let mut inner = self.inner.borrow_mut();
     let pending_cookies = inner.pending_cookies.take().unwrap();
+    let pending_hashes = inner.pending_hashes.take().unwrap();
     let pending_players = inner.pending_players.take().unwrap();
     let batch_length = pending_cookies.len();
     assert!(inner.pending_results.is_none());
     let mut results = PendingResults {
       cookies:  pending_cookies,
+      hashes:   pending_hashes,
       players:  pending_players,
       policies: vec![[0.0; POLICY_LEN]; batch_length], //Box::new([[0.0; POLICY_LEN]; batch_length]),
       wdl:      vec![[0.0; 3]; batch_length],
@@ -130,6 +136,7 @@ impl<Cookie> inference::InferenceEngine<Cookie> for TensorFlowJsEngine<Cookie> {
       results.policies.iter().map(|p| p.as_ref().try_into().unwrap()).collect::<Vec<_>>();
     use_outputs(InferenceResults::new(
       &results.cookies,
+      &results.hashes,
       &results.players,
       &policy_refs[..],
       &results.wdl,
