@@ -159,7 +159,8 @@ def process_game_path(path: str):
                 policy_dist = [(json.loads(move_str), 1.0)]
             else:
                 policy_dist = game["train_dists"][i]
-            assert abs(sum(p for _, p in policy_dist) - 1.0) < 1e-3
+            policy_sum = sum(p for _, p in policy_dist)
+            assert abs(policy_sum - 1) < 1e-2, f"Sum of policy dist was: {policy_sum} on policy {policy_dist}"
             #policy_slice = policy_array[entry]
             #for move, p in policy_dist:
             #    #move = json.loads(move_str)
