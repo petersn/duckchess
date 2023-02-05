@@ -153,7 +153,7 @@ if __name__ == "__main__":
             "policy_loss": policy_loss.item(),
             "wdl_loss": wdl_loss.item(),
             "mcts_root_value_prediction_loss": mcts_root_value_prediction_loss.item(),
-            "grad_norm": torch.nn.utils.clip_grad_norm_(model.parameters(), 10.0),
+            "grad_norm": torch.nn.utils.clip_grad_norm_(model.parameters(), 30.0),
             "lr": lr,
         })
         optimizer.step()
