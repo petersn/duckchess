@@ -36,8 +36,8 @@ if __name__ == "__main__":
     # FIXME: This little hacky fixup is absurdly brittle!
     # Move the two conv2d_42 layers forward by one.
     if args.big:
-        i = [w.name.startswith("conv2d_22/") for w in weights_list].index(True)
-        print("First conv2d_22 index:", i)
+        i = [w.name.startswith("conv2d_42/") for w in weights_list].index(True)
+        print("First conv2d_42 index:", i)
         weights_list[i : i + 2], weights_list[i + 2 : i + 4] = weights_list[i + 2 : i + 4], weights_list[i : i + 2]
     if args.medium:
         i = [w.name.startswith("conv2d_22/") for w in weights_list].index(True)
@@ -91,7 +91,8 @@ if __name__ == "__main__":
         # Convert the ONNX to a TensorRT engine.
         # FIXME: This is turbo-hacky, but I need to generate one plan per GPU type,
         # to avoid issues with compute capabilities on loading.
-        for compute_capability, gpu_index in [("compute8.6", 0)]: #[("compute8.9", 0), ("compute8.6", 1)]:
+        for compute_capability, gpu_index in [("compute8.9", 0), ("compute8.6", 1)]:
+        #for compute_capability, gpu_index in [("compute8.6", 0)]: #[("compute8.9", 0), ("compute8.6", 1)]:
             output_path = args.output + "-" + compute_capability + ".trt"
             subprocess.check_call(
                 [
@@ -101,6 +102,7 @@ if __name__ == "__main__":
                     "--shapes=inp_features:128x37x8x8",
                     "--saveEngine=" + output_path,
                     "--timingCacheFile=trtexec-timing-cache",
+                    #"--device=" + str(gpu_index),
                 ],
                 env=dict(os.environ, CUDA_VISIBLE_DEVICES=str(gpu_index)),
             )

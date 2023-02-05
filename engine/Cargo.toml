@@ -3,6 +3,9 @@ name = "engine"
 version = "0.1.0"
 edition = "2021"
 
+[build]
+rustflags = ["-L", "/lib/x86_64-linux-gnu"]
+
 [lib]
 name = "engine"
 crate-type = ["rlib", "cdylib"]

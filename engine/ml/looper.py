@@ -37,7 +37,7 @@ def generate_games(prefix, model_number):
     output_dir = index_to_games_dir(model_number)
 
     def get_trt_path(index):
-        compute_capability = "compute8.6" if index == 0 else "compute8.6"
+        compute_capability = "compute8.9" if index == 0 else "compute8.6"
         return f"{model_dir}-{compute_capability}.trt"
 
     # If we don't have any game processes already, then launch them.
@@ -57,7 +57,7 @@ def generate_games(prefix, model_number):
                     os.environ,
                     TF_FORCE_GPU_ALLOW_GROWTH="true",
                     LD_LIBRARY_PATH="/usr/local/cuda/lib64", #:./run-011-duck-chess",
-                    CUDA_VISIBLE_DEVICES="0", #str(process_index),
+                    CUDA_VISIBLE_DEVICES=str(process_index),
                 ),
                 stdin=subprocess.PIPE,
                 stderr=subprocess.PIPE,

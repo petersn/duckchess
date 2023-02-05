@@ -28,8 +28,8 @@ class Flatten(torch.nn.Module):
 class Network(torch.nn.Module):
     def __init__(
         self,
-        blocks=10,
-        feature_count=128,
+        blocks=20,
+        feature_count=384,
         input_channels=37,
         policy_channels=64,
     ):

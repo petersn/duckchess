@@ -1,8 +1,8 @@
 import tensorflow as tf
 
 def make_model(
-    blocks=10,
-    feature_count=128,
+    blocks=20,
+    feature_count=384,
     final_features=64,
     input_channels=37,
     policy_channels=64,
