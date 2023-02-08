@@ -40,6 +40,12 @@ def generate_games(prefix, model_number):
         compute_capability = "compute8.9" if index == 0 else "compute8.6"
         return f"{model_dir}-{compute_capability}.trt"
 
+    # We write a message for remote 3090s.
+    # FIXME: I hackily hardcode index 1, because I know all of the remote machines are 3090s.
+    message = f"swap:::{get_trt_path(1)}:::{output_dir}\n"
+    with open(get_new_signal_file(), "w") as f:
+        f.write(message)
+
     # If we don't have any game processes already, then launch them.
     if game_processes is None:
         # FIXME: This is super hacky, but I just hardcode which GPUs have which compute capability.
@@ -125,6 +131,10 @@ def index_to_converted_model_prefix(i):
 
 def index_to_games_dir(i):
     return f"{args.prefix}/step-{i:03}/games"
+
+def get_new_signal_file():
+    now = int(time.time())
+    return f"{args.prefix}/signals/signal-{now}"
 
 if __name__ == "__main__":
     import argparse
