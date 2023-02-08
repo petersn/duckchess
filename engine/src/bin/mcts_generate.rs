@@ -21,28 +21,75 @@ const ALPHA_BETA_SEARCH_DEPTH: u16 = 2;
 #[command(author, version, about, long_about = None)]
 struct Args {
   #[arg(short, long)]
-  output_dir: String,
+  output_dir: Option<String>,
 
   #[arg(short, long)]
-  model_dir: String,
+  model_dir: Option<String>,
 
   #[arg(short, long, default_value = "default")]
   search_params: SearchParams,
 
   #[arg(short, long)]
   batch_size: usize,
+
+  #[arg(short, long)]
+  signals_dir: Option<String>,
+}
+
+fn check_signals_dir(signals_dir: &str, previously_processed: &mut String) -> Option<(String, String)> {
+  // Enumerate all files in the signals directory.
+  let files = std::fs::read_dir(signals_dir).unwrap();
+  // Take the one with the lexicographically last path, that starts with "signal-".
+  let most_recent = files
+    .filter_map(|f| {
+      let f = f.unwrap();
+      let path = f.path().to_str().unwrap().to_string();
+      if path.starts_with("signal-") {
+        Some(path)
+      } else {
+        None
+      }
+    })
+    .max();
+  if let Some(most_recent) = most_recent {
+    // Check if this is more recent than our most recent.
+    if most_recent > *previously_processed {
+      println!("\x1b[96mFound new signal file:\x1b[0m {}", most_recent);
+      // If so, read the contents of the file.
+      let contents = std::fs::read_to_string(&most_recent).unwrap();
+      assert!(contents.starts_with("skip"));
+      // Split the line at the two :::s.
+      let mut parts = contents.split(":::");
+      parts.next();
+      let new_model_path = parts.next().unwrap();
+      let new_output_dir = parts.next().unwrap();
+      assert!(parts.next().is_none());
+      *previously_processed = most_recent;
+      return Some((new_model_path.to_string(), new_output_dir.to_string()));
+    }
+  }
+  None
 }
 
 #[tokio::main]
 async fn main() {
   let args = Args::parse();
 
+  // We figure out the initial model, either from the command line or from the signals directory.
+  let mut previously_processed = String::new();
+  let (model_dir, output_dir) = args.signals_dir.as_ref()
+    .and_then(|signals_dir| check_signals_dir(signals_dir, &mut previously_processed))
+    .unwrap_or((args.model_dir.clone().unwrap(), args.output_dir.clone().unwrap()));
+
+  println!("Using model dir: {}", model_dir);
+  println!("Using output dir: {}", output_dir);
+
   //let batch_size = TensorRTEngine::<()>::DESIRED_BATCH_SIZE;
   let batch_size = args.batch_size;
   println!("Using batch size: {}", batch_size);
 
   let inference_engine: &TensorRTEngine<(usize, PendingPath)> =
-    Box::leak(Box::new(TensorRTEngine::new(batch_size, &args.model_dir)));
+    Box::leak(Box::new(TensorRTEngine::new(batch_size, &model_dir)));
 
   let search_params: &'static SearchParams = Box::leak(Box::new(args.search_params));
 
@@ -60,7 +107,7 @@ async fn main() {
   };
 
   let output_file: &'static _ =
-    Box::leak(Box::new(Mutex::new(create_output_file(&args.output_dir))));
+    Box::leak(Box::new(Mutex::new(create_output_file(&output_dir))));
 
   let (tx_channels, rx_channels): (Vec<_>, Vec<_>) =
     (0..5 * batch_size).map(|_| tokio::sync::mpsc::unbounded_channel()).unzip();
@@ -348,6 +395,36 @@ async fn main() {
       }
     }));
   }
+
+  macro_rules! swap_out {
+    ($new_model_path:expr, $new_output_dir:expr) => {{
+      println!(
+        "\x1b[94mLoading new model from {} writing to {}\x1b[0m",
+        $new_model_path, $new_output_dir
+      );
+      match inference_engine.swap_out_model($new_model_path) {
+        Ok(_) => {
+          println!("\x1b[94mLoaded new model\x1b[0m");
+          // We now swap out the output file.
+          let mut guard = output_file.lock().await;
+          *guard = create_output_file($new_output_dir);
+        }
+        Err(e) => println!("\x1b[91mFailed to load new model:\x1b[0m {}", e),
+      }
+    }}
+  }
+
+  // Listen to a signals directory, if relevant.
+  if let Some(signals_dir) = args.signals_dir {
+    loop {
+      // Wait three seconds, then check for new files in the signals directory.
+      tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+      if let Some((new_model_path, new_output_dir)) = check_signals_dir(&signals_dir, &mut previously_processed) {
+        swap_out!(&new_model_path, &new_output_dir);
+      }
+    }
+  }
+
   // Read lines of input from stdin to get instructions.
   let mut stdin = tokio::io::BufReader::new(tokio::io::stdin()).lines();
   loop {
@@ -360,19 +437,7 @@ async fn main() {
       let new_model_path = parts.next().unwrap();
       let new_output_dir = parts.next().unwrap();
       assert!(parts.next().is_none());
-      println!(
-        "\x1b[94mLoading new model from {} writing to {}\x1b[0m",
-        new_model_path, new_output_dir
-      );
-      match inference_engine.swap_out_model(new_model_path) {
-        Ok(_) => {
-          println!("\x1b[94mLoaded new model\x1b[0m");
-          // We now swap out the output file.
-          let mut guard = output_file.lock().await;
-          *guard = create_output_file(new_output_dir);
-        }
-        Err(e) => println!("\x1b[91mFailed to load new model:\x1b[0m {}", e),
-      }
+      swap_out!(new_model_path, new_output_dir);
     }
     if line == "status" {
       let file = output_file.lock().await;
