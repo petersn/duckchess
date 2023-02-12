@@ -189,7 +189,7 @@ impl ModelOutputs {
     for indexed_move in indexed_moves {
       let idx = indexed_move.m.to_index() as usize;
       let val = full_prec.policy[idx];
-      move_order_policy[indexed_move.index] = val;
+      move_order_policy.push(val);
       sum += val;
     }
     // Renormalize to sum to 1.
