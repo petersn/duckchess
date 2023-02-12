@@ -336,7 +336,7 @@ impl MctsNode {
       //let idx = m.to_index() as usize;
       // Generate a gamma-distributed noise value.
       let new_noise = rng.generate_gamma_variate(DIRICHLET_ALPHA);
-      noise[i] = new_noise;
+      noise.push(new_noise);
       noise_sum += new_noise;
       // Apply the new policy softmax temperature.
       let new_policy = self.outputs.move_order_policy[i].powf(1.0 / ROOT_SOFTMAX_TEMP);
