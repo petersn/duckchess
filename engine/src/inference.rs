@@ -139,23 +139,24 @@ pub fn featurize_state<T: From<u8>>(state: &State, array: &mut [T; FEATURES_SIZE
   assert_eq!(layer_index, CHANNEL_COUNT);
 }
 
-pub type QuantizedProbability = u16;
+// pub type QuantizedProbability = u16;
 
-#[inline]
-fn quantize_probability(probability: f32) -> QuantizedProbability {
-  debug_assert!(0.0 <= probability && probability <= 1.0);
-  (probability * (QuantizedProbability::MAX as f32)) as QuantizedProbability
-}
+// #[inline]
+// fn quantize_probability(probability: f32) -> QuantizedProbability {
+//   debug_assert!(0.0 <= probability && probability <= 1.0);
+//   (probability * (QuantizedProbability::MAX as f32)) as QuantizedProbability
+// }
 
-#[inline]
-fn dequantize_probability(probability: QuantizedProbability) -> f32 {
-  (probability as f32) / (QuantizedProbability::MAX as f32)
-}
+// #[inline]
+// fn dequantize_probability(probability: QuantizedProbability) -> f32 {
+//   (probability as f32) / (QuantizedProbability::MAX as f32)
+// }
 
 #[derive(Clone)]
 pub struct ModelOutputs {
-  // policy[64 * from + to] is a probability 0 to 1.
-  pub quantized_policy: Box<[QuantizedProbability; POLICY_LEN]>,
+  //// policy[64 * from + to] is a probability 0 to 1.
+  //pub quantized_policy: Box<[QuantizedProbability; POLICY_LEN]>,
+  pub move_order_policy: Vec<f32>,
   // value is a valuation for the current player from -1 to +1.
   pub value:            Evaluation,
   pub white_wdl:        [f32; 3],
@@ -170,43 +171,49 @@ pub struct FullPrecisionModelOutputs {
 }
 
 impl ModelOutputs {
-  pub fn get_policy(&self, index: usize) -> f32 {
-    dequantize_probability(self.quantized_policy[index])
-  }
+  // pub fn get_policy(&self, index: usize) -> f32 {
+  //   dequantize_probability(self.quantized_policy[index])
+  // }
 
-  pub fn set_policy(&mut self, index: usize, value: f32) {
-    self.quantized_policy[index] = quantize_probability(value);
-  }
+  // pub fn set_policy(&mut self, index: usize, value: f32) {
+  //   self.quantized_policy[index] = quantize_probability(value);
+  // }
 
-  pub fn quantize_from(
-    mut full_prec: FullPrecisionModelOutputs,
-    moves: &[crate::rules::Move],
+  pub fn compute_from(
+    full_prec: FullPrecisionModelOutputs,
+    indexed_moves: &[crate::mcts::IndexedMove],
   ) -> ModelOutputs {
-    let mut temp = Box::new([0.0; POLICY_LEN]);
+    let mut move_order_policy = Vec::with_capacity(indexed_moves.len());
     let mut sum: f32 = 0.0;
-    // Copy over just the moves.
-    for m in moves {
-      let idx = m.to_index() as usize;
+    // Copy over just the legal moves.
+    for indexed_move in indexed_moves {
+      let idx = indexed_move.m.to_index() as usize;
       let val = full_prec.policy[idx];
-      temp[idx] = val;
+      move_order_policy[indexed_move.index] = val;
       sum += val;
     }
     // Renormalize to sum to 1.
     let rescale = 1.0 / (1e-16 + sum);
-    for i in 0..POLICY_LEN {
-      full_prec.policy[i] = temp[i] * rescale;
+    for val in &mut move_order_policy {
+      *val *= rescale;
     }
-    // Check that the output policy is normalized.
-    let sum = {
-      let policy: &[f32] = &full_prec.policy[..];
-      policy.iter().sum::<f32>()
-    };
-    debug_assert!(sum <= 1.001);
-    let deficiency = (1.0 - sum).max(0.0);
-    for m in moves {
-      let idx = m.to_index() as usize;
-      full_prec.policy[idx] += deficiency / moves.len() as f32;
-    }
+
+    // for i in 0..POLICY_LEN {
+    //   full_prec.policy[i] = temp[i] * rescale;
+    // }
+    // // Check that the output policy is normalized.
+    // let sum = {
+    //   let policy: &[f32] = &full_prec.policy[..];
+    //   policy.iter().sum::<f32>()
+    // };
+    // debug_assert!(sum <= 1.001);
+    // let deficiency = (1.0 - sum).max(0.0);
+
+    // for indexed_move in indexed_moves {
+    //   let idx = m.to_index() as usize;
+    //   let final_prob = full_prec.policy[idx] + deficiency / indexed_moves.len() as f32;
+    //   move_order_policy.push(final_prob);
+    // }
     //let sum = full_prec.policy.iter().sum::<f32>();
     //if !moves.is_empty() && (sum - 1.0).abs() > 1e-5 {
     //  println!("Renormalization failed: sum is {}", sum);
@@ -218,16 +225,15 @@ impl ModelOutputs {
     //}
     //debug_assert!(moves.is_empty() || (sum - 1.0).abs() < 1e-5);
     // Finally, quantize and emit.
-    let mut quantized_policy = Box::new([0; POLICY_LEN]);
-    for i in 0..POLICY_LEN {
-      quantized_policy[i] = quantize_probability(full_prec.policy[i]);
-    }
+    // let mut quantized_policy = Box::new([0; POLICY_LEN]);
+    // for i in 0..POLICY_LEN {
+    //   quantized_policy[i] = quantize_probability(full_prec.policy[i]);
+    // }
     ModelOutputs {
-      quantized_policy,
+      move_order_policy,
       value: full_prec.value,
       white_wdl: full_prec.white_wdl,
     }
-
     //if (sum - 1.0).abs() > 1e-2 {
     //  panic!("\x1b[91m>>>\x1b0m Renormalized policy sum is {}, not 1.0", sum);
     //}

@@ -120,6 +120,13 @@ fn state_to_default_full_prec_model_outputs(
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct IndexedMove {
+  pub index: usize,
+  pub out_of: usize,
+  pub m: Move,
+}
+
 #[derive(Clone)]
 pub struct EdgeEntry {
   node:             NodeIndex,
@@ -131,18 +138,18 @@ pub struct MctsNode {
   pub depth:                u32,
   pub state:                State,
   pub hash:                 u64,
-  pub moves:                Vec<Move>,
+  pub moves:                Vec<IndexedMove>,
   pub outputs:              ModelOutputs,
   pub dirichlet_applied:    bool,
   pub needs_eval:           bool,
   pub total_score:          f32,
   pub total_white_wdl:      [f32; 3],
-  pub exact_score_and_move: Option<(f32, Move)>,
+  pub exact_score_and_move: Option<(f32, IndexedMove)>,
   pub visits:               u32,
   pub tail_visits:          u32,
   pub in_flight:            u32,
   pub policy_explored:      f32,
-  pub outgoing_edges:       HashMap<Move, EdgeEntry>,
+  pub outgoing_edges:       HashMap<IndexedMove, EdgeEntry>,
   pub gc_state:             u32,
   pub propagated:           bool,
   pub is_threefold:         bool,
@@ -160,8 +167,10 @@ impl MctsNode {
     if needs_eval {
       state.move_gen::<false>(&mut moves);
     }
+    let out_of = moves.len();
+    let moves: Vec<_> = moves.into_iter().enumerate().map(|(i, m)| IndexedMove { index: i, out_of, m }).collect();
     // FIXME: in terminal positions I need to make up a correct WDL value.
-    let outputs = ModelOutputs::quantize_from(
+    let outputs = ModelOutputs::compute_from(
       state_to_default_full_prec_model_outputs(effective_outcome),
       &moves,
     );
@@ -222,12 +231,13 @@ impl MctsNode {
     search_params: &SearchParams,
     sqrt_policy_explored: f32,
     nodes: &SlotMap<NodeIndex, MctsNode>,
-    m: Move,
+    indexed_move: IndexedMove,
   ) -> f32 {
+    debug_assert!(indexed_move.out_of == self.moves.len());
     // FIXME: Implement sticky mates here.
     // FIXME: Should I set FPU to zero at the root, like KataGo does?
     let effective_visits = self.visits + self.in_flight;
-    let (u, q) = match self.outgoing_edges.get(&m) {
+    let (u, q) = match self.outgoing_edges.get(&indexed_move) {
       None => (
         (effective_visits as f32).sqrt(),
         (self.get_subtree_value().expected_score_for_player(self.state.turn)
@@ -253,7 +263,7 @@ impl MctsNode {
       true => search_params.duck_exploration_alpha,
       false => search_params.exploration_alpha,
     };
-    let u = alpha * self.posterior(m) * u;
+    let u = alpha * self.posterior(indexed_move) * u;
     q + u
   }
 
@@ -262,7 +272,7 @@ impl MctsNode {
     alpha_multiplier: f32,
     search_params: &SearchParams,
     nodes: &SlotMap<NodeIndex, MctsNode>,
-  ) -> Option<Move> {
+  ) -> Option<IndexedMove> {
     //println!("select_action from: {:?}", self.depth);
     if self.moves.is_empty() {
       return None;
@@ -273,8 +283,8 @@ impl MctsNode {
     let sqrt_policy_explored = self.policy_explored.sqrt();
     let mut best_score = -std::f32::INFINITY;
     let mut best_move = None;
-    for m in &self.moves {
-      let score = self.total_action_score(alpha_multiplier, search_params, sqrt_policy_explored, nodes, *m);
+    for indexed_move in &self.moves {
+      let score = self.total_action_score(alpha_multiplier, search_params, sqrt_policy_explored, nodes, *indexed_move);
       //println!(
       //  "    score: {:?} for move: {:?}  (posterior: {})",
       //  score,
@@ -283,26 +293,26 @@ impl MctsNode {
       //);
       if score > best_score {
         best_score = score;
-        best_move = Some(*m);
+        best_move = Some(*indexed_move);
       }
     }
     best_move
   }
 
-  fn new_child(&mut self, m: Move, causes_threefold: bool, child_index: NodeIndex) {
+  fn new_child(&mut self, indexed_move: IndexedMove, causes_threefold: bool, child_index: NodeIndex) {
     // FIXME: Maybe this should be a debug assert?
-    assert!(!self.outgoing_edges.contains_key(&m));
+    assert!(!self.outgoing_edges.contains_key(&indexed_move));
     // We now guarantee that this move is actually legal here.
-    assert!(self.moves.contains(&m));
+    assert!(self.moves.contains(&indexed_move));
     self.outgoing_edges.insert(
-      m,
+      indexed_move,
       EdgeEntry {
         node: child_index,
         causes_threefold,
       },
     );
     // FIXME: I need to track the policy_explored more carefully, as evals might not be filled in yet!
-    self.policy_explored = (self.policy_explored + self.posterior(m)).min(1.0);
+    self.policy_explored = (self.policy_explored + self.posterior(indexed_move)).min(1.0);
   }
 
   fn add_dirichlet_noise(&mut self, rng: &mut Rng) {
@@ -319,25 +329,25 @@ impl MctsNode {
     //let mut thread_rng = rand::thread_rng();
     //let dist = rand_distr::Gamma::new(DIRICHLET_ALPHA, 1.0).unwrap();
     // Generate noise.
-    let mut noise = [0.0; POLICY_LEN];
+    let mut noise = Vec::<f32>::with_capacity(self.moves.len());
     let mut noise_sum = 0.0;
     let mut policy_sum = 0.0;
-    for m in &self.moves {
-      let idx = m.to_index() as usize;
+    for (i, m) in self.moves.iter().enumerate() {
+      //let idx = m.to_index() as usize;
       // Generate a gamma-distributed noise value.
       let new_noise = rng.generate_gamma_variate(DIRICHLET_ALPHA);
-      noise[idx] = new_noise;
+      noise[i] = new_noise;
       noise_sum += new_noise;
       // Apply the new policy softmax temperature.
-      let new_policy = self.outputs.get_policy(idx).powf(1.0 / ROOT_SOFTMAX_TEMP);
-      self.outputs.set_policy(idx, new_policy);
+      let new_policy = self.outputs.move_order_policy[i].powf(1.0 / ROOT_SOFTMAX_TEMP);
+      self.outputs.move_order_policy[i] = new_policy;
       policy_sum += new_policy;
     }
     // Mix policy with noise.
     for i in 0..noise.len() {
-      let mixed_policy = (1.0 - DIRICHLET_WEIGHT) * self.outputs.get_policy(i) / policy_sum
+      let mixed_policy = (1.0 - DIRICHLET_WEIGHT) * self.outputs.move_order_policy[i] / policy_sum
         + DIRICHLET_WEIGHT * noise[i] / noise_sum;
-      self.outputs.set_policy(i, mixed_policy);
+      self.outputs.move_order_policy[i] = mixed_policy;
     }
     //// Make sure the policy is zero on illegal moves.
     //for i in 0..noise.len() {
@@ -381,8 +391,8 @@ impl MctsNode {
     //debug_assert!((sum - 1.0).abs() < 1e-3);
   }
 
-  pub fn posterior(&self, m: Move) -> f32 {
-    self.outputs.get_policy(m.to_index() as usize)
+  pub fn posterior(&self, indexed_move: IndexedMove) -> f32 {
+    self.outputs.move_order_policy[indexed_move.index]
   }
 }
 
@@ -478,7 +488,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
   }
 
   pub fn check_if_move_is_legal_from_root(&self, m: Move) -> bool {
-    self.nodes[self.root].moves.contains(&m)
+    self.nodes[self.root].moves.iter().any(|indexed_move| indexed_move.m == m)
   }
 
   pub fn any_in_flight(&self) -> bool {
@@ -497,7 +507,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
   pub fn get_root_children_visit_count(&self) -> u32 {
     let root = &self.nodes[self.root];
     let mut total_visits = 0;
-    for (m, edge) in &root.outgoing_edges {
+    for edge in root.outgoing_edges.values() {
       let node = &self.nodes[edge.node];
       total_visits += node.visits;
     }
@@ -512,7 +522,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     let mut total_visits = 0;
     let mut total_weight: f32 = 0.0;
     // Sum up squares of visit counts for each child.
-    for (m, edge) in &root.outgoing_edges {
+    for edge in root.outgoing_edges.values() {
       let node = &self.nodes[edge.node];
       let weight = node.visits as f32;
       total_visits += node.visits;
@@ -521,11 +531,11 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     let mut white_wdl = [0.0, 0.0, 0.0];
     let mut top_moves = Vec::new();
     // Compute weighted average of white WDLs.
-    for (m, edge) in &root.outgoing_edges {
+    for (indexed_move, edge) in &root.outgoing_edges {
       let node = &self.nodes[edge.node];
       let mut weight = node.visits as f32;
       weight = weight * weight / total_weight;
-      top_moves.push((*m, node.visits as f32 / total_visits as f32));
+      top_moves.push((indexed_move.m, node.visits as f32 / total_visits as f32));
       white_wdl[0] += weight * node.total_white_wdl[0] / node.visits as f32;
       white_wdl[1] += weight * node.total_white_wdl[1] / node.visits as f32;
       white_wdl[2] += weight * node.total_white_wdl[2] / node.visits as f32;
@@ -629,18 +639,18 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         .outgoing_edges
         .iter()
         .max_by_key(|(_, edge)| self.nodes[edge.node].visits)
-        .map(|(m, _)| *m)
+        .map(|(indexed_move, _)| *indexed_move)
       {
         Some(m) => m,
         None => break,
       };
-      pv.push(best_move);
+      pv.push(best_move.m);
       node_index = node.outgoing_edges[&best_move].node;
     }
     pv
   }
 
-  fn select_principal_variation(&self, best: bool) -> (Vec<NodeIndex>, Option<Move>) {
+  fn select_principal_variation(&self, best: bool) -> (Vec<NodeIndex>, Option<IndexedMove>) {
     let mut node = &self.nodes[self.root];
     let mut nodes = vec![self.root];
     loop {
@@ -660,24 +670,24 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         false => 1.0,
       };
 
-      let m: Option<Move> = match best {
+      let indexed_move: Option<IndexedMove> = match best {
         // If we're picking the best PV, just take the most visited.
         true => node
           .outgoing_edges
           .iter()
           .max_by_key(|(_, edge)| self.nodes[edge.node].visits)
-          .map(|(m, _)| *m),
+          .map(|(indexed_move, _)| *indexed_move),
         // Otherwise select according to PUCT.
         false => node.select_action(alpha_multiplier, &self.search_params, &self.nodes),
       };
-      match m {
+      match indexed_move {
         // None means we have no legal moves at the leaf (terminal).
         None => return (nodes, None),
         // Some means we have legal moves.
-        Some(m) => {
+        Some(indexed_move) => {
           // Try to find this edge.
-          let child = match node.outgoing_edges.get(&m) {
-            None => return (nodes, Some(m)),
+          let child = match node.outgoing_edges.get(&indexed_move) {
+            None => return (nodes, Some(indexed_move)),
             Some(edge) => edge.node,
           };
           nodes.push(child);
@@ -701,7 +711,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
   fn add_child_and_adjust_scores(
     &mut self,
     mut path: Vec<NodeIndex>,
-    m: Option<Move>,
+    m: Option<IndexedMove>,
     state: State,
     depth: u32,
   ) -> NodeIndex {
@@ -776,9 +786,9 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     match (path.last(), m) {
       // We use an empty path and empty move to indicate building the root.
       (None, None) => {}
-      (Some(parent_node_index), Some(m)) => {
+      (Some(parent_node_index), Some(move_index_and_move)) => {
         let parent_node = &mut self.nodes[*parent_node_index];
-        parent_node.new_child(m, threefold_repetition, last_node_index);
+        parent_node.new_child(move_index_and_move, threefold_repetition, last_node_index);
       }
       _ => unreachable!(),
     }
@@ -843,7 +853,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     // assert!(node.needs_eval);
 
     node.needs_eval = false;
-    node.outputs = ModelOutputs::quantize_from(model_outputs, &node.moves);
+    node.outputs = ModelOutputs::compute_from(model_outputs, &node.moves);
     //crate::log(&format!("Outputs: {:?}", node.outputs.value));
     //node.outputs.renormalize(&node.moves);
     self.adjust_scores_on_path::<true>(pending_path.path, "inference");
@@ -880,14 +890,14 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       // If the move is null then we have no legal moves, so just propagate the score again.
       None => self.adjust_scores_on_path::<false>(pv_nodes, "reprop"),
       // If the move is non-null then expand once at the leaf in that direction.
-      Some(m) => {
+      Some(indexed_move) => {
         // Create the new child state.
         let leaf_node = &self.nodes[*pv_nodes.last().unwrap()];
         let mut state = leaf_node.state.clone();
-        state.apply_move::<false>(m, None).unwrap();
+        state.apply_move::<false>(indexed_move.m, None).unwrap();
         let new_depth = leaf_node.depth + 1;
         // Possibly create a new child node.
-        self.add_child_and_adjust_scores(pv_nodes, Some(m), state, new_depth);
+        self.add_child_and_adjust_scores(pv_nodes, Some(indexed_move), state, new_depth);
       }
     };
     // Assert that the root's edge visit count went up by one.
@@ -1015,10 +1025,10 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
 
   fn get_immediately_winning_move(&self) -> Option<Move> {
     let current_player = self.nodes[self.root].state.turn;
-    for (m, edge) in &self.nodes[self.root].outgoing_edges {
+    for (indexed_move, edge) in &self.nodes[self.root].outgoing_edges {
       let eval = self.nodes[edge.node].outputs.value;
       if eval.is_exact && eval.expected_score_for_player(current_player) >= 1.0 {
-        return Some(*m);
+        return Some(indexed_move.m);
       }
     }
     None
@@ -1027,11 +1037,11 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
   pub fn find_non_mate_hanging_move(&self) -> Option<Move> {
     let root_node = &self.nodes[self.root];
     let root_is_duck_move = root_node.state.is_duck_move;
-    for m in &root_node.moves {
+    for indexed_move in &root_node.moves {
       let mut child_state = root_node.state.clone();
-      child_state.apply_move::<false>(*m, None).unwrap();
+      child_state.apply_move::<false>(indexed_move.m, None).unwrap();
       if !does_state_hang_mate!(&child_state, root_is_duck_move) {
-        return Some(*m);
+        return Some(indexed_move.m);
       }
     }
     None
@@ -1048,7 +1058,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     let mut non_bad_move = false;
 
     let mut distribution = Vec::new();
-    for (m, edge) in &self.nodes[self.root].outgoing_edges {
+    for (indexed_move, edge) in &self.nodes[self.root].outgoing_edges {
       let mut effective_child_visits = self.nodes[edge.node].visits as f32;
 
       if dont_hang_mate {
@@ -1063,7 +1073,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         }
       }
 
-      distribution.push((*m, effective_child_visits));
+      distribution.push((indexed_move.m, effective_child_visits));
     }
 
     // // FIXME: Re-enable this once I'm sure it's okay.
@@ -1071,8 +1081,8 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       if let Some(non_mate_hanging_move) = self.find_non_mate_hanging_move() {
         let root_node = &self.nodes[self.root];
         let mut s = String::new();
-        for m in &root_node.moves {
-          s.push_str(&format!("{} -> {:?}, ", m, root_node.posterior(*m)));
+        for indexed_move in &root_node.moves {
+          s.push_str(&format!("{} -> {:?}, ", indexed_move.m, root_node.posterior(*indexed_move)));
         }
         eprintln!(
           "\x1b[91mWARNING: No non-bad moves were explored in get_train_distribution, when {} exists!! {:?} {:?} posterior=[{}]\x1b[0m",
@@ -1093,8 +1103,8 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
 
   pub fn get_visit_distribution(&self) -> Vec<(Move, i32)> {
     let mut distribution = Vec::new();
-    for (m, edge) in &self.nodes[self.root].outgoing_edges {
-      distribution.push((*m, self.nodes[edge.node].visits as i32));
+    for (indexed_move, edge) in &self.nodes[self.root].outgoing_edges {
+      distribution.push((indexed_move.m, self.nodes[edge.node].visits as i32));
     }
     distribution
   }
@@ -1115,7 +1125,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     let mut distribution = Vec::new();
     let mut bad_move = false;
     let mut non_bad_move = false;
-    for (m, edge) in &self.nodes[self.root].outgoing_edges {
+    for (indexed_move, edge) in &self.nodes[self.root].outgoing_edges {
       let mut effective_child_visits = (self.nodes[edge.node].visits as f32).powf(beta);
       //effective_child_visits = effective_child_visits.powf(beta);
       // Check if the move hangs a mate.
@@ -1130,7 +1140,7 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
           non_bad_move = true;
         }
       }
-      distribution.push((effective_child_visits, *m));
+      distribution.push((effective_child_visits, indexed_move.m));
       temperature_sum_child_visits += effective_child_visits;
     }
     // // FIXME: Re-enable this once I'm sure it's okay.
@@ -1138,8 +1148,8 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
       if let Some(non_mate_hanging_move) = self.find_non_mate_hanging_move() {
         let root_node = &self.nodes[self.root];
         let mut s = String::new();
-        for m in &root_node.moves {
-          s.push_str(&format!("{} -> {:?}, ", m, root_node.posterior(*m)));
+        for indexed_move in &root_node.moves {
+          s.push_str(&format!("{} -> {:?}, ", indexed_move.m, root_node.posterior(*indexed_move)));
         }
         eprintln!(
           "\x1b[91mWARNING: No non-bad moves were explored in sample_move_by_visit_count, when {} exists!! {:?} {:?} posterior=[{}]\x1b[0m",
@@ -1196,7 +1206,9 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     //}
     //assert!(!self.any_in_flight());
     let root_node = &self.nodes[self.root];
-    self.root = match root_node.outgoing_edges.get(&m) {
+    // First we map this Move to an IndexedMove.
+    let indexed_move = root_node.moves.iter().find(|im| im.m == m).unwrap();
+    self.root = match root_node.outgoing_edges.get(indexed_move) {
       // If we already have a node for this move, then just make it the new root.
       Some(edge) => {
         // First we add the parent to the threefold state.
@@ -1336,8 +1348,8 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
         },
       );
       if !already_printed {
-        for (m, edge) in &node.outgoing_edges {
-          stack.push((Some(*m), edge.node, depth + 1));
+        for (indexed_move, edge) in &node.outgoing_edges {
+          stack.push((Some(indexed_move.m), edge.node, depth + 1));
         }
       }
     }
