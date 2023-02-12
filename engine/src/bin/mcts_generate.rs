@@ -44,7 +44,8 @@ fn check_signals_dir(signals_dir: &str, previously_processed: &mut String) -> Op
     .filter_map(|f| {
       let f = f.unwrap();
       let path = f.path().to_str().unwrap().to_string();
-      if path.starts_with("signal-") {
+      // We now check if f.file_name() (which is an OsString) starts with "signal-".
+      if f.file_name().to_str().map(|s| s.starts_with("signal-")).unwrap_or(false) {
         Some(path)
       } else {
         None
@@ -57,7 +58,9 @@ fn check_signals_dir(signals_dir: &str, previously_processed: &mut String) -> Op
       println!("\x1b[96mFound new signal file:\x1b[0m {}", most_recent);
       // If so, read the contents of the file.
       let contents = std::fs::read_to_string(&most_recent).unwrap();
-      assert!(contents.starts_with("skip"));
+      let contents = contents.trim().to_string();
+      println!("Contents: {:?}", contents);
+      assert!(contents.starts_with("swap"));
       // Split the line at the two :::s.
       let mut parts = contents.split(":::");
       parts.next();
@@ -75,14 +78,17 @@ fn check_signals_dir(signals_dir: &str, previously_processed: &mut String) -> Op
 async fn main() {
   let args = Args::parse();
 
+  let hostname: &'static str = Box::leak(gethostname::gethostname().into_string().unwrap().into_boxed_str());
+  let launch_id_string = format!("{}-{}-{:8x}", hostname, chrono::Utc::now().format("%Y-%m-%d-%H-%M-%S"), rand::random::<u32>());
+  let launch_id: &'static str = Box::leak(launch_id_string.into_boxed_str());
+
   // We figure out the initial model, either from the command line or from the signals directory.
   let mut previously_processed = String::new();
   let (model_dir, output_dir) = args.signals_dir.as_ref()
     .and_then(|signals_dir| check_signals_dir(signals_dir, &mut previously_processed))
-    .unwrap_or((args.model_dir.clone().unwrap(), args.output_dir.clone().unwrap()));
+    .unwrap_or_else(|| (args.model_dir.clone().unwrap(), args.output_dir.clone().unwrap()));
 
-  println!("Using model dir: {}", model_dir);
-  println!("Using output dir: {}", output_dir);
+  println!("Hostname: {} -- launch id: {} -- model dir: {} -- output dir: {}", hostname, launch_id, model_dir, output_dir);
 
   //let batch_size = TensorRTEngine::<()>::DESIRED_BATCH_SIZE;
   let batch_size = args.batch_size;
@@ -386,6 +392,8 @@ async fn main() {
             "search_params": search_params,
             "is_duck_chess": engine::rules::IS_DUCK_CHESS,
             "version": "mcts-1",
+            "hostname": hostname,
+            "launch_id": launch_id,
           });
           let s = serde_json::to_string(&obj).unwrap();
           file.write_all(s.as_bytes()).unwrap();
