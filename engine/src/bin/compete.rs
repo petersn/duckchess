@@ -1,5 +1,6 @@
 #![feature(let_chains)]
 
+use std::str::FromStr;
 use std::sync::atomic::AtomicU64;
 
 use clap::Parser;
@@ -15,44 +16,41 @@ const BATCH_SIZE: usize = 128;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-  #[arg(short, long)]
+  #[arg(long)]
   playouts1: u32,
-
-  #[arg(short, long)]
+  #[arg(long)]
   playouts2: u32,
-
   #[arg(long)]
   model1_dir: String,
-
   #[arg(long)]
   model2_dir: String,
-
   #[arg(long)]
   opening_randomization: bool,
-
   #[arg(short, long)]
   output_dir: String,
-
   #[arg(long)]
   randomize_search_params: bool,
-
+  #[arg(long)]
+  search_params1: Option<String>,
+  #[arg(long)]
+  search_params2: Option<String>,
   #[arg(long)]
   game_limit: Option<u64>,
 }
 
 fn generate_random_search_params() -> SearchParams {
-  let exploration_alpha = match rand::random::<u32>() % 2 {
+  let exploration_alpha = match rand::random::<u32>() % 3 {
     //0 => 0.125,
     0 => 0.25,
     1 => 0.5,
-    //3 => 1.0,
+    2 => 1.0,
     //3 => 2.0,
     _ => unreachable!(),
   };
-  let duck_exploration_alpha = match rand::random::<u32>() % 2 {
+  let duck_exploration_alpha = match rand::random::<u32>() % 3 {
     0 => 0.125,
     1 => 0.25,
-    //2 => 0.5,
+    2 => 0.5,
     //3 => 1.0,
     //3 => 2.0,
     _ => unreachable!(),
@@ -65,10 +63,12 @@ fn generate_random_search_params() -> SearchParams {
     //3 => 0.4,
     _ => unreachable!(),
   };
+  let root_increase = rand::random::<bool>();
   SearchParams {
     exploration_alpha,
     duck_exploration_alpha,
     first_play_urgency,
+    root_increase,
   }
 }
 
@@ -78,6 +78,16 @@ async fn main() {
 
   let model1_dir: &'static str = Box::leak(String::into_boxed_str(args.model1_dir));
   let model2_dir: &'static str = Box::leak(String::into_boxed_str(args.model2_dir));
+  let search_params1: &'static SearchParams = Box::leak(Box::new(
+    args.search_params1
+      .map(|s| SearchParams::from_str(&s).unwrap())
+      .unwrap_or_else(Default::default),
+  ));
+  let search_params2: &'static SearchParams = Box::leak(Box::new(
+    args.search_params2
+      .map(|s| SearchParams::from_str(&s).unwrap())
+      .unwrap_or_else(Default::default),
+  ));
 
   let inference_engine1: &TensorRTEngine<(usize, PendingPath)> =
     Box::leak(Box::new(TensorRTEngine::new(BATCH_SIZE, model1_dir)));
@@ -170,7 +180,7 @@ async fn main() {
         let seed1 = rand::random::<u64>();
         let seed2 = rand::random::<u64>();
         let (search_params1, search_params2) = match randomize_search_params {
-          false => (SearchParams::default(), SearchParams::default()),
+          false => (search_params1.clone(), search_params2.clone()),
           true => {
             // Pick two random search parameter sets.
             let search_params1 = generate_random_search_params();

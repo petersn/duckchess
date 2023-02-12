@@ -40,6 +40,7 @@ pub struct SearchParams {
   pub exploration_alpha:      f32,
   pub duck_exploration_alpha: f32,
   pub first_play_urgency:     f32,
+  pub root_increase:          bool,
 }
 
 // These parameters were tuned with search_param_opt.py
@@ -56,6 +57,7 @@ impl Default for SearchParams {
       exploration_alpha:      0.5,
       duck_exploration_alpha: 0.25,
       first_play_urgency:     0.2,
+      root_increase:          false,
     }
   }
 }
@@ -81,6 +83,7 @@ impl std::str::FromStr for SearchParams {
         "alpha" => params.exploration_alpha = value_f32,
         "duckalpha" => params.duck_exploration_alpha = value_f32,
         "fpu" => params.first_play_urgency = value_f32,
+        "rootincrease" => params.root_increase = value_f32 > 0.0,
         _ => return Err(format!("Invalid key: {}", key)),
       }
     }
@@ -642,16 +645,21 @@ impl<'a, Infer: InferenceEngine<(usize, PendingPath)>> Mcts<'a, Infer> {
     let mut nodes = vec![self.root];
     loop {
       // Use more exploration near the root of the tree.
-      let alpha_multiplier = match nodes.len() {
-        // FIXME: Figurate out what to do here.
-        // For now, disable this, to test just one thing at a time.
-        _ => 1.0,
-        //1 => 2.0,
-        //2 => 1.75,
-        //3 => 1.5,
-        //4 => 1.25,
+      let alpha_root_mult = match nodes.len() {
+        //// FIXME: Figurate out what to do here.
+        //// For now, disable this, to test just one thing at a time.
         //_ => 1.0,
+        1 => 2.0,
+        2 => 1.75,
+        3 => 1.5,
+        4 => 1.25,
+        _ => 1.0,
       };
+      let alpha_multiplier = match self.search_params.root_increase {
+        true => alpha_root_mult,
+        false => 1.0,
+      };
+
       let m: Option<Move> = match best {
         // If we're picking the best PV, just take the most visited.
         true => node

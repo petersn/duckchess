@@ -19,8 +19,8 @@ import numpy as np
 #output_dir = "hyper-opt-games-200visits"
 prefix = "run-016/"
 model_dir = prefix + "step-275/model-compute8.9.trt"
-output_dir = "hyper-opt-games-1000visits-run016"
-playouts = 1000
+output_dir = "hyper-opt-games-200visits-run021"
+playouts = 200
 
 try:
     os.mkdir(output_dir)
@@ -94,7 +94,8 @@ if __name__ == "__main__":
             alpha = sp["exploration_alpha"]
             duckalpha = sp["duck_exploration_alpha"]
             fpu = sp["first_play_urgency"]
-            return f"alpha={alpha:.3f}:duckalpha={duckalpha:.3f}:fpu={fpu:.3f}"
+            root_increase = sp.get("root_increase", False)
+            return f"alpha={alpha:.3f}:duckalpha={duckalpha:.3f}:fpu={fpu:.3f}:rootincrease={+root_increase}"
 
         pgn = []
         for game in games:
