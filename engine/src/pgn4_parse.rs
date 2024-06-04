@@ -213,9 +213,7 @@ pub fn parse(mut s: &str) -> Result<Pgn4, String> {
       });
     }
     // Now we must have a duck move, with an optional ampersand first.
-    if tokens[i] == Token::Other('&') {
-      i += 1;
-    }
+    optional_char!('&');
     expect_one_of!('Θ');
     // The departure square is optional.
     let departure_square = match tokens[i] {
